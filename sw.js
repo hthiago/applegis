@@ -1,33 +1,50 @@
-const CACHE_NAME = 'painel-legislativo-v1';
-const ASSETS = [
+// Service worker: guarda a casca do aplicativo para abrir rápido e sobreviver a
+// uma queda de rede. Os dados do gabinete nunca são cacheados — eles vêm sempre
+// do Firestore, que já tem cache próprio e controle de permissão.
+
+const VERSAO = 'gabinete-v1';
+const CASCA = [
   './',
   './index.html',
+  './app.css',
   './manifest.json',
-  './icon-192.png',
-  './icon-512.png',
-  'https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap'
+  './js/app.js',
+  './js/config.js',
+  './js/firebase.js',
+  './js/sessao.js',
+  './js/dados.js',
+  './js/modulos.js',
+  './js/crud.js',
+  './js/paineis.js',
+  './js/admin.js',
+  './js/camara.js',
+  './js/ui.js',
 ];
 
-self.addEventListener('install', e => {
-  e.waitUntil(caches.open(CACHE_NAME).then(c => c.addAll(ASSETS)));
-  self.skipWaiting();
+self.addEventListener('install', (e) => {
+  e.waitUntil(caches.open(VERSAO).then((c) => c.addAll(CASCA)).then(() => self.skipWaiting()));
 });
 
-self.addEventListener('activate', e => {
+self.addEventListener('activate', (e) => {
   e.waitUntil(
-    caches.keys().then(keys =>
-      Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k)))
-    )
+    caches.keys()
+      .then((chaves) => Promise.all(chaves.filter((k) => k !== VERSAO).map((k) => caches.delete(k))))
+      .then(() => self.clients.claim()),
   );
-  self.clients.claim();
 });
 
-self.addEventListener('fetch', e => {
-  // Don't cache webhook calls
-  if (e.request.url.includes('hook.')) {
-    return;
-  }
+self.addEventListener('fetch', (e) => {
+  const url = new URL(e.request.url);
+  if (e.request.method !== 'GET' || url.origin !== self.location.origin) return;
+
+  // Rede primeiro para manter o aplicativo atualizado; o cache entra quando ela falha.
   e.respondWith(
-    caches.match(e.request).then(r => r || fetch(e.request))
+    fetch(e.request)
+      .then((resposta) => {
+        const copia = resposta.clone();
+        caches.open(VERSAO).then((c) => c.put(e.request, copia)).catch(() => {});
+        return resposta;
+      })
+      .catch(() => caches.match(e.request).then((r) => r || caches.match('./index.html'))),
   );
 });

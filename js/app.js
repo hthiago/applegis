@@ -1,0 +1,308 @@
+import { CONFIGURADO, AREAS, PAPEIS, podeEditar, podeEditarAgenda, podeEditarTarefas, ehAdmin } from './config.js';
+import { modulosDaArea } from './modulos.js';
+import { el, limpar, aviso, carregando, vazio } from './ui.js';
+
+/**
+ * Montagem da aplicação.
+ *
+ * Só o essencial é importado de saída. O SDK do Firebase e tudo que depende
+ * dele entram sob demanda, para que a tela de configuração ainda apareça num
+ * projeto recém-instalado — e para que uma falha de rede vire uma mensagem
+ * clara em vez de uma página em branco.
+ */
+
+const raiz = document.getElementById('app');
+let nucleo = null;
+
+// ─────────────────────────────── telas ───────────────────────────────
+
+function cartao(titulo, paragrafos, acao = null) {
+  return el('div', { class: 'tela-central' }, [
+    el('div', { class: 'cartao-central' }, [
+      el('h1', { texto: titulo }),
+      ...paragrafos.map((t) => el('p', { texto: t })),
+      acao,
+    ]),
+  ]);
+}
+
+function telaConfiguracao() {
+  return cartao('Falta conectar o Firebase', [
+    'O sistema está instalado, mas ainda não sabe a qual projeto Google se conectar.',
+    'Abra o arquivo js/config.js e cole os dados do seu projeto no lugar dos campos COLE_AQUI. O passo a passo completo está no README.',
+  ]);
+}
+
+function telaFalhaCarregamento() {
+  return cartao('Não foi possível carregar o sistema', [
+    'Os componentes do Firebase não puderam ser baixados. Isso costuma ser falta de conexão ou uma rede que bloqueia o endereço gstatic.com.',
+    'Verifique a conexão e recarregue a página.',
+  ], el('button', { class: 'btn btn--primario', texto: 'Recarregar', onclick: () => location.reload() }));
+}
+
+function telaLogin() {
+  const botao = el('button', {
+    class: 'btn btn--primario btn--grande',
+    texto: 'Entrar com Google',
+    onclick: async () => {
+      botao.disabled = true;
+      try {
+        await nucleo.fb.entrarComGoogle();
+      } catch (erro) {
+        console.error(erro);
+        if (!['auth/popup-closed-by-user', 'auth/cancelled-popup-request'].includes(erro.code)) {
+          aviso('Não foi possível entrar. Tente novamente.', 'erro');
+        }
+        botao.disabled = false;
+      }
+    },
+  });
+
+  return el('div', { class: 'tela-central' }, [
+    el('div', { class: 'cartao-central' }, [
+      el('p', { class: 'marca', texto: 'Gestão de gabinete parlamentar' }),
+      el('h1', { texto: 'Entre para acessar o gabinete' }),
+      el('p', { texto: 'O acesso é liberado individualmente pela chefia. Use a conta Google cadastrada — funciona tanto com o e-mail institucional quanto com o pessoal.' }),
+      botao,
+    ]),
+  ]);
+}
+
+function telaSemAcesso() {
+  const s = nucleo.sessaoMod.sessao;
+  return cartao('Sua conta ainda não tem acesso', [
+    s.erro || `Entramos com ${s.usuario?.email || 'sua conta'}, mas ela não está na lista de pessoas autorizadas deste sistema.`,
+    'Peça à chefia de gabinete para liberar este e-mail e entre novamente.',
+  ], el('button', { class: 'btn btn--fantasma', texto: 'Sair', onclick: () => nucleo.fb.sair() }));
+}
+
+// ────────────────────────────── navegação ──────────────────────────────
+
+function paineisDisponiveis() {
+  return [
+    { id: 'painel', area: 'chefia', nome: 'Painel', render: nucleo.paineis.painelChefia },
+    { id: 'resumo-cota', area: 'administrativo', nome: 'Resumo da cota', render: nucleo.paineis.painelCota },
+    { id: 'painel-emendas', area: 'orcamento', nome: 'Painel', render: nucleo.paineis.painelEmendas },
+  ];
+}
+
+function abasDaArea(areaId) {
+  return [
+    ...paineisDisponiveis().filter((p) => p.area === areaId),
+    ...modulosDaArea(areaId).map((m) => ({ id: m.id, nome: m.nome, modulo: m })),
+  ];
+}
+
+function rota() {
+  const partes = (location.hash || '').replace(/^#\/?/, '').split('/').filter(Boolean);
+  return { area: partes[0] || null, aba: partes[1] || null };
+}
+
+function areaInicial() {
+  return ehAdmin(nucleo.sessaoMod.sessao.membro) ? 'acessos' : 'chefia';
+}
+
+function cabecalho() {
+  const s = nucleo.sessaoMod.sessao;
+  return el('header', { class: 'topo' }, [
+    el('div', { class: 'topo-marca' }, [
+      el('span', { class: 'topo-sigla', texto: 'GAB' }),
+      el('div', {}, [
+        el('strong', { texto: s.gabinete?.nome || 'Gabinete' }),
+        s.gabinete?.deputado ? el('span', { class: 'topo-sub', texto: s.gabinete.deputado }) : null,
+      ]),
+    ]),
+    el('div', { class: 'topo-direita' }, [
+      el('div', { class: 'usuario-menu' }, [
+        el('span', { class: 'usuario-nome', texto: s.membro.nome }),
+        el('span', { class: 'usuario-papel', texto: PAPEIS[s.membro.papel]?.nome || s.membro.papel }),
+      ]),
+      el('button', { class: 'btn btn--fantasma btn--pequeno', texto: 'Sair', onclick: () => nucleo.fb.sair() }),
+    ]),
+  ]);
+}
+
+function navegacao(areaAtual) {
+  const membro = nucleo.sessaoMod.sessao.membro;
+  const itens = AREAS.map((a) => el('a', {
+    href: `#/${a.id}`,
+    class: `nav-item${areaAtual === a.id ? ' nav-item--ativo' : ''}`,
+    'aria-current': areaAtual === a.id ? 'page' : null,
+  }, [
+    el('span', { class: 'nav-sigla', texto: a.sigla }),
+    el('span', { class: 'nav-nome', texto: a.nome }),
+  ]));
+
+  if (ehAdmin(membro) || ['chefe', 'deputado'].includes(membro.papel)) {
+    itens.push(el('a', {
+      href: '#/acessos',
+      class: `nav-item${areaAtual === 'acessos' ? ' nav-item--ativo' : ''}`,
+    }, [
+      el('span', { class: 'nav-sigla', texto: '••' }),
+      el('span', { class: 'nav-nome', texto: 'Acessos' }),
+    ]));
+  }
+
+  return el('nav', { class: 'nav', 'aria-label': 'Áreas' }, itens);
+}
+
+function subAbas(areaId, abaAtual) {
+  const abas = abasDaArea(areaId);
+  if (abas.length <= 1) return null;
+  const ativa = abas.some((a) => a.id === abaAtual) ? abaAtual : abas[0].id;
+  return el('div', { class: 'abas', role: 'tablist' }, abas.map((a) => el('a', {
+    href: `#/${areaId}/${a.id}`,
+    class: `aba${ativa === a.id ? ' aba--ativa' : ''}`,
+    role: 'tab',
+    'aria-selected': ativa === a.id ? 'true' : 'false',
+    texto: a.nome,
+  })));
+}
+
+// ────────────────────────────── conteúdo ──────────────────────────────
+
+function extrasDaCamara() {
+  return [
+    (recarregar) => el('button', {
+      class: 'btn btn--fantasma',
+      texto: 'Buscar na Câmara',
+      onclick: () => nucleo.camara.abrirBuscaCamara(recarregar),
+    }),
+    (recarregar) => el('button', {
+      class: 'btn btn--fantasma',
+      texto: 'Atualizar situações',
+      onclick: async (e) => {
+        const btn = e.currentTarget;
+        btn.disabled = true;
+        btn.textContent = 'Atualizando…';
+        try {
+          const n = await nucleo.camara.sincronizarProposicoes();
+          aviso(n ? `${n} proposição(ões) mudaram de situação.` : 'Nenhuma mudança desde a última consulta.');
+          recarregar();
+        } catch (erro) {
+          console.error(erro);
+          aviso('Não foi possível consultar a base da Câmara agora.', 'erro');
+          btn.disabled = false;
+          btn.textContent = 'Atualizar situações';
+        }
+      },
+    }),
+  ];
+}
+
+async function desenharConteudo(alvo, areaId, abaId) {
+  if (areaId === 'acessos') {
+    await nucleo.admin.renderAdmin(alvo);
+    return;
+  }
+
+  const abas = abasDaArea(areaId);
+  const aba = abas.find((a) => a.id === abaId) || abas[0];
+  if (!aba) {
+    limpar(alvo).appendChild(vazio('Esta área ainda não tem conteúdo.'));
+    return;
+  }
+
+  if (aba.render) {
+    await aba.render(alvo);
+    return;
+  }
+
+  const modulo = aba.modulo;
+  const membro = nucleo.sessaoMod.sessao.membro;
+  // A ordem espelha firestore.rules: agenda é a exceção restrita, tarefas é a
+  // exceção aberta, e o resto segue a regra de editar apenas a própria área.
+  let editavel;
+  if (modulo.restrita) editavel = podeEditarAgenda(membro);
+  else if (modulo.abertaATodos) editavel = podeEditarTarefas(membro);
+  else editavel = podeEditar(membro, modulo.area);
+
+  await nucleo.crud.renderModulo(alvo, modulo, {
+    editavel,
+    extras: modulo.importaCamara ? extrasDaCamara() : [],
+  });
+}
+
+async function desenharApp() {
+  const { area, aba } = rota();
+
+  if (!location.hash) {
+    location.hash = `#/${areaInicial()}`;
+    return;
+  }
+
+  const areaId = area;
+  if (!AREAS.some((a) => a.id === areaId) && areaId !== 'acessos') {
+    location.hash = `#/${areaInicial()}`;
+    return;
+  }
+
+  limpar(raiz);
+  raiz.appendChild(cabecalho());
+
+  const painel = el('main', { class: 'painel' });
+  const abasEl = areaId === 'acessos' ? null : subAbas(areaId, aba);
+  if (abasEl) painel.appendChild(abasEl);
+
+  const conteudo = el('div', { class: 'conteudo' }, [carregando()]);
+  painel.appendChild(conteudo);
+  raiz.appendChild(el('div', { class: 'corpo' }, [navegacao(areaId), painel]));
+
+  try {
+    await desenharConteudo(conteudo, areaId, aba);
+  } catch (erro) {
+    console.error(erro);
+    limpar(conteudo).appendChild(vazio('Algo deu errado ao montar esta tela. Recarregue a página.'));
+  }
+}
+
+function desenhar() {
+  switch (nucleo.sessaoMod.sessao.estado) {
+    case 'carregando':
+      limpar(raiz).appendChild(el('div', { class: 'tela-central' }, [carregando('Verificando seu acesso…')]));
+      break;
+    case 'anonimo': limpar(raiz).appendChild(telaLogin()); break;
+    case 'sem-acesso': limpar(raiz).appendChild(telaSemAcesso()); break;
+    case 'pronto': desenharApp(); break;
+    default: break;
+  }
+}
+
+// ─────────────────────────────── partida ───────────────────────────────
+
+async function iniciar() {
+  if (!CONFIGURADO) {
+    limpar(raiz).appendChild(telaConfiguracao());
+    return;
+  }
+
+  try {
+    const [fb, sessaoMod, crud, admin, paineis, camara] = await Promise.all([
+      import('./firebase.js'),
+      import('./sessao.js'),
+      import('./crud.js'),
+      import('./admin.js'),
+      import('./paineis.js'),
+      import('./camara.js'),
+    ]);
+    nucleo = { fb, sessaoMod, crud, admin, paineis, camara };
+  } catch (erro) {
+    console.error(erro);
+    limpar(raiz).appendChild(telaFalhaCarregamento());
+    return;
+  }
+
+  nucleo.sessaoMod.aoMudarSessao(desenhar);
+  window.addEventListener('hashchange', () => {
+    if (nucleo.sessaoMod.sessao.estado === 'pronto') desenharApp();
+  });
+  nucleo.sessaoMod.iniciarSessao();
+}
+
+iniciar();
+
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js').catch(() => {});
+  });
+}

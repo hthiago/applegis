@@ -2,251 +2,29 @@
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#1b5e4b">
+<meta name="description" content="Sistema de gestão de gabinete parlamentar">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="theme-color" content="#0b0f18">
-<meta name="description" content="Chat legislativo integrado ao Make">
+<meta name="apple-mobile-web-app-title" content="Gabinete">
+<title>Gestão de Gabinete</title>
 <link rel="manifest" href="./manifest.json">
 <link rel="apple-touch-icon" href="./icon-192.png">
-<title>Painel Legislativo</title>
-<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-<style>
-*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-:root{
-  --bg:#0b0f18;--surface:#141922;--surface2:#1a2030;
-  --border:rgba(255,255,255,0.06);
-  --text:#eaf0f6;--text2:#8896a8;--text3:#4a5568;
-  --blue:#3b82f6;--blue-bg:rgba(59,130,246,0.1);
-  --violet:#8b5cf6;--violet-bg:rgba(139,92,246,0.1);
-  --emerald:#10b981;--emerald-bg:rgba(16,185,129,0.1);
-  --amber:#f59e0b;--amber-bg:rgba(245,158,11,0.1);
-}
-html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;background:var(--bg);color:var(--text)}
-
-.screen{position:absolute;inset:0;display:flex;flex-direction:column;transition:transform .4s cubic-bezier(.4,0,.2,1),opacity .4s;will-change:transform,opacity}
-.screen.hidden-right{transform:translateX(100%);opacity:0;pointer-events:none}
-.screen.hidden-left{transform:translateX(-30%);opacity:0;pointer-events:none}
-#home{z-index:1}#chat{z-index:2}
-
-.home-header{padding:48px 24px 8px;text-align:center;flex-shrink:0}
-.home-logo{width:52px;height:52px;margin:0 auto 18px;background:linear-gradient(135deg,var(--blue),var(--violet));border-radius:16px;display:flex;align-items:center;justify-content:center;box-shadow:0 8px 32px rgba(59,130,246,0.3)}
-.home-logo svg{width:24px;height:24px;fill:#fff}
-.home-header h1{font-size:24px;font-weight:800;letter-spacing:-.5px}
-.home-header p{color:var(--text3);font-size:13.5px;margin-top:6px;font-weight:500}
-
-.box-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;padding:28px 20px;flex:1;align-content:center}
-.box{position:relative;background:var(--surface);border:1.5px solid var(--border);border-radius:20px;padding:28px 20px 22px;cursor:pointer;display:flex;flex-direction:column;align-items:center;text-align:center;transition:all .25s cubic-bezier(.4,0,.2,1);overflow:hidden;user-select:none;aspect-ratio:1/1;justify-content:center}
-.box::before{content:'';position:absolute;inset:0;border-radius:20px;opacity:0;transition:opacity .3s}
-.box:hover{transform:translateY(-2px);border-color:rgba(255,255,255,0.1)}
-.box:active{transform:scale(.96)}
-.box[data-color="blue"]::before{background:radial-gradient(circle at 50% 30%,var(--blue-bg),transparent 70%)}
-.box[data-color="violet"]::before{background:radial-gradient(circle at 50% 30%,var(--violet-bg),transparent 70%)}
-.box[data-color="emerald"]::before{background:radial-gradient(circle at 50% 30%,var(--emerald-bg),transparent 70%)}
-.box[data-color="amber"]::before{background:radial-gradient(circle at 50% 30%,var(--amber-bg),transparent 70%)}
-.box:hover::before{opacity:1}
-
-.box-icon{width:52px;height:52px;border-radius:14px;display:flex;align-items:center;justify-content:center;margin-bottom:14px;position:relative;z-index:1;transition:transform .25s}
-.box:hover .box-icon{transform:scale(1.08)}
-.box-icon svg{width:24px;height:24px}
-.box[data-color="blue"] .box-icon{background:var(--blue-bg)}.box[data-color="blue"] .box-icon svg{fill:var(--blue)}
-.box[data-color="violet"] .box-icon{background:var(--violet-bg)}.box[data-color="violet"] .box-icon svg{fill:var(--violet)}
-.box[data-color="emerald"] .box-icon{background:var(--emerald-bg)}.box[data-color="emerald"] .box-icon svg{fill:var(--emerald)}
-.box[data-color="amber"] .box-icon{background:var(--amber-bg)}.box[data-color="amber"] .box-icon svg{fill:var(--amber)}
-
-.box-title{font-size:13.5px;font-weight:700;line-height:1.3;position:relative;z-index:1}
-.box-subtitle{font-size:11px;color:var(--text3);margin-top:5px;position:relative;z-index:1;font-weight:500}
-.box-badge{position:absolute;top:12px;right:12px;min-width:20px;height:20px;border-radius:8px;font-size:10px;font-weight:700;display:none;align-items:center;justify-content:center;z-index:1;color:#fff;padding:0 5px}
-.box-badge.visible{display:flex}
-.box[data-color="blue"] .box-badge{background:var(--blue)}
-.box[data-color="violet"] .box-badge{background:var(--violet)}
-.box[data-color="emerald"] .box-badge{background:var(--emerald)}
-.box[data-color="amber"] .box-badge{background:var(--amber)}
-
-.box{opacity:0;transform:translateY(20px);animation:boxIn .5s cubic-bezier(.4,0,.2,1) forwards}
-.box:nth-child(1){animation-delay:.05s}.box:nth-child(2){animation-delay:.12s}.box:nth-child(3){animation-delay:.19s}.box:nth-child(4){animation-delay:.26s}
-@keyframes boxIn{to{opacity:1;transform:translateY(0)}}
-
-.chat-topbar{display:flex;align-items:center;gap:12px;padding:14px 16px;flex-shrink:0;border-bottom:1px solid var(--border);background:var(--bg)}
-.back-btn{width:36px;height:36px;border-radius:10px;border:none;background:var(--surface);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .2s;flex-shrink:0}
-.back-btn:hover{background:var(--surface2)}.back-btn:active{transform:scale(.9)}
-.back-btn svg{width:18px;height:18px;fill:var(--text2)}
-.chat-topbar .chat-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
-.chat-topbar h2{font-size:15px;font-weight:700;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.chat-topbar .chat-count{font-size:11px;color:var(--text3);font-family:'JetBrains Mono',monospace;font-weight:500;flex-shrink:0}
-
-.chat-messages{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:8px;min-height:0;scrollbar-width:thin;scrollbar-color:rgba(255,255,255,0.06) transparent}
-.chat-messages::-webkit-scrollbar{width:4px}.chat-messages::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.08);border-radius:4px}
-
-.chat-empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;color:var(--text3);text-align:center;padding:32px}
-.chat-empty-icon{width:56px;height:56px;border-radius:16px;display:flex;align-items:center;justify-content:center}
-.chat-empty-icon svg{width:26px;height:26px}
-.chat-empty p{font-size:13px;line-height:1.5;max-width:220px}
-
-.msg{max-width:82%;padding:10px 14px;border-radius:14px;font-size:13.5px;line-height:1.5;animation:msgPop .3s cubic-bezier(.4,0,.2,1);word-break:break-word}
-@keyframes msgPop{from{opacity:0;transform:translateY(8px) scale(.97)}to{opacity:1;transform:none}}
-.msg.user{align-self:flex-end;color:#fff;border-bottom-right-radius:5px}
-.msg.assistant{align-self:flex-start;background:var(--surface2);color:var(--text);border-bottom-left-radius:5px}
-.msg.assistant .msg-label{font-size:10px;font-weight:700;margin-bottom:4px;opacity:.5;text-transform:uppercase;letter-spacing:.5px}
-.msg.status{align-self:center;background:none;color:var(--text3);font-size:11px;text-align:center;padding:4px 0;max-width:100%}
-.msg.status.err{color:#f87171}
-.msg-time{font-size:9.5px;color:rgba(255,255,255,0.25);margin-top:4px;font-family:'JetBrains Mono',monospace}
-
-.typing{align-self:flex-start;background:var(--surface2);border-radius:14px;border-bottom-left-radius:5px;padding:12px 18px;display:flex;gap:5px;animation:msgPop .3s cubic-bezier(.4,0,.2,1)}
-.typing span{width:7px;height:7px;border-radius:50%;background:var(--text3);animation:blink 1.4s infinite both}
-.typing span:nth-child(2){animation-delay:.2s}
-.typing span:nth-child(3){animation-delay:.4s}
-@keyframes blink{0%,80%,100%{opacity:.3;transform:scale(.8)}40%{opacity:1;transform:scale(1)}}
-
-.chat-input{display:flex;gap:8px;padding:12px 16px;flex-shrink:0;border-top:1px solid var(--border);background:var(--surface);padding-bottom:max(12px,env(safe-area-inset-bottom))}
-.chat-input input{flex:1;min-width:0;background:var(--bg);border:1.5px solid var(--border);border-radius:12px;padding:12px 16px;color:var(--text);font-family:'Outfit',sans-serif;font-size:14px;outline:none;transition:border-color .2s}
-.chat-input input:focus{border-color:rgba(255,255,255,0.15)}
-.chat-input input::placeholder{color:var(--text3)}
-.chat-send{width:44px;height:44px;min-width:44px;border-radius:12px;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .2s}
-.chat-send svg{width:18px;height:18px;fill:#fff}
-.chat-send:active{transform:scale(.9)}
-.chat-send:disabled{opacity:.35;cursor:default;transform:none}
-
-.home-footer{padding:16px 20px 28px;text-align:center;flex-shrink:0}
-.home-footer p{font-size:11px;color:var(--text3);font-weight:500}
-</style>
+<link rel="icon" href="./icon-192.png">
+<link rel="stylesheet" href="./app.css">
 </head>
 <body>
-
-<div class="screen" id="home">
-  <div class="home-header">
-    <div class="home-logo"><svg viewBox="0 0 24 24"><path d="M12 2L2 7v10l10 5 10-5V7L12 2zm0 2.18L19.35 7.5 12 10.82 4.65 7.5 12 4.18zM4 9.04l7 3.5V19.5l-7-3.5V9.04zm10 10.46v-6.96l7-3.5v6.96l-7 3.5z"/></svg></div>
-    <h1>Painel Legislativo</h1>
-    <p>Selecione um tema para iniciar</p>
-  </div>
-  <div class="box-grid">
-    <div class="box" data-color="blue" data-category="Dúvidas Legislativas" onclick="openChat(this)">
-      <div class="box-badge">0</div>
-      <div class="box-icon"><svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 17h-2v-2h2v2zm2.07-7.75l-.9.92C13.45 12.9 13 13.5 13 15h-2v-.5c0-1.1.45-2.1 1.17-2.83l1.24-1.26c.37-.36.59-.86.59-1.41 0-1.1-.9-2-2-2s-2 .9-2 2H8c0-2.21 1.79-4 4-4s4 1.79 4 4c0 .88-.36 1.68-.93 2.25z"/></svg></div>
-      <div class="box-title">Dúvidas Legislativas</div>
-      <div class="box-subtitle">Legislação e normas</div>
-    </div>
-    <div class="box" data-color="violet" data-category="Questões de Ordem" onclick="openChat(this)">
-      <div class="box-badge">0</div>
-      <div class="box-icon"><svg viewBox="0 0 24 24"><path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm-1 7V3.5L18.5 9H13zm-3 4h4v2h-4v-2zm0 4h4v2h-4v-2zM8 13h2v2H8v-2zm0 4h2v2H8v-2z"/></svg></div>
-      <div class="box-title">Questões de Ordem</div>
-      <div class="box-subtitle">Procedimentos regimentais</div>
-    </div>
-    <div class="box" data-color="emerald" data-category="Informações Administrativas" onclick="openChat(this)">
-      <div class="box-badge">0</div>
-      <div class="box-icon"><svg viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 3c1.93 0 3.5 1.57 3.5 3.5S13.93 13 12 13s-3.5-1.57-3.5-3.5S10.07 6 12 6zm7 13H5v-.23c0-.62.28-1.2.76-1.58C7.47 15.82 9.64 15 12 15s4.53.82 6.24 2.19c.48.38.76.97.76 1.58V19z"/></svg></div>
-      <div class="box-title">Info. Administrativas</div>
-      <div class="box-subtitle">Dados e gestão</div>
-    </div>
-    <div class="box" data-color="amber" data-category="Informações de Emendas" onclick="openChat(this)">
-      <div class="box-badge">0</div>
-      <div class="box-icon"><svg viewBox="0 0 24 24"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34a.996.996 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg></div>
-      <div class="box-title">Info. de Emendas</div>
-      <div class="box-subtitle">Emendas parlamentares</div>
-    </div>
-  </div>
-  <div class="home-footer"><p>Conectado ao Make • Painel Legislativo v1.0</p></div>
+<div id="app">
+  <div class="tela-central"><div class="carregando">Carregando…</div></div>
 </div>
-
-<div class="screen hidden-right" id="chat">
-  <div class="chat-topbar">
-    <button class="back-btn" onclick="goHome()"><svg viewBox="0 0 24 24"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg></button>
-    <div class="chat-dot" id="chatDot"></div>
-    <h2 id="chatTitle">—</h2>
-    <span class="chat-count" id="chatCount">0 msgs</span>
+<noscript>
+  <div class="tela-central">
+    <div class="cartao-central">
+      <h1>É preciso habilitar o JavaScript</h1>
+      <p>Este sistema funciona inteiramente no navegador e depende de JavaScript para carregar os dados do gabinete.</p>
+    </div>
   </div>
-  <div class="chat-messages" id="chatMessages"></div>
-  <div class="chat-input">
-    <input type="text" id="chatInput" placeholder="Digite sua mensagem..." onkeydown="if(event.key==='Enter'){event.preventDefault();sendMessage()}" />
-    <button class="chat-send" id="chatSend" onclick="sendMessage()"><svg viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg></button>
-  </div>
-</div>
-
-<script>
-const WEBHOOK='https://hook.us2.make.com/wartjscpijurz6s400vc4qay4gwj5pas';
-const COLORS={
-  blue:{dot:'#3b82f6',msg:'#2563eb',emptyBg:'rgba(59,130,246,0.1)',send:'#3b82f6'},
-  violet:{dot:'#8b5cf6',msg:'#7c3aed',emptyBg:'rgba(139,92,246,0.1)',send:'#8b5cf6'},
-  emerald:{dot:'#10b981',msg:'#059669',emptyBg:'rgba(16,185,129,0.1)',send:'#10b981'},
-  amber:{dot:'#f59e0b',msg:'#d97706',emptyBg:'rgba(245,158,11,0.1)',send:'#f59e0b'}
-};
-const chatHistory={};
-let cur=null,curColor=null;
-
-function openChat(box){
-  cur=box.dataset.category;curColor=box.dataset.color;
-  const c=COLORS[curColor];
-  document.getElementById('chatTitle').textContent=cur;
-  document.getElementById('chatDot').style.background=c.dot;
-  document.getElementById('chatDot').style.boxShadow='0 0 8px '+c.dot+'66';
-  document.getElementById('chatSend').style.background=c.send;
-  renderMessages();
-  document.getElementById('home').classList.add('hidden-left');
-  document.getElementById('chat').classList.remove('hidden-right');
-  setTimeout(()=>document.getElementById('chatInput').focus(),350);
-  if(navigator.vibrate)navigator.vibrate(8);
-}
-
-function goHome(){
-  document.getElementById('chat').classList.add('hidden-right');
-  document.getElementById('home').classList.remove('hidden-left');
-  if(navigator.vibrate)navigator.vibrate(8);
-}
-
-function scrollBottom(){document.getElementById('chatMessages').scrollTop=99999}
-
-function renderMessages(){
-  const el=document.getElementById('chatMessages'),msgs=chatHistory[cur]||[];
-  const count=msgs.filter(m=>m.t==='user').length;
-  document.getElementById('chatCount').textContent=count+' msg'+(count!==1?'s':'');
-  const c=COLORS[curColor];
-  if(!msgs.length){el.innerHTML='<div class="chat-empty"><div class="chat-empty-icon" style="background:'+c.emptyBg+'"><svg viewBox="0 0 24 24" style="fill:'+c.dot+'"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"/></svg></div><p>Envie sua primeira mensagem</p></div>';return}
-  el.innerHTML='';
-  msgs.forEach(m=>{const d=document.createElement('div');
-    if(m.t==='user'){d.className='msg user';d.style.background=c.msg;d.innerHTML=esc(m.text)+'<div class="msg-time">'+m.time+'</div>'}
-    else if(m.t==='assistant'){d.className='msg assistant';d.innerHTML='<div class="msg-label">Resposta</div>'+formatText(m.text)+'<div class="msg-time">'+m.time+'</div>'}
-    else{d.className='msg status'+(m.ok?'':' err');d.textContent=m.text}
-    el.appendChild(d)});
-  scrollBottom();
-}
-
-function showTyping(){const el=document.getElementById('chatMessages'),t=document.createElement('div');t.className='typing';t.id='typingIndicator';t.innerHTML='<span></span><span></span><span></span>';el.appendChild(t);scrollBottom()}
-function hideTyping(){const t=document.getElementById('typingIndicator');if(t)t.remove()}
-function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
-function formatText(s){return esc(s).replace(/\n/g,'<br>')}
-
-function addMsg(cat,m){if(!chatHistory[cat])chatHistory[cat]=[];chatHistory[cat].push(m);
-  document.querySelectorAll('.box').forEach(b=>{if(b.dataset.category===cat){const n=(chatHistory[cat]||[]).filter(x=>x.t==='user').length;const bg=b.querySelector('.box-badge');bg.textContent=n;bg.classList.toggle('visible',n>0)}})}
-
-function timeNow(){return new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}
-
-async function sendMessage(){
-  const input=document.getElementById('chatInput'),text=input.value.trim();if(!text||!cur)return;
-  const btn=document.getElementById('chatSend');input.value='';
-  addMsg(cur,{t:'user',text,time:timeNow()});renderMessages();
-  showTyping();btn.disabled=true;
-  try{
-    const r=await fetch(WEBHOOK,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({timestamp:new Date().toISOString(),categoria:cur,mensagem:text})});
-    hideTyping();
-    if(r.ok){
-      let respText='';
-      try{const ct=r.headers.get('content-type')||'';
-        if(ct.includes('application/json')){const data=await r.json();respText=data.resposta||data.response||data.reply||data.message||data.texto||data.answer||'';if(!respText&&typeof data==='object')respText=JSON.stringify(data)}
-        else{respText=await r.text()}}
-      catch(e){respText=await r.text().catch(()=>'')}
-      if(respText&&respText.trim()){addMsg(cur,{t:'assistant',text:respText.trim(),time:timeNow()})}
-      else{addMsg(cur,{t:'status',text:'✓ Enviado',ok:true})}
-    }else{throw new Error(r.status)}
-  }catch(e){hideTyping();addMsg(cur,{t:'status',text:'✗ Falha no envio',ok:false});console.error(e)}
-  btn.disabled=false;renderMessages();input.focus();
-}
-
-let tx=0;
-document.getElementById('chat').addEventListener('touchstart',e=>{tx=e.touches[0].clientX},{passive:true});
-document.getElementById('chat').addEventListener('touchend',e=>{if(e.changedTouches[0].clientX-tx>80&&tx<60)goHome()},{passive:true});
-
-// Register real service worker
-if('serviceWorker'in navigator){navigator.serviceWorker.register('./sw.js').catch(e=>console.log('SW:',e))}
-</script>
+</noscript>
+<script type="module" src="./js/app.js"></script>
 </body>
 </html>

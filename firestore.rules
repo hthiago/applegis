@@ -1,0 +1,138 @@
+rules_version = '2';
+
+// Regras de segurança do sistema de gestão de gabinete.
+//
+// Duas garantias sustentam tudo o que está abaixo:
+//   1. Ninguém lê ou escreve fora do próprio gabinete.
+//   2. Quem entra precisa estar na coleção `autorizados`. Login Google válido,
+//      sozinho, não abre nada.
+//
+// A tela apenas reflete estas regras — quem decide é este arquivo.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function temEmail() {
+      return request.auth != null && request.auth.token.email != null;
+    }
+
+    function email() {
+      return request.auth.token.email.lower();
+    }
+
+    function autorizacao() {
+      return get(/databases/$(database)/documents/autorizados/$(email())).data;
+    }
+
+    function liberado() {
+      return temEmail()
+        && exists(/databases/$(database)/documents/autorizados/$(email()))
+        && autorizacao().ativo != false;
+    }
+
+    function ehAdminGlobal() {
+      return liberado() && autorizacao().papel == 'admin';
+    }
+
+    function ehMembro(g) {
+      return liberado() && autorizacao().gabineteId == g;
+    }
+
+    function ehChefia(g) {
+      return ehMembro(g) && autorizacao().papel in ['chefe', 'deputado'];
+    }
+
+    // A qual área cada coleção pertence. Coleção fora desta lista não é gravável.
+    function areaDa(colecao) {
+      return {
+        'tarefas': 'chefia',
+        'agenda': 'chefia',
+        'solicitacoesAgenda': 'chefia',
+        'equipe': 'administrativo',
+        'ausencias': 'administrativo',
+        'viagens': 'administrativo',
+        'documentos': 'administrativo',
+        'ceap': 'administrativo',
+        'contatos': 'administrativo',
+        'interacoes': 'administrativo',
+        'atendimentos': 'administrativo',
+        'proposicoes': 'legislativo',
+        'producao': 'legislativo',
+        'pauta': 'legislativo',
+        'posicionamentos': 'legislativo',
+        'editorial': 'comunicacao',
+        'clipping': 'comunicacao',
+        'imprensa': 'comunicacao',
+        'midia': 'comunicacao',
+        'emendas': 'orcamento'
+      }.get(colecao, 'desconhecida');
+    }
+
+    function editaArea(g, area) {
+      return ehChefia(g)
+        || (ehMembro(g) && autorizacao().papel == 'assessor' && area in autorizacao().areas)
+        || (ehMembro(g) && autorizacao().papel == 'escritorio' && area in ['administrativo', 'orcamento']);
+    }
+
+    // ─────────────────────────── lista de acesso ───────────────────────────
+    // Cada pessoa lê a própria entrada. A chefia lê e administra as do seu
+    // gabinete; o administrador do sistema, as de todos.
+    match /autorizados/{conta} {
+      allow read: if ehAdminGlobal()
+        || (temEmail() && conta == email())
+        || (liberado() && autorizacao().papel in ['chefe', 'deputado']
+            && resource.data.gabineteId == autorizacao().gabineteId);
+
+      allow create, update: if ehAdminGlobal()
+        || (liberado() && autorizacao().papel in ['chefe', 'deputado']
+            && request.resource.data.gabineteId == autorizacao().gabineteId
+            && request.resource.data.papel != 'admin');
+
+      allow delete: if ehAdminGlobal()
+        || (liberado() && autorizacao().papel in ['chefe', 'deputado']
+            && resource.data.gabineteId == autorizacao().gabineteId
+            && conta != email());
+    }
+
+    // ───────────────────────────── gabinetes ─────────────────────────────
+    match /gabinetes/{g} {
+      allow read: if ehMembro(g) || ehAdminGlobal();
+      allow create, update, delete: if ehAdminGlobal();
+
+      // Espelho do acesso dentro do gabinete. A pessoa só grava o próprio
+      // documento, e apenas com o papel que a lista de autorizados atribuiu —
+      // é isso que impede alguém de se promover a chefe editando o navegador.
+      match /membros/{uid} {
+        allow read: if ehMembro(g) || ehAdminGlobal();
+        allow write: if ehAdminGlobal()
+          || (request.auth.uid == uid
+              && ehMembro(g)
+              && request.resource.data.email == email()
+              && request.resource.data.papel == autorizacao().papel);
+      }
+
+      // ────────────────────── conteúdo das cinco áreas ──────────────────────
+      match /{colecao}/{documento} {
+        allow read: if colecao != 'membros' && (ehMembro(g) || ehAdminGlobal());
+
+        allow write: if colecao != 'membros'
+          && areaDa(colecao) != 'desconhecida'
+          && (
+            // A agenda do deputado é a única exceção: só a chefia altera.
+            colecao == 'agenda' ? ehChefia(g)
+            // Delegação atravessa áreas, então tarefa é gravável por qualquer
+            // integrante do gabinete — senão ninguém consegue responder a uma
+            // tarefa que a chefia atribuiu. Quem é somente leitura fica de fora.
+            : colecao == 'tarefas'
+              ? (ehMembro(g) && autorizacao().papel in ['deputado', 'chefe', 'assessor', 'escritorio'])
+            : editaArea(g, areaDa(colecao))
+          );
+      }
+    }
+
+    // Nada fora do que está declarado acima.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

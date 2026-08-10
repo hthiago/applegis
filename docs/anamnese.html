@@ -1,0 +1,969 @@
+<title>Anamnese — Sistema de Gestão de Gabinete Parlamentar</title>
+
+<style>
+:root{
+  --paper:#F5F7F4;
+  --surface:#FFFFFF;
+  --surface-2:#EEF2ED;
+  --ink:#131B17;
+  --ink-2:#4C5A53;
+  --ink-3:#7C8A83;
+  --rule:#D9E0D8;
+  --rule-strong:#B9C4B8;
+  --green:#1B5E4B;
+  --green-soft:#E4EFEA;
+  --brass:#8A6712;
+  --brass-soft:#F4EEDC;
+  --alert:#9C3520;
+  --alert-soft:#F7E7E2;
+  --shadow:0 1px 2px rgba(19,27,23,.05);
+
+  --serif: ui-serif, "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, "Cascadia Mono", "Liberation Mono", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --paper:#0D1310;
+    --surface:#151D19;
+    --surface-2:#1B241F;
+    --ink:#E7EEE9;
+    --ink-2:#9DACA4;
+    --ink-3:#75857D;
+    --rule:#26302A;
+    --rule-strong:#38443C;
+    --green:#59C4A0;
+    --green-soft:#152A23;
+    --brass:#D3A63E;
+    --brass-soft:#2A2415;
+    --alert:#E2836C;
+    --alert-soft:#2E1A15;
+    --shadow:0 1px 2px rgba(0,0,0,.4);
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#0D1310;
+  --surface:#151D19;
+  --surface-2:#1B241F;
+  --ink:#E7EEE9;
+  --ink-2:#9DACA4;
+  --ink-3:#75857D;
+  --rule:#26302A;
+  --rule-strong:#38443C;
+  --green:#59C4A0;
+  --green-soft:#152A23;
+  --brass:#D3A63E;
+  --brass-soft:#2A2415;
+  --alert:#E2836C;
+  --alert-soft:#2E1A15;
+  --shadow:0 1px 2px rgba(0,0,0,.4);
+}
+
+*{box-sizing:border-box}
+body{
+  margin:0;
+  background:var(--paper);
+  color:var(--ink);
+  font-family:var(--sans);
+  font-size:16px;
+  line-height:1.62;
+  -webkit-font-smoothing:antialiased;
+}
+
+.wrap{
+  max-width:1120px;
+  margin:0 auto;
+  padding:0 24px 96px;
+  display:grid;
+  grid-template-columns:186px minmax(0,1fr);
+  gap:56px;
+  align-items:start;
+}
+
+/* ---------- masthead ---------- */
+.masthead{
+  grid-column:1 / -1;
+  padding:64px 0 28px;
+  border-bottom:2px solid var(--rule-strong);
+  display:flex;
+  flex-direction:column;
+  gap:14px;
+}
+.eyebrow{
+  font-family:var(--mono);
+  font-size:11.5px;
+  letter-spacing:.14em;
+  text-transform:uppercase;
+  color:var(--green);
+  margin:0;
+}
+.masthead h1{
+  font-family:var(--serif);
+  font-weight:600;
+  font-size:clamp(31px,4.6vw,46px);
+  line-height:1.12;
+  letter-spacing:-.015em;
+  margin:0;
+  text-wrap:balance;
+  max-width:19ch;
+}
+.standfirst{
+  margin:0;
+  max-width:62ch;
+  font-size:17px;
+  color:var(--ink-2);
+}
+.meta{
+  display:flex;
+  flex-wrap:wrap;
+  gap:10px 26px;
+  font-family:var(--mono);
+  font-size:11.5px;
+  letter-spacing:.05em;
+  color:var(--ink-3);
+  text-transform:uppercase;
+  margin-top:4px;
+}
+
+/* ---------- index ---------- */
+.index{
+  position:sticky;
+  top:28px;
+  display:flex;
+  flex-direction:column;
+  gap:2px;
+  padding-top:52px;
+}
+.index-title{
+  font-family:var(--mono);
+  font-size:10.5px;
+  letter-spacing:.16em;
+  text-transform:uppercase;
+  color:var(--ink-3);
+  padding-bottom:10px;
+  margin-bottom:6px;
+  border-bottom:1px solid var(--rule);
+}
+.index a{
+  display:flex;
+  gap:10px;
+  align-items:baseline;
+  text-decoration:none;
+  color:var(--ink-2);
+  font-size:13.5px;
+  padding:4px 0;
+  border-bottom:1px solid transparent;
+  transition:color .15s;
+}
+.index a:hover{color:var(--green)}
+.index a:focus-visible{outline:2px solid var(--green);outline-offset:3px;border-radius:2px}
+.index a span{
+  font-family:var(--mono);
+  font-size:10px;
+  letter-spacing:.08em;
+  color:var(--ink-3);
+  min-width:26px;
+}
+
+/* ---------- content flow ---------- */
+.doc{
+  display:flex;
+  flex-direction:column;
+  gap:60px;
+  padding-top:52px;
+  min-width:0;
+}
+section{scroll-margin-top:24px}
+
+h2{
+  font-family:var(--serif);
+  font-weight:600;
+  font-size:27px;
+  line-height:1.2;
+  letter-spacing:-.01em;
+  margin:0 0 6px;
+  text-wrap:balance;
+}
+h3{
+  font-family:var(--sans);
+  font-weight:650;
+  font-size:15px;
+  letter-spacing:-.005em;
+  margin:0 0 8px;
+}
+p{margin:0 0 14px;max-width:66ch}
+p:last-child{margin-bottom:0}
+.lede{color:var(--ink-2);max-width:64ch;margin-bottom:26px}
+
+a{color:var(--green)}
+a:focus-visible{outline:2px solid var(--green);outline-offset:2px}
+
+/* ---------- section rule + tab ---------- */
+.rule{
+  border-top:1px solid var(--rule-strong);
+  margin-bottom:22px;
+  position:relative;
+  height:0;
+}
+.tab{
+  position:absolute;
+  top:-1px;
+  left:0;
+  transform:translateY(-100%);
+  background:var(--surface-2);
+  border:1px solid var(--rule-strong);
+  border-bottom:none;
+  padding:4px 11px 3px;
+  font-family:var(--mono);
+  font-size:10.5px;
+  letter-spacing:.13em;
+  text-transform:uppercase;
+  color:var(--green);
+}
+
+/* ---------- area fichas ---------- */
+.ficha{
+  background:var(--surface);
+  border:1px solid var(--rule);
+  box-shadow:var(--shadow);
+  padding:26px 28px;
+  display:flex;
+  flex-direction:column;
+  gap:22px;
+}
+.ficha-head{display:flex;flex-direction:column;gap:5px}
+.ficha-head h2{margin:0}
+.purpose{color:var(--ink-2);font-size:15px;margin:0;max-width:60ch}
+
+.block{display:flex;flex-direction:column;gap:9px}
+.block-label{
+  font-family:var(--mono);
+  font-size:10.5px;
+  letter-spacing:.13em;
+  text-transform:uppercase;
+  color:var(--ink-3);
+}
+.block-label.ok{color:var(--green)}
+.block-label.out{color:var(--brass)}
+
+ul{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:11px}
+ul.tight{gap:6px}
+li{padding-left:17px;position:relative;max-width:70ch}
+li::before{
+  content:"";
+  position:absolute;
+  left:0;
+  top:.66em;
+  width:6px;
+  height:1px;
+  background:var(--rule-strong);
+}
+li b{font-weight:650}
+li .detail{display:block;color:var(--ink-2);font-size:14.5px;line-height:1.55}
+
+.out-list li::before{background:var(--brass)}
+.out-list li{color:var(--ink-2);font-size:14.5px}
+
+.source{
+  font-family:var(--mono);
+  font-size:11px;
+  letter-spacing:.03em;
+  color:var(--ink-2);
+  background:var(--surface-2);
+  border:1px solid var(--rule);
+  padding:2px 7px;
+  white-space:nowrap;
+  display:inline-block;
+}
+.sources{display:flex;flex-wrap:wrap;gap:7px}
+
+/* ---------- tables ---------- */
+.table-scroll{overflow-x:auto;border:1px solid var(--rule);background:var(--surface)}
+table{border-collapse:collapse;width:100%;min-width:560px;font-size:14px}
+caption{
+  text-align:left;
+  font-family:var(--mono);
+  font-size:10.5px;
+  letter-spacing:.13em;
+  text-transform:uppercase;
+  color:var(--ink-3);
+  padding-bottom:9px;
+}
+th,td{
+  text-align:left;
+  padding:10px 14px;
+  border-bottom:1px solid var(--rule);
+  vertical-align:top;
+}
+thead th{
+  font-family:var(--mono);
+  font-size:10.5px;
+  letter-spacing:.1em;
+  text-transform:uppercase;
+  color:var(--ink-3);
+  font-weight:500;
+  background:var(--surface-2);
+  white-space:nowrap;
+}
+tbody tr:last-child td{border-bottom:none}
+td.num{font-variant-numeric:tabular-nums;font-family:var(--mono);font-size:12.5px}
+th[scope="row"]{font-weight:600;white-space:nowrap}
+
+.mark{
+  font-family:var(--mono);
+  font-size:12px;
+  letter-spacing:.04em;
+}
+.mark.full{color:var(--green);font-weight:600}
+.mark.read{color:var(--ink-3)}
+.mark.none{color:var(--ink-3);opacity:.55}
+
+/* ---------- risk items ---------- */
+.risks{display:flex;flex-direction:column;gap:0;border-top:1px solid var(--rule)}
+.risk{
+  display:grid;
+  grid-template-columns:88px minmax(0,1fr);
+  gap:20px;
+  padding:16px 0;
+  border-bottom:1px solid var(--rule);
+}
+.sev{
+  font-family:var(--mono);
+  font-size:10px;
+  letter-spacing:.12em;
+  text-transform:uppercase;
+  padding:3px 0 0;
+}
+.sev.alta{color:var(--alert)}
+.sev.media{color:var(--brass)}
+.sev.baixa{color:var(--ink-3)}
+.risk-body h3{margin-bottom:5px}
+.risk-body p{font-size:14.5px;color:var(--ink-2);margin:0;max-width:68ch}
+
+/* ---------- phases ---------- */
+.phases{display:flex;flex-direction:column;gap:0;border-top:1px solid var(--rule)}
+.phase{
+  display:grid;
+  grid-template-columns:96px minmax(0,1fr);
+  gap:20px;
+  padding:15px 0;
+  border-bottom:1px solid var(--rule);
+  align-items:baseline;
+}
+.phase-n{
+  font-family:var(--mono);
+  font-size:11px;
+  letter-spacing:.1em;
+  text-transform:uppercase;
+  color:var(--green);
+}
+.phase-body h3{margin-bottom:4px}
+.phase-body p{font-size:14.5px;color:var(--ink-2);margin:0}
+
+/* ---------- questions ---------- */
+.questions{
+  background:var(--brass-soft);
+  border:1px solid var(--rule);
+  border-left:3px solid var(--brass);
+  padding:24px 26px;
+  display:flex;
+  flex-direction:column;
+  gap:16px;
+}
+.questions h2{margin:0}
+.questions ol{
+  margin:0;
+  padding-left:22px;
+  display:flex;
+  flex-direction:column;
+  gap:12px;
+  font-size:15px;
+}
+.questions li{padding-left:0;max-width:66ch}
+.questions li::before{display:none}
+.questions li::marker{font-family:var(--mono);font-size:12px;color:var(--brass)}
+
+/* ---------- decisions ---------- */
+.decisions{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(228px,1fr));
+  gap:1px;
+  background:var(--rule);
+  border:1px solid var(--rule);
+}
+.decision{
+  background:var(--surface);
+  padding:17px 19px;
+  display:flex;
+  flex-direction:column;
+  gap:5px;
+}
+.decision dt{
+  font-family:var(--mono);
+  font-size:10.5px;
+  letter-spacing:.12em;
+  text-transform:uppercase;
+  color:var(--ink-3);
+}
+.decision dd{margin:0;font-size:14.5px;line-height:1.5}
+.decision dd b{font-weight:650}
+
+footer{
+  grid-column:1 / -1;
+  margin-top:20px;
+  padding-top:22px;
+  border-top:1px solid var(--rule);
+  font-family:var(--mono);
+  font-size:11px;
+  letter-spacing:.05em;
+  color:var(--ink-3);
+  text-transform:uppercase;
+}
+
+@media (max-width:860px){
+  .wrap{grid-template-columns:minmax(0,1fr);gap:0;padding:0 20px 72px}
+  .index{
+    position:static;
+    padding:26px 0 0;
+    flex-direction:row;
+    flex-wrap:wrap;
+    gap:0 20px;
+  }
+  .index-title{width:100%;border-bottom:none;padding-bottom:4px;margin-bottom:0}
+  .index a{padding:3px 0}
+  .doc{padding-top:34px;gap:48px}
+  .ficha{padding:22px 20px}
+  .risk,.phase{grid-template-columns:minmax(0,1fr);gap:5px}
+  .masthead{padding-top:44px}
+}
+
+@media (prefers-reduced-motion:reduce){
+  *{transition:none !important;animation:none !important}
+}
+</style>
+
+<div class="wrap">
+
+  <header class="masthead">
+    <p class="eyebrow">Anamnese · Levantamento de requisitos</p>
+    <h1>Sistema de gestão de gabinete parlamentar</h1>
+    <p class="standfirst">Levantamento conduzido antes de qualquer linha de código: o que cada uma das cinco áreas precisa conter, quem acessa o quê, de onde vêm os dados e o que ainda precisa ser decidido.</p>
+    <div class="meta">
+      <span>10 ago 2026</span>
+      <span>Versão 2 — escopo fechado</span>
+      <span>Construção iniciada pela fundação</span>
+    </div>
+  </header>
+
+  <nav class="index" aria-label="Índice do documento">
+    <p class="index-title">Índice</p>
+    <a href="#decisoes"><span>I</span>Decisões travadas</a>
+    <a href="#acesso"><span>II</span>Acesso e papéis</a>
+    <a href="#adm"><span>ADM</span>Administrativo</a>
+    <a href="#leg"><span>LEG</span>Legislativo</a>
+    <a href="#com"><span>COM</span>Comunicação</a>
+    <a href="#chf"><span>CHF</span>Chefia</a>
+    <a href="#orc"><span>ORC</span>Orçamento</a>
+    <a href="#integracoes"><span>III</span>Integrações</a>
+    <a href="#riscos"><span>IV</span>Riscos</a>
+    <a href="#fases"><span>V</span>Faseamento</a>
+    <a href="#perguntas"><span>VI</span>Em aberto</a>
+  </nav>
+
+  <main class="doc">
+
+    <section id="decisoes">
+      <div class="rule"><span class="tab">I · Decisões travadas</span></div>
+      <h2>O que já está definido</h2>
+      <p class="lede">Estas respostas fecham o desenho de base. Tudo que vem depois neste documento parte delas.</p>
+      <dl class="decisions">
+        <div class="decision">
+          <dt>Quem usa</dt>
+          <dd>Equipe do gabinete, o próprio deputado e os escritórios no estado.</dd>
+        </div>
+        <div class="decision">
+          <dt>Múltiplos gabinetes</dt>
+          <dd><b>Confirmado para já.</b> Todo registro nasce vinculado a um gabinete e a separação é garantida pelas regras de segurança, não pela tela.</dd>
+        </div>
+        <div class="decision">
+          <dt>Agenda do deputado</dt>
+          <dd>Visualização para todo o gabinete. <b>Só o chefe de gabinete edita.</b></dd>
+        </div>
+        <div class="decision">
+          <dt>Entrada</dt>
+          <dd>Login com conta Google, liberado apenas para <b>e-mails em lista autorizada</b> — funciona tanto com @camara.leg.br quanto com Gmail pessoal.</dd>
+        </div>
+        <div class="decision">
+          <dt>Permissões</dt>
+          <dd><b>Todos leem, cada setor edita a sua área.</b> Chefia e deputado editam tudo.</dd>
+        </div>
+        <div class="decision">
+          <dt>Tecnologia</dt>
+          <dd>Firebase/Google: login, banco e hospedagem no mesmo ecossistema do login exigido.</dd>
+        </div>
+        <div class="decision">
+          <dt>Primeira entrega</dt>
+          <dd>Base completa mais as cinco áreas com o essencial de cada uma. Profundidade vem depois.</dd>
+        </div>
+        <div class="decision">
+          <dt>Dispositivo</dt>
+          <dd>Desktop e celular igualmente, instalável como aplicativo na tela inicial.</dd>
+        </div>
+      </dl>
+    </section>
+
+    <section id="acesso">
+      <div class="rule"><span class="tab">II · Acesso</span></div>
+      <h2>Papéis e matriz de permissão</h2>
+      <p class="lede">A regra escolhida — todos veem, cada setor edita — precisa de papéis nomeados para virar código. Esta é a proposta; é o ponto mais barato de mudar agora e o mais caro de mudar depois.</p>
+
+      <p>Como o sistema atende mais de um gabinete, cada registro nasce vinculado a um gabinete e ninguém enxerga nada fora do seu. A matriz abaixo descreve o que acontece <em>dentro</em> de um gabinete.</p>
+
+      <div class="table-scroll">
+        <table>
+          <caption>Matriz de permissão por papel e área</caption>
+          <thead>
+            <tr>
+              <th scope="col">Papel</th>
+              <th scope="col">Admin.</th>
+              <th scope="col">Legisl.</th>
+              <th scope="col">Comun.</th>
+              <th scope="col">Chefia</th>
+              <th scope="col">Orçam.</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <th scope="row">Deputado</th>
+              <td class="mark full">edita</td><td class="mark full">edita</td><td class="mark full">edita</td><td class="mark full">edita</td><td class="mark full">edita</td>
+            </tr>
+            <tr>
+              <th scope="row">Chefe de gabinete</th>
+              <td class="mark full">edita</td><td class="mark full">edita</td><td class="mark full">edita</td><td class="mark full">edita</td><td class="mark full">edita</td>
+            </tr>
+            <tr>
+              <th scope="row">Assessor administrativo</th>
+              <td class="mark full">edita</td><td class="mark read">lê</td><td class="mark read">lê</td><td class="mark read">lê</td><td class="mark read">lê</td>
+            </tr>
+            <tr>
+              <th scope="row">Assessor legislativo</th>
+              <td class="mark read">lê</td><td class="mark full">edita</td><td class="mark read">lê</td><td class="mark read">lê</td><td class="mark read">lê</td>
+            </tr>
+            <tr>
+              <th scope="row">Assessor de comunicação</th>
+              <td class="mark read">lê</td><td class="mark read">lê</td><td class="mark full">edita</td><td class="mark read">lê</td><td class="mark read">lê</td>
+            </tr>
+            <tr>
+              <th scope="row">Assessor de orçamento</th>
+              <td class="mark read">lê</td><td class="mark read">lê</td><td class="mark read">lê</td><td class="mark read">lê</td><td class="mark full">edita</td>
+            </tr>
+            <tr>
+              <th scope="row">Escritório no estado</th>
+              <td class="mark read">lê</td><td class="mark read">lê</td><td class="mark read">lê</td><td class="mark read">lê</td><td class="mark full">edita</td>
+            </tr>
+            <tr>
+              <th scope="row">Administrador do sistema</th>
+              <td class="mark none">—</td><td class="mark none">—</td><td class="mark none">—</td><td class="mark none">—</td><td class="mark none">—</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <ul class="tight" style="margin-top:20px">
+        <li><b>Escritório no estado</b> — proposta em aberto: dei a ele escrita em Orçamento porque é quem tem contato com prefeituras e entidades sobre emendas. Se não for o caso, vira somente leitura.</li>
+        <li><b>Administrador do sistema</b> — não edita conteúdo. Gerencia a lista de e-mails autorizados, atribui papéis e cadastra gabinetes.</li>
+        <li>Toda tarefa atribuída a uma pessoa é editável por ela, mesmo fora da sua área — senão a delegação da chefia não funciona.</li>
+        <li><b>Agenda do deputado é exceção à regra.</b> Nenhum assessor edita, nem o de Chefia: escrita só do chefe de gabinete e do deputado. A coluna “Chefia” da tabela cobre tarefas e painel; a agenda é mais restrita.</li>
+        <li>A rotina que lê as bases públicas — Câmara, Transferegov, Transparência — escreve sem passar por papel de usuário. Ela roda no servidor e só toca os campos vindos da fonte oficial, nunca as anotações do gabinete.</li>
+      </ul>
+    </section>
+
+    <section id="adm">
+      <div class="rule"><span class="tab">ADM · Administrativo</span></div>
+      <div class="ficha">
+        <div class="ficha-head">
+          <h2>Administrativo</h2>
+          <p class="purpose">A área mais larga do sistema: quem trabalha, quem se desloca, o que entra e sai por escrito, quanto se gasta e quem procura o mandato.</p>
+        </div>
+
+        <div class="block">
+          <p class="block-label ok">No escopo</p>
+          <ul>
+            <li><b>Gestão de equipe</b>
+              <span class="detail">Cadastro de secretários parlamentares e assessores: cargo e função, ponto de lotação (Brasília ou escritório no estado), data de admissão, e-mail funcional, contato e situação (ativo, afastado, desligado). Calendário de férias e ausências com aviso quando duas pessoas da mesma área se sobrepõem.</span>
+            </li>
+            <li><b>Viagens e passagens</b>
+              <span class="detail">Solicitação com trecho, datas e motivo; aprovação da chefia; acompanhamento até a prestação de contas, com os comprovantes anexados. Quando a viagem existe por causa de um compromisso, ela fica ligada ao evento na agenda do deputado.</span>
+            </li>
+            <li><b>Documentos e ofícios</b>
+              <span class="detail">Numeração automática por ano, tipo do documento, órgão ou pessoa de destino, assunto, data de envio, prazo de resposta e se a resposta veio. Busca por destinatário, assunto e período — que é como a equipe realmente procura um ofício antigo. Ofício nascido de um atendimento já entra vinculado a ele.</span>
+            </li>
+            <li><b>Cota parlamentar (CEAP)</b>
+              <span class="detail">Lançamentos por categoria oficial, saldo do mês e aviso de aproximação do teto. O gabinete registra o gasto quando ele acontece; a base da Câmara entra depois como conferência, apontando divergência entre o que a equipe anotou e o que foi efetivamente reembolsado.</span>
+            </li>
+            <li><b>Atendimento ao cidadão</b>
+              <span class="detail">Cada demanda que chega — de cidadão, prefeitura ou entidade — vira um protocolo com solicitante, assunto, categoria, responsável no gabinete, encaminhamento e resposta final. O histórico fica preso ao solicitante, então na segunda vez que a pessoa procurar, a equipe já sabe o que foi tratado antes.</span>
+            </li>
+            <li><b>CRM de relacionamento</b>
+              <span class="detail">A base de contatos do mandato: cidadãos, lideranças, prefeitos, vereadores, entidades e empresários, com município, categoria, temas de interesse, canal de contato e responsável no gabinete. Todo contato guarda o histórico de interações, e é aqui que a ponta solta de Orçamento se resolve — o prefeito que pediu a emenda é um registro do CRM, ligado à emenda correspondente.</span>
+            </li>
+          </ul>
+        </div>
+
+        <div class="block">
+          <p class="block-label out">Fora desta fase</p>
+          <ul class="out-list tight">
+            <li>Patrimônio, materiais de escritório e solicitações de compra.</li>
+            <li>Distribuição da verba de pessoal entre os secretários.</li>
+          </ul>
+        </div>
+
+        <div class="block">
+          <p class="block-label">Origem dos dados</p>
+          <div class="sources">
+            <span class="source">registro manual</span>
+            <span class="source">API Dados Abertos da Câmara (CEAP)</span>
+            <span class="source">arquivos no Google Drive</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="leg">
+      <div class="rule"><span class="tab">LEG · Legislativo</span></div>
+      <div class="ficha">
+        <div class="ficha-head">
+          <h2>Legislativo</h2>
+          <p class="purpose">O trabalho-fim do mandato: o que o gabinete acompanha, o que produz, como vota e o que já defendeu.</p>
+        </div>
+
+        <div class="block">
+          <p class="block-label ok">No escopo</p>
+          <ul>
+            <li><b>Acompanhamento de proposições</b>
+              <span class="detail">Lista de vigilância com as matérias de interesse. O sistema busca sozinho na base da Câmara a ementa, o autor, a situação e o órgão em que a matéria está, e avisa a equipe quando algo muda. Cada proposição aceita etiquetas de tema e uma nota interna do gabinete.</span>
+            </li>
+            <li><b>Produção do gabinete</b>
+              <span class="detail">Projetos, emendas, requerimentos, pareceres, discursos e questões de ordem escritos pela equipe, com o percurso rascunho → revisão → aval do deputado → protocolado. Ao ser protocolada, a peça passa a ser acompanhada automaticamente como qualquer outra proposição.</span>
+            </li>
+            <li><b>Agenda de votações e comissões</b>
+              <span class="detail">Pauta do Plenário e das comissões do deputado. Cada item da pauta ganha uma ficha de posicionamento — como votar, por quê, e quem preparou — que serve de briefing antes da sessão.</span>
+            </li>
+            <li><b>Histórico de posicionamentos</b>
+              <span class="detail">Consolidação por tema de tudo que o mandato já defendeu: votos, discursos e notas. É a consulta que responde em segundos “o que já dissemos sobre isso” quando a imprensa liga ou quando surge matéria parecida.</span>
+            </li>
+          </ul>
+        </div>
+
+        <div class="block">
+          <p class="block-label">Origem dos dados</p>
+          <div class="sources">
+            <span class="source">API Dados Abertos da Câmara</span>
+            <span class="source">registro manual</span>
+            <span class="source">arquivos no Google Drive</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="com">
+      <div class="rule"><span class="tab">COM · Comunicação</span></div>
+      <div class="ficha">
+        <div class="ficha-head">
+          <h2>Comunicação</h2>
+          <p class="purpose">O que o mandato publica, o que dizem sobre ele e o material com que a equipe trabalha.</p>
+        </div>
+
+        <div class="block">
+          <p class="block-label ok">No escopo</p>
+          <ul>
+            <li><b>Calendário editorial</b>
+              <span class="detail">Cada peça com canal, data prevista, responsável e status — ideia, produção, aprovação, agendado, publicado. Visão de calendário e visão de fila por responsável, porque a equipe usa as duas em momentos diferentes.</span>
+            </li>
+            <li><b>Clipping de imprensa</b>
+              <span class="detail">Veículo, data, título, link, tema e tom da matéria, além do registro de se o gabinete respondeu. Com o tempo vira série histórica: dá para ver volume e tom por período.</span>
+            </li>
+            <li><b>Releases e demandas de imprensa</b>
+              <span class="detail">Releases e notas oficiais produzidos, e do outro lado as demandas de jornalistas: quem pediu, de que veículo, o que perguntou e — o campo que mais importa — o horário do fechamento. Demanda com prazo vencendo aparece no painel da chefia.</span>
+            </li>
+            <li><b>Banco de mídia</b>
+              <span class="detail">Catálogo com etiquetas de evento, tema, data e pessoas, apontando para as pastas do Drive onde as fotos, vídeos e artes já estão. O sistema indexa e encontra; não duplica arquivo.</span>
+            </li>
+          </ul>
+        </div>
+
+        <div class="block">
+          <p class="block-label">Origem dos dados</p>
+          <div class="sources">
+            <span class="source">registro manual</span>
+            <span class="source">Google Drive</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="chf">
+      <div class="rule"><span class="tab">CHF · Chefia de gabinete</span></div>
+      <div class="ficha">
+        <div class="ficha-head">
+          <h2>Chefia de gabinete</h2>
+          <p class="purpose">O posto de comando: enxergar tudo em uma tela, distribuir o trabalho e controlar o tempo do deputado.</p>
+        </div>
+
+        <div class="block">
+          <p class="block-label ok">No escopo</p>
+          <ul>
+            <li><b>Painel geral</b>
+              <span class="detail">Uma tela com o que exige decisão hoje: tarefas atrasadas por área, pauta da semana, proposições da lista de vigilância que mudaram de situação, demandas de imprensa com prazo, emendas travadas e quem está de férias.</span>
+            </li>
+            <li><b>Delegação de tarefas</b>
+              <span class="detail">A chefia atribui uma tarefa a uma pessoa com prazo e prioridade; a pessoa recebe aviso e responde ali mesmo. Visão por pessoa (o que fulano tem na mão) e visão por área (onde o trabalho está represado).</span>
+            </li>
+            <li><b>Tarefas e demandas internas</b>
+              <span class="detail">Além da delegação direta, a fila comum do gabinete — pedidos que chegam de qualquer área, com responsável, prazo, comentários e anexos, e histórico do que foi feito.</span>
+            </li>
+            <li><b>Agenda do deputado</b>
+              <span class="detail">Compromissos vindos do Google Agenda. Para o gabinete inteiro a agenda é <b>somente visualização</b>; apenas o chefe de gabinete altera, e a alteração vai para o Google Agenda de verdade. Pedidos de agenda entram por um formulário — quem pede, para quê, onde e com quem —, passam pela triagem da chefia e só viram compromisso depois de aprovados. Conflito de horário é sinalizado, e compromisso fora de Brasília se conecta à viagem correspondente.</span>
+            </li>
+          </ul>
+        </div>
+
+        <div class="block">
+          <p class="block-label out">Passou para outra área</p>
+          <ul class="out-list tight">
+            <li>Atendimento ao cidadão foi para o Administrativo, junto com o CRM — o registro da demanda e o cadastro de quem a fez são a mesma coisa e não deviam morar em áreas diferentes.</li>
+          </ul>
+        </div>
+
+        <div class="block">
+          <p class="block-label">Origem dos dados</p>
+          <div class="sources">
+            <span class="source">registro manual</span>
+            <span class="source">Google Agenda</span>
+            <span class="source">consolidação das demais áreas</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="orc">
+      <div class="rule"><span class="tab">ORC · Orçamento</span></div>
+      <div class="ficha">
+        <div class="ficha-head">
+          <h2>Orçamento</h2>
+          <p class="purpose">Área dedicada a emendas: onde o dinheiro foi indicado, em que fase está e quem na ponta precisa ser cobrado.</p>
+        </div>
+
+        <div class="block">
+          <p class="block-label ok">No escopo</p>
+          <ul>
+            <li><b>Painel de emendas</b>
+              <span class="detail">Total por ano e por tipo de emenda, aberto por município, por área de destino (saúde, educação, infraestrutura) e por fase financeira — indicado, empenhado, liquidado, pago. Serve tanto para prestar contas quanto para decidir onde alocar o próximo ano.</span>
+            </li>
+            <li><b>Pesquisa de emendas</b>
+              <span class="detail">Busca por município, beneficiário, objeto, ano e situação. Inclui emendas de outros parlamentares, que é como o gabinete entende o que já está sendo destinado a um município antes de indicar.</span>
+            </li>
+            <li><b>Andamento das emendas</b>
+              <span class="detail">O ciclo completo: indicação → empenho → instrumento (convênio, termo ou transferência especial) → liberação → execução → prestação de contas. Cada emenda tem um responsável no gabinete, um contato na ponta (prefeitura ou entidade) e o histórico de cobranças feitas.</span>
+            </li>
+          </ul>
+        </div>
+
+        <div class="block">
+          <p class="block-label out">Não pertence a esta área</p>
+          <ul class="out-list tight">
+            <li>Cota parlamentar (CEAP) ficou no Administrativo. Orçamento trata só de emendas.</li>
+            <li>Verba de gabinete — distribuição da verba de pessoal entre os secretários. Fora desta fase.</li>
+          </ul>
+        </div>
+
+        <div class="block">
+          <p class="block-label">Origem dos dados</p>
+          <div class="sources">
+            <span class="source">API Transferegov</span>
+            <span class="source">Portal da Transparência</span>
+            <span class="source">CRM do Administrativo</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="integracoes">
+      <div class="rule"><span class="tab">III · Integrações</span></div>
+      <h2>De onde os dados realmente vêm</h2>
+      <p class="lede">Verifiquei a disponibilidade de cada fonte antes de prometer automação. As três primeiras substituem digitação; as duas últimas evitam que o sistema vire mais um lugar onde a equipe guarda coisa.</p>
+
+      <div class="table-scroll">
+        <table>
+          <caption>Fontes externas e o que cada uma resolve</caption>
+          <thead>
+            <tr>
+              <th scope="col">Fonte</th>
+              <th scope="col">Alimenta</th>
+              <th scope="col">Situação</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <th scope="row">Dados Abertos da Câmara</th>
+              <td>Proposições, tramitações, votações, comissões e eventos de pauta.</td>
+              <td>Aberta e sem cadastro. É a base do módulo Legislativo.</td>
+            </tr>
+            <tr>
+              <th scope="row">Transferegov</th>
+              <td>Emendas por código, transferências especiais e instrumentos de parceria.</td>
+              <td>API pública confirmada. Cobre a execução federal; o relacionamento com a ponta vem do CRM.</td>
+            </tr>
+            <tr>
+              <th scope="row">Despesas da Câmara</th>
+              <td>Reembolsos efetivos da cota parlamentar, para conferir contra os lançamentos do gabinete.</td>
+              <td>Disponível na mesma base aberta. Tem defasagem de publicação, então serve de conferência, não de saldo ao vivo.</td>
+            </tr>
+            <tr>
+              <th scope="row">Portal da Transparência</th>
+              <td>Empenho, liquidação e pagamento das emendas — complementa o Transferegov.</td>
+              <td>Exige cadastro para obter uma chave de acesso. Etapa administrativa, não técnica.</td>
+            </tr>
+            <tr>
+              <th scope="row">Google Agenda</th>
+              <td>Agenda do deputado e conflitos de horário.</td>
+              <td>Leitura para todo o gabinete; escrita apenas para o chefe de gabinete.</td>
+            </tr>
+            <tr>
+              <th scope="row">Google Drive</th>
+              <td>Ofícios, documentos e banco de mídia.</td>
+              <td>Disponível. O sistema guarda o índice e o link; o arquivo continua onde a equipe já trabalha.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="riscos">
+      <div class="rule"><span class="tab">IV · Riscos</span></div>
+      <h2>O que pode dar errado</h2>
+      <p class="lede">Cinco pontos que mudam decisões de projeto e por isso aparecem aqui, e não depois.</p>
+
+      <div class="risks">
+        <div class="risk">
+          <span class="sev alta">Alta</span>
+          <div class="risk-body">
+            <h3>O CRM torna a LGPD o ponto mais sensível do sistema</h3>
+            <p>Com atendimento ao cidadão e CRM dentro de casa, o banco passa a guardar dados pessoais de gente que não trabalha no gabinete — nome, telefone, município, o que a pessoa pediu e às vezes por quê. Isso é mais delicado que o cadastro funcional da equipe. A recomendação é guardar o mínimo necessário, não registrar dado sensível em campo livre, e manter registro de quem acessou o quê. Precisa estar no desenho do banco desde o início.</p>
+          </div>
+        </div>
+        <div class="risk">
+          <span class="sev media">Média</span>
+          <div class="risk-body">
+            <h3>A CEAP da base aberta chega atrasada</h3>
+            <p>Os reembolsos só aparecem na base da Câmara depois de processados, então ela nunca reflete o gasto de hoje. Por isso a área não pode depender dela para dizer o saldo: o gabinete lança o que gastou, e a base entra depois apontando divergências. Se a tela mostrar só o número oficial, ela vai estar sempre errada para baixo.</p>
+          </div>
+        </div>
+        <div class="risk">
+          <span class="sev media">Média</span>
+          <div class="risk-body">
+            <h3>Emenda e CRM precisam nascer conectados</h3>
+            <p>A API do Transferegov entrega empenho, instrumento e pagamento, mas não sabe qual prefeito pediu a emenda nem com quem a equipe falou na semana passada. Com o CRM no Administrativo, essa ponta agora tem onde morar — mas só funciona se a emenda apontar para o contato desde o cadastro. Se as duas áreas forem construídas isoladas, a conexão não acontece depois sozinha.</p>
+          </div>
+        </div>
+        <div class="risk">
+          <span class="sev media">Média</span>
+          <div class="risk-body">
+            <h3>Aprovação interna não é protocolo</h3>
+            <p>O aval do deputado dentro do sistema é controle interno do gabinete. O protocolo formal continua sendo feito nos sistemas oficiais da Câmara. A interface precisa deixar isso explícito para ninguém supor que apertar “aprovar” protocolou a peça.</p>
+          </div>
+        </div>
+        <div class="risk">
+          <span class="sev baixa">Baixa</span>
+          <div class="risk-body">
+            <h3>Uso do Drive pressupõe Google Workspace</h3>
+            <p>Apontar documentos e mídia para o Drive é a opção mais barata e mantém os arquivos onde a equipe já trabalha, mas depende de o gabinete ter contas Google com espaço. Se não tiver, o material passa a ser armazenado pelo próprio sistema e isso tem custo por volume — vídeo, sobretudo.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="fases">
+      <div class="rule"><span class="tab">V · Faseamento</span></div>
+      <h2>Ordem de construção proposta</h2>
+      <p class="lede">A escolha foi base completa mais as cinco áreas com o essencial. A ordem abaixo entrega algo utilizável cedo e deixa as integrações externas — as partes que dependem de terceiros — por último.</p>
+
+      <div class="phases">
+        <div class="phase">
+          <span class="phase-n">Fundação</span>
+          <div class="phase-body">
+            <h3>Entrar e enxergar</h3>
+            <p>Login Google, lista de e-mails autorizados, papéis, separação entre gabinetes e a estrutura de navegação das cinco áreas, funcionando no celular e no computador.</p>
+          </div>
+        </div>
+        <div class="phase">
+          <span class="phase-n">Etapa 1</span>
+          <div class="phase-body">
+            <h3>Chefia</h3>
+            <p>Delegação de tarefas e painel geral. É o que faz a equipe entrar no sistema todos os dias — sem isso, o resto não é usado.</p>
+          </div>
+        </div>
+        <div class="phase">
+          <span class="phase-n">Etapa 2</span>
+          <div class="phase-body">
+            <h3>Administrativo — parte funcional</h3>
+            <p>Cadastro de equipe, viagens, ofícios com numeração e lançamentos da CEAP.</p>
+          </div>
+        </div>
+        <div class="phase">
+          <span class="phase-n">Etapa 3</span>
+          <div class="phase-body">
+            <h3>Administrativo — CRM e atendimento</h3>
+            <p>Base de contatos e protocolos de atendimento, com o histórico preso ao solicitante. Vem antes do Orçamento de propósito: é a ele que a emenda vai se conectar.</p>
+          </div>
+        </div>
+        <div class="phase">
+          <span class="phase-n">Etapa 4</span>
+          <div class="phase-body">
+            <h3>Legislativo</h3>
+            <p>Lista de vigilância alimentada pela base da Câmara, produção do gabinete, pauta com fichas de posicionamento e histórico por tema.</p>
+          </div>
+        </div>
+        <div class="phase">
+          <span class="phase-n">Etapa 5</span>
+          <div class="phase-body">
+            <h3>Comunicação</h3>
+            <p>Calendário editorial, clipping, controle de demandas de imprensa com prazo e catálogo de mídia.</p>
+          </div>
+        </div>
+        <div class="phase">
+          <span class="phase-n">Etapa 6</span>
+          <div class="phase-body">
+            <h3>Orçamento</h3>
+            <p>Cadastro e painel de emendas já ligados ao contato do CRM; a busca automática no Transferegov e no Portal da Transparência entra em seguida, sobre uma base que já funciona.</p>
+          </div>
+        </div>
+        <div class="phase">
+          <span class="phase-n">Etapa 7</span>
+          <div class="phase-body">
+            <h3>Amarrações</h3>
+            <p>Google Agenda, Google Drive, conferência da CEAP contra a base da Câmara e os avisos que puxam para o painel da chefia o que está atrasado em qualquer área.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="perguntas" class="questions">
+      <h2>O que falta decidir</h2>
+      <p style="color:var(--ink-2);font-size:15px;margin:0">Nenhum destes trava o início da construção — todos podem ser ajustados sem refazer o banco. Respondê-los evita retrabalho de tela.</p>
+      <ol>
+        <li><b>Escritório no estado edita emendas?</b> Supus que sim, por ser quem fala com prefeituras, e que ele também edita o CRM pelo mesmo motivo. Confirme ou corrijo a matriz.</li>
+        <li><b>Qual a numeração de ofícios usada hoje?</b> Preciso do formato exato em uso para que a numeração automática continue a série atual em vez de começar do zero.</li>
+        <li><b>O CRM deve separar cidadão de liderança política?</b> São relacionamentos de natureza diferente — um é atendimento, o outro é articulação. Posso tratar tudo como contato com uma etiqueta de categoria, ou separar em duas telas. A primeira opção é mais simples e reversível.</li>
+        <li><b>Quem pode ver os atendimentos?</b> A regra geral é todos leem tudo, mas demanda de cidadão às vezes contém assunto pessoal. Se for para restringir a leitura ao Administrativo e à chefia, digo agora nas regras de segurança.</li>
+        <li><b>Quais categorias de gasto da CEAP o gabinete usa de fato?</b> A cota tem muitas categorias; listar as que realmente aparecem deixa a tela de lançamento curta em vez de um menu enorme.</li>
+      </ol>
+    </section>
+
+  </main>
+
+  <footer>
+    Documento de levantamento · nenhuma implementação iniciada · aguardando validação
+  </footer>
+
+</div>

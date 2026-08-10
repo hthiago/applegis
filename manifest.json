@@ -1,12 +1,12 @@
 {
-  "name": "Painel Legislativo",
-  "short_name": "Painel",
-  "description": "Chat legislativo integrado ao Make",
+  "name": "Gestão de Gabinete Parlamentar",
+  "short_name": "Gabinete",
+  "description": "Administrativo, Legislativo, Comunicação, Chefia de gabinete e Orçamento em um só lugar",
   "start_url": "./index.html",
   "display": "standalone",
-  "background_color": "#0b0f18",
-  "theme_color": "#0b0f18",
-  "orientation": "portrait",
+  "background_color": "#F4F6F3",
+  "theme_color": "#1b5e4b",
+  "lang": "pt-BR",
   "icons": [
     {
       "src": "icon-192.png",
