@@ -40,6 +40,21 @@ function telaFalhaCarregamento() {
   ], el('button', { class: 'btn btn--primario', texto: 'Recarregar', onclick: () => location.reload() }));
 }
 
+// Uma falha de login quase sempre é uma peça de configuração faltando, não um
+// problema do usuário. Dizer qual delas poupa horas de tentativa e erro.
+const RECADOS_DE_LOGIN = {
+  'auth/unauthorized-domain':
+    'Este endereço não está liberado no Firebase. Adicione o domínio deste site em Authentication → Settings → Domínios autorizados.',
+  'auth/operation-not-allowed':
+    'O login com Google não está ativado no projeto. Ative em Authentication → Sign-in method → Google.',
+  'auth/popup-blocked':
+    'O navegador bloqueou a janela do Google. Libere os pop-ups para este site e tente de novo.',
+  'auth/network-request-failed':
+    'Não houve resposta da rede. Verifique a conexão e tente de novo.',
+  'auth/internal-error':
+    'O Firebase recusou a chamada. Confira se as chaves em js/config.js são deste projeto.',
+};
+
 function telaLogin() {
   const botao = el('button', {
     class: 'btn btn--primario btn--grande',
@@ -50,8 +65,9 @@ function telaLogin() {
         await nucleo.fb.entrarComGoogle();
       } catch (erro) {
         console.error(erro);
-        if (!['auth/popup-closed-by-user', 'auth/cancelled-popup-request'].includes(erro.code)) {
-          aviso('Não foi possível entrar. Tente novamente.', 'erro');
+        const cancelou = ['auth/popup-closed-by-user', 'auth/cancelled-popup-request'].includes(erro.code);
+        if (!cancelou) {
+          aviso(RECADOS_DE_LOGIN[erro.code] || `Não foi possível entrar (${erro.code || 'erro desconhecido'}).`, 'erro');
         }
         botao.disabled = false;
       }
