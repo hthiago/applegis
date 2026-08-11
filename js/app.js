@@ -273,16 +273,24 @@ function extrasDaProducao() {
         btn.disabled = true;
         btn.textContent = 'Consultando…';
         try {
-          const r = await nucleo.camara.importarProducao(idDeputado, ({ novas, feitas }) => {
-            if (novas) btn.textContent = `Importando ${feitas} de ${novas}…`;
+          const r = await nucleo.camara.importarProducao(idDeputado, (p) => {
+            if (p.fase === 'lista') btn.textContent = `Listando ${p.total}…`;
+            if (p.fase === 'gravadas') btn.textContent = `${p.gravadas} salvas. Classificando…`;
+            if (p.fase === 'classificando') btn.textContent = `Classificando ${p.feitas} de ${p.total}…`;
+            if (p.fase === 'detalhando') btn.textContent = `Detalhando ${p.feitas} de ${p.total}…`;
           });
-          aviso(r.importadas
-            ? `${r.importadas} proposições importadas. O parlamentar assinou ${r.total} ao todo.`
-            : `Nada novo. As ${r.total} proposições assinadas já estavam aqui.`);
+          // Quantas ficaram por classificar importa: é o que explica um número
+          // menor na tela do que o que a Câmara devolveu.
+          aviso([
+            `${r.total} proposições assinadas na Câmara.`,
+            r.classificadas ? `${r.classificadas} classificadas` : null,
+            r.detalhadas ? `${r.detalhadas} detalhadas` : null,
+            r.pendentes ? `${r.pendentes} ficaram pendentes — importe de novo para concluir` : null,
+          ].filter(Boolean).join(' · '), r.pendentes ? 'erro' : 'ok');
           recarregar();
         } catch (erro) {
           console.error(erro);
-          aviso('Não foi possível importar da Câmara agora.', 'erro');
+          aviso(`Não foi possível importar da Câmara: ${erro.message || erro}`, 'erro');
           btn.disabled = false;
           btn.textContent = 'Importar da Câmara';
         }

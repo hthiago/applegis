@@ -62,18 +62,23 @@ const conferir = (nome, ok, detalhe = '') => {
 
 const navegador = await chromium.launch();
 
-async function abrir({ papel = 'chefe', areas = [], bancoVazio = false } = {}) {
+async function abrir({
+  papel = 'chefe', areas = [], bancoVazio = false, loteRecusado = false, ignorarConsole = false,
+} = {}) {
   const pagina = await navegador.newPage();
   pagina.on('pageerror', (e) => conferir(`erro de página inesperado (${papel})`, false, e.message));
   pagina.on('console', (m) => {
-    if (m.type() === 'error') conferir(`erro de console inesperado (${papel})`, false, m.text());
+    if (m.type() === 'error' && !ignorarConsole) {
+      conferir(`erro de console inesperado (${papel})`, false, m.text());
+    }
   });
 
-  await pagina.addInitScript(([p, a, v]) => {
+  await pagina.addInitScript(([p, a, v, r]) => {
     globalThis.__PAPEL_TESTE = p;
     globalThis.__AREAS_TESTE = a;
     globalThis.__BANCO_VAZIO_TESTE = v;
-  }, [papel, areas, bancoVazio]);
+    globalThis.__LOTE_RECUSADO_TESTE = r;
+  }, [papel, areas, bancoVazio, loteRecusado]);
 
   await pagina.route(/gstatic\.com/, (rota) => rota.fulfill({
     status: 200,
@@ -333,8 +338,9 @@ console.log('\nUso normal, como chefe de gabinete\n');
   const contas = await pagina.locator('.segmento-conta').allInnerTexts();
   conferir('separa autoria de subscrição pela ordem de assinatura',
     contas[0] === '1' && contas[1] === '1', `autoria ${contas[0]}, subscrição ${contas[1]}`);
+  // A identificação sai da própria lista, sem depender de detalhar item a item.
   conferir('subaba de autoria mostra só a proposição apresentada',
-    (await pagina.locator('.tabela tbody').innerText()).includes('PL 111/2024'));
+    (await pagina.locator('.tabela tbody').innerText()).includes('PL 111/2025'));
   conferir('agrupa por tema',
     (await pagina.locator('.grupo-nome').first().innerText()) === 'SAÚDE',
     await pagina.locator('.grupo-nome').first().innerText());
@@ -343,7 +349,7 @@ console.log('\nUso normal, como chefe de gabinete\n');
   await pagina.waitForTimeout(250);
   const naSubscricao = await pagina.locator('.tabela tbody').innerText();
   conferir('subaba de subscrição troca o conteúdo',
-    naSubscricao.includes('PL 222/2024') && !naSubscricao.includes('PL 111/2024'));
+    naSubscricao.includes('PL 222/2025') && !naSubscricao.includes('PL 111/2025'));
   conferir('cada subaba agrupa pelo próprio tema',
     (await pagina.locator('.grupo-nome').first().innerText()).includes('SEGURANÇA'));
 
@@ -448,6 +454,53 @@ conferir('escritório no estado não edita a agenda', !escritorio['chefia/agenda
 
 const leitor = await editaveis('leitor', []);
 conferir('somente leitura não edita nada', TELAS.every((t) => !leitor[t]));
+
+// ────────── suíte 3: gravação recusada precisa aparecer, não sumir ──────────
+//
+// Era esse o buraco: as regras recusavam a coleção, cada falha era engolida
+// num try/catch, e o botão terminava anunciando sucesso sobre uma lista vazia.
+
+console.log('\nFalha de gravação\n');
+
+{
+  const pagina = await abrir({ loteRecusado: true, ignorarConsole: true });
+  await pagina.goto(`${BASE}/#/legislativo/autorias`, { waitUntil: 'domcontentloaded' });
+  await pagina.waitForSelector('.segmentos');
+  await pagina.getByRole('button', { name: /Importar da Câmara/ }).click();
+  await pagina.waitForSelector('.aviso--erro', { timeout: 10000 }).catch(() => {});
+
+  const recado = await pagina.locator('.aviso--erro').first().innerText().catch(() => '');
+  conferir('gravação recusada vira aviso de erro na tela', /permission|permiss/i.test(recado), recado);
+  conferir('nenhuma linha é anunciada como importada',
+    !/proposições assinadas/.test(recado), recado);
+  await pagina.close();
+}
+
+// ───────────── suíte 4: as regras cobrem todas as coleções da tela ─────────────
+//
+// Coleção que não está no mapa `areaDa` das regras é recusada em toda gravação,
+// e o sintoma é cruel: a tela funciona, o botão diz que importou, e nada
+// aparece. Módulo novo sem regra correspondente não pode passar daqui.
+
+console.log('\nRegras de segurança\n');
+
+const regras = fs.readFileSync(path.join(RAIZ, 'firestore.rules'), 'utf8');
+const mapaDeAreas = /function areaDa\(colecao\) \{[\s\S]*?return \{([\s\S]*?)\}\.get\(/.exec(regras);
+conferir('as regras declaram o mapa de áreas', !!mapaDeAreas);
+
+const declaradas = new Set(
+  [...(mapaDeAreas?.[1] || '').matchAll(/'([^']+)'\s*:\s*'([^']+)'/g)].map((m) => m[1]),
+);
+
+const fonteModulos = fs.readFileSync(path.join(RAIZ, 'js', 'modulos.js'), 'utf8');
+const colecoes = [...fonteModulos.matchAll(/^ {4}id: '([^']+)',$/gm)].map((m) => m[1]);
+conferir('encontrou os módulos para conferir', colecoes.length > 15, `${colecoes.length}`);
+
+const semRegra = colecoes.filter((c) => !declaradas.has(c));
+conferir('toda coleção de módulo tem área nas regras', semRegra.length === 0, semRegra.join(', '));
+
+const semModulo = [...declaradas].filter((c) => !colecoes.includes(c));
+conferir('nenhuma regra sobra sem módulo', semModulo.length === 0, semModulo.join(', '));
 
 // ──────────────────────────────── desfecho ────────────────────────────────
 

@@ -117,6 +117,26 @@ export function updateDoc(ref, dados) {
   return Promise.resolve();
 }
 
+export function writeBatch() {
+  const pendentes = [];
+  return {
+    set(ref, dados, opcoes = {}) {
+      pendentes.push({ ref, dados, opcoes });
+      return this;
+    },
+    commit() {
+      if (globalThis.__LOTE_RECUSADO_TESTE) {
+        return Promise.reject(new Error('Missing or insufficient permissions.'));
+      }
+      for (const { ref, dados, opcoes } of pendentes) {
+        const col = colecaoDe(ref.colecao);
+        col.set(ref.id, opcoes.merge ? { ...(col.get(ref.id) || {}), ...dados } : dados);
+      }
+      return Promise.resolve();
+    },
+  };
+}
+
 export function deleteDoc(ref) {
   colecaoDe(ref.colecao).delete(ref.id);
   return Promise.resolve();

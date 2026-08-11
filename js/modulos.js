@@ -365,17 +365,22 @@ export const MODULOS = [
     nome: 'Produção do gabinete',
     singular: 'proposição',
     descricao: 'Tudo que o parlamentar assinou, separado entre o que apresentou e o que subscreveu.',
-    ordenar: { campo: 'apresentadaEm', dir: 'desc' },
+    // A data de apresentação só existe para o que foi detalhado; o ano vem da
+    // própria lista e serve para todo mundo.
+    ordenar: { campo: 'ano', dir: 'desc' },
     busca: ['identificacao', 'ementa', 'tema'],
     importaProducao: true,
     // O conteúdo vem da Câmara; cadastrar à mão aqui só criaria divergência.
     semCriacao: true,
-    // Duas subabas sobre a mesma coleção: o papel não é uma coluna, é a divisão.
+    // Subabas sobre a mesma coleção: o papel não é uma coluna, é a divisão.
+    // "A classificar" existe porque a lista é gravada antes de saber o papel —
+    // é melhor a proposição aparecer sem classificação do que não aparecer.
     segmentos: {
       campo: 'papel',
       op: [
         { v: 'autor', l: 'Autoria' },
         { v: 'subscritor', l: 'Subscrição' },
+        { v: 'pendente', l: 'A classificar' },
       ],
     },
     agruparPor: 'tema',
@@ -389,12 +394,16 @@ export const MODULOS = [
       { k: 'papel', l: 'Papel do parlamentar', t: 'select', op: [
         { v: 'autor', l: 'Autor', cor: 'ok' },
         { v: 'subscritor', l: 'Subscritor', cor: 'neutro' },
+        { v: 'pendente', l: 'A classificar', cor: 'alerta' },
       ] },
       { k: 'tema', l: 'Tema', t: 'texto' },
+      { k: 'tipo', l: 'Tipo', t: 'texto' },
+      { k: 'ano', l: 'Ano', t: 'numero' },
       { k: 'situacaoEm', l: 'Nessa situação desde', t: 'data' },
       { k: 'coautores', l: 'Coautores e subscritores', t: 'numero' },
       { k: 'autoresTodos', l: 'Lista completa de assinaturas', t: 'area' },
       { k: 'idCamara', l: 'ID na Câmara', t: 'numero' },
+      { k: 'detalhadoEm', l: 'Detalhada em', t: 'data' },
     ],
   },
   {

@@ -1,5 +1,6 @@
 import {
   db, collection, doc, getDocs, getDoc, addDoc, updateDoc, deleteDoc, serverTimestamp,
+  writeBatch,
 } from './firebase.js';
 import { sessao } from './sessao.js';
 
@@ -53,6 +54,49 @@ export async function salvar(colecao, id, dados) {
   }
   invalidar(colecao);
   return id;
+}
+
+/** Teto de operações por lote no Firestore. */
+const POR_LOTE = 400;
+
+/**
+ * Grava muitos registros de uma vez.
+ *
+ * Importar a produção de um mandato inteiro são milhares de gravações; feitas
+ * uma a uma elas levam minutos e qualquer interrupção deixa o trabalho pela
+ * metade. Em lote são poucas idas ao servidor, e o identificador vem de fora
+ * (o ID da Câmara), de modo que reimportar corrige o registro existente em vez
+ * de duplicá-lo.
+ *
+ * Devolve o que falhou, em vez de engolir o erro: um lote recusado pelas regras
+ * de segurança precisa aparecer na tela, não no console.
+ */
+export async function salvarEmLote(colecao, itens) {
+  const agora = serverTimestamp();
+  const quem = sessao.membro.email;
+  let gravados = 0;
+  const falhas = [];
+
+  for (let i = 0; i < itens.length; i += POR_LOTE) {
+    const fatia = itens.slice(i, i + POR_LOTE);
+    const lote = writeBatch(db);
+    for (const { id, dados } of fatia) {
+      lote.set(
+        doc(db, 'gabinetes', sessao.membro.gabineteId, colecao, id),
+        { ...dados, atualizadoEm: agora, atualizadoPor: quem },
+        { merge: true },
+      );
+    }
+    try {
+      await lote.commit();
+      gravados += fatia.length;
+    } catch (erro) {
+      falhas.push(erro);
+    }
+  }
+
+  invalidar(colecao);
+  return { gravados, falhas };
 }
 
 export async function remover(colecao, id) {
