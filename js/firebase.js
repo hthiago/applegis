@@ -3,7 +3,7 @@ import {
   getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged,
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import {
-  getFirestore, collection, doc, getDoc, getDocs, setDoc, addDoc, updateDoc,
+  initializeFirestore, collection, doc, getDoc, getDocs, setDoc, addDoc, updateDoc,
   deleteDoc, query, where, orderBy, limit, serverTimestamp, onSnapshot,
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
@@ -11,7 +11,20 @@ import { FIREBASE_CONFIG } from './config.js';
 
 export const app = initializeApp(FIREBASE_CONFIG);
 export const auth = getAuth(app);
-export const db = getFirestore(app);
+
+/**
+ * O Firestore fala por um canal de streaming que redes corporativas e órgãos
+ * públicos frequentemente cortam — o sintoma é a consulta simplesmente não
+ * responder. O modo de sondagem longa troca esse canal por requisições HTTP
+ * comuns, que atravessam qualquer proxy.
+ *
+ * Custa um pouco de eficiência, irrelevante no volume de um gabinete, e em
+ * troca o sistema funciona na rede da Câmara, em 4G e em Wi-Fi doméstico sem
+ * depender de configuração de rede.
+ */
+export const db = initializeFirestore(app, {
+  experimentalForceLongPolling: true,
+});
 
 const provider = new GoogleAuthProvider();
 provider.setCustomParameters({ prompt: 'select_account' });

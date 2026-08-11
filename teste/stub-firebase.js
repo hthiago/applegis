@@ -36,6 +36,7 @@ let proximoId = 100;
 
 export function initializeApp() { return { nome: 'stub' }; }
 export function getFirestore() { return { stub: true }; }
+export function initializeFirestore() { return { stub: true }; }
 export function getAuth() { return { stub: true }; }
 export class GoogleAuthProvider { setCustomParameters() {} }
 
