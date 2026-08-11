@@ -82,8 +82,9 @@ async function abrir({ papel = 'chefe', areas = [], bancoVazio = false } = {}) {
     body: stub,
   }));
 
-  // Só a chave: trocar todas as ocorrências atingiria a sentinela que decide
-  // se o sistema está configurado.
+  // Garante que o sistema se considere configurado mesmo num clone sem chaves.
+  // Troca só a chave: mexer em todas as ocorrências atingiria a sentinela que
+  // decide se o sistema está configurado.
   await pagina.route(/js\/config\.js/, async (rota) => {
     const r = await rota.fetch();
     rota.fulfill({

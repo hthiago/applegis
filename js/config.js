@@ -2,12 +2,12 @@
 // Estes valores são públicos por natureza — a proteção real está em firestore.rules.
 // Copie os dados do seu projeto em: console.firebase.google.com > Configurações do projeto > Seus apps.
 export const FIREBASE_CONFIG = {
-  apiKey: 'COLE_AQUI',
-  authDomain: 'COLE_AQUI.firebaseapp.com',
-  projectId: 'COLE_AQUI',
-  storageBucket: 'COLE_AQUI.appspot.com',
-  messagingSenderId: 'COLE_AQUI',
-  appId: 'COLE_AQUI',
+  apiKey: 'AIzaSyBcWLIh4ZpEbOkfPuopslSxKgt6pRSVSVk',
+  authDomain: 'appgabinete-556df.firebaseapp.com',
+  projectId: 'appgabinete-556df',
+  storageBucket: 'appgabinete-556df.firebasestorage.app',
+  messagingSenderId: '696764910156',
+  appId: '1:696764910156:web:3753c350aeb82a3b6442e9',
 };
 
 export const CONFIGURADO = !FIREBASE_CONFIG.apiKey.startsWith('COLE_AQUI');
