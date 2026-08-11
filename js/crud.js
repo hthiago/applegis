@@ -26,8 +26,37 @@ function textoDe(campo, item, refs) {
     case 'datahora': return fmtDataHora(v);
     case 'sim-nao': return v ? 'Sim' : 'Não';
     case 'tags': return Array.isArray(v) ? v.join(', ') : String(v);
+    case 'trilha': return Array.isArray(v) ? v.map((p) => p.orgao).join(' → ') : '—';
     default: return String(v);
   }
+}
+
+function dataCurta(iso) {
+  const [a, m, d] = String(iso || '').slice(0, 10).split('-');
+  return d ? `${d}/${m}/${a.slice(2)}` : '';
+}
+
+/**
+ * Caminho percorrido pela proposição: um passo por órgão, o último destacado.
+ * Numa tramitação longa, o começo importa menos que o fim — por isso a coluna
+ * mostra os últimos passos e resume os anteriores numa contagem.
+ */
+function trilha(passos, { limite = 4, completa = false } = {}) {
+  if (!Array.isArray(passos) || !passos.length) {
+    return el('span', { class: 'trilha-vazia', texto: 'sem tramitação registrada' });
+  }
+  const visiveis = completa ? passos : passos.slice(-limite);
+  const ocultos = passos.length - visiveis.length;
+
+  return el('ol', { class: `trilha${completa ? ' trilha--completa' : ''}` }, [
+    ocultos ? el('li', { class: 'trilha-mais', texto: `+${ocultos} antes` }) : null,
+    ...visiveis.map((p, i) => el('li', {
+      class: `trilha-passo${i === visiveis.length - 1 ? ' trilha-passo--atual' : ''}`,
+    }, [
+      el('span', { class: 'trilha-orgao', texto: p.orgao }),
+      el('span', { class: 'trilha-data', texto: completa ? fmtData(p.data) : dataCurta(p.data) }),
+    ])),
+  ]);
 }
 
 /**
@@ -131,6 +160,8 @@ function celulaEditavel(campo, item, ctx) {
 function celula(campo, item, refs, ctx) {
   if (ctx?.editavel && campo.inline) return celulaEditavel(campo, item, ctx);
 
+  if (campo.t === 'trilha') return trilha(item[campo.k]);
+
   if (campo.t === 'select') {
     const o = opcao(campo, item[campo.k]);
     return o ? etiqueta(o.l, o.cor || 'neutro') : document.createTextNode('—');
@@ -159,6 +190,15 @@ async function carregarReferencias(modulo) {
 
 function campoEntrada(campo, valor, refs) {
   const id = `campo-${campo.k}`;
+
+  // A trilha vem da Câmara, não do gabinete: mostra-se inteira, sem editar.
+  if (campo.t === 'trilha') {
+    return el('div', { class: 'campo' }, [
+      el('label', { texto: campo.l }),
+      trilha(valor, { completa: true }),
+    ]);
+  }
+
   let entrada;
 
   switch (campo.t) {

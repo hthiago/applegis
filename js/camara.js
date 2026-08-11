@@ -45,18 +45,44 @@ function autoria(autores) {
   };
 }
 
+/** Quantos órgãos guardar na trilha. O começo de uma tramitação longa importa menos que o fim. */
+const PASSOS_GUARDADOS = 12;
+
+/**
+ * Reduz o histórico de tramitações ao caminho percorrido: um passo por órgão,
+ * com a data de chegada. A base repete o mesmo órgão a cada despacho, então
+ * entradas consecutivas no mesmo lugar viram um passo só.
+ */
+function trilhaDe(tramitacoes) {
+  const cronologica = [...tramitacoes]
+    .sort((a, b) => String(a.dataHora).localeCompare(String(b.dataHora)));
+
+  const passos = [];
+  for (const t of cronologica) {
+    const orgao = t.siglaOrgao;
+    if (!orgao) continue;
+    if (passos[passos.length - 1]?.orgao === orgao) continue;
+    passos.push({ orgao, data: String(t.dataHora).slice(0, 10) });
+  }
+  return passos.slice(-PASSOS_GUARDADOS);
+}
+
 export async function detalharProposicao(id) {
-  const [dados, autores] = await Promise.all([
+  const [dados, autores, tramitacoes] = await Promise.all([
     buscarJson(`/proposicoes/${id}`),
     buscarJson(`/proposicoes/${id}/autores`).catch(() => []),
+    buscarJson(`/proposicoes/${id}/tramitacoes`).catch(() => []),
   ]);
+
+  const trilha = trilhaDe(tramitacoes);
   return {
     idCamara: dados.id,
     identificacao: `${dados.siglaTipo} ${dados.numero}/${dados.ano}`,
     ementa: dados.ementa || null,
     ...autoria(autores),
     situacao: dados.statusProposicao?.descricaoSituacao || dados.statusProposicao?.descricaoTramitacao || null,
-    orgao: dados.statusProposicao?.siglaOrgao || null,
+    orgao: dados.statusProposicao?.siglaOrgao || trilha[trilha.length - 1]?.orgao || null,
+    tramitacao: trilha,
   };
 }
 
@@ -89,6 +115,7 @@ export async function sincronizarProposicoes({ avisarSeVazio = true } = {}) {
         autoresTodos: novo.autoresTodos ?? item.autoresTodos ?? null,
         situacao: novo.situacao,
         orgao: novo.orgao,
+        tramitacao: novo.tramitacao,
         sincronizadoEm: agora,
         // Guardar de onde veio é o que permite ao painel dizer o que mudou,
         // e não apenas que algo mudou.

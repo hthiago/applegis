@@ -95,6 +95,14 @@ async function abrir({ papel = 'chefe', areas = [], bancoVazio = false } = {}) {
         { nome: 'Sóstenes Cavalcante', proponente: 1, ordemAssinatura: 1 },
         { nome: 'Deputado Subscritor Dois', proponente: 1, ordemAssinatura: 3 },
       ];
+    } else if (/\/tramitacoes/.test(url)) {
+      // O mesmo órgão aparece a cada despacho; a trilha deve juntar repetições.
+      dados = [
+        { dataHora: '2024-05-14T10:00', siglaOrgao: 'PLEN' },
+        { dataHora: '2024-06-02T10:00', siglaOrgao: 'CCJC' },
+        { dataHora: '2024-06-20T10:00', siglaOrgao: 'CCJC' },
+        { dataHora: '2025-01-15T10:00', siglaOrgao: 'CPASF' },
+      ];
     } else if (/\/proposicoes\/\d+(\?|$)/.test(url)) {
       dados = {
         id: 2430726,
@@ -243,8 +251,16 @@ console.log('\nUso normal, como chefe de gabinete\n');
     textoProposicoes.includes('Pronta para Pauta'));
   conferir('mostra só o autor principal, não os subscritores',
     textoProposicoes.includes('Sóstenes Cavalcante') && !textoProposicoes.includes('Subscritor'));
-  conferir('registra a situação anterior para o painel',
-    (await pagina.locator('.tabela tbody').innerText()).includes(new Date().toISOString().slice(8, 10)));
+  const passos = pagina.locator('.tabela tbody .trilha-passo');
+  conferir('trilha junta despachos repetidos no mesmo órgão',
+    (await passos.count()) === 3, `${await passos.count()} passos`);
+  conferir('trilha mostra o caminho percorrido, do primeiro ao último órgão',
+    (await passos.first().innerText()).includes('PLEN')
+    && (await passos.last().innerText()).includes('CPASF'));
+  conferir('trilha destaca o órgão atual',
+    (await pagina.locator('.tabela tbody .trilha-passo--atual').innerText()).includes('CPASF'));
+  conferir('trilha traz a data de chegada em cada órgão',
+    (await passos.first().innerText()).includes('14/05/24'));
 
   await pagina.locator('.inline-abrir').first().click();
   await pagina.locator('.inline-entrada').first().fill('Cobrar relator na quarta.');
