@@ -96,9 +96,15 @@ async function abrir({
 
     if (/idDeputadoAutor/.test(url)) {
       // Só a primeira página tem resultado; a segunda encerra a paginação.
+      // A mistura reproduz o caso real: requerimentos e emendas de comissão são
+      // a maioria da produção assinada e precisam sair do caminho por padrão.
       dados = /pagina=1/.test(url) ? [
-        { id: 111, siglaTipo: 'PL', numero: 111, ano: 2025, dataApresentacao: '2025-03-10T10:00' },
-        { id: 222, siglaTipo: 'PL', numero: 222, ano: 2025, dataApresentacao: '2025-04-20T10:00' },
+        { id: 111, siglaTipo: 'PL', numero: 111, ano: 2025, ementa: 'Dispõe sobre saúde.' },
+        { id: 222, siglaTipo: 'PL', numero: 222, ano: 2024, ementa: 'Dispõe sobre segurança.' },
+        { id: 333, siglaTipo: 'REQ', numero: 333, ano: 2025, ementa: 'Requer audiência pública.' },
+        { id: 444, siglaTipo: 'EMC', numero: 444, ano: 2025, ementa: 'Emenda de comissão.' },
+        { id: 555, siglaTipo: 'PEC', numero: 555, ano: 2024, ementa: 'Altera o art. 5º.' },
+        { id: 666, siglaTipo: 'REQ', numero: 666, ano: 2024, ementa: 'Requer informações.' },
       ] : [];
     } else if (/\/deputados\/\d+\/orgaos/.test(url)) {
       dados = [
@@ -118,14 +124,18 @@ async function abrir({
         { id: 901, dataHoraInicio: '2026-08-13T10:00', orgaos: [{ sigla: 'CVT' }] },
       ];
     } else if (/\/temas/.test(url)) {
-      dados = [{ tema: idProposicao === '111' ? 'Saúde' : 'Segurança pública' }];
+      // A 111 tem dois temas: o primeiro agrupa, os dois filtram.
+      if (idProposicao === '111') dados = [{ tema: 'Saúde' }, { tema: 'Orçamento público' }];
+      else dados = [{ tema: 'Segurança pública' }];
     } else if (/\/autores/.test(url)) {
-      // O parlamentar do gabinete é o 999: assina em primeiro lugar na 111,
-      // em terceiro na 222 — autor num caso, subscritor no outro.
-      if (idProposicao === '111' || idProposicao === '222') {
+      // O parlamentar do gabinete é o 999: apresenta a 111 e a 555, subscreve
+      // o resto — a distinção sai da ordem de assinatura.
+      const nossas = ['111', '555'];
+      if (/^(111|222|333|444|555|666)$/.test(idProposicao || '')) {
+        const primeiro = nossas.includes(idProposicao);
         dados = [
-          { nome: 'Outro Deputado', uri: 'https://x/api/v2/deputados/1', proponente: 1, ordemAssinatura: idProposicao === '111' ? 2 : 1 },
-          { nome: 'Marcel van Hattem', uri: 'https://x/api/v2/deputados/999', proponente: 1, ordemAssinatura: idProposicao === '111' ? 1 : 3 },
+          { nome: 'Outro Deputado', uri: 'https://x/api/v2/deputados/1', proponente: 1, ordemAssinatura: primeiro ? 2 : 1 },
+          { nome: 'Marcel van Hattem', uri: 'https://x/api/v2/deputados/999', proponente: 1, ordemAssinatura: primeiro ? 1 : 3 },
         ];
       } else {
       // Caso real: a base marca proponente para todos os signatários, então
@@ -337,7 +347,7 @@ console.log('\nUso normal, como chefe de gabinete\n');
 
   const contas = await pagina.locator('.segmento-conta').allInnerTexts();
   conferir('separa autoria de subscrição pela ordem de assinatura',
-    contas[0] === '1' && contas[1] === '1', `autoria ${contas[0]}, subscrição ${contas[1]}`);
+    contas[0] === '2' && contas[1] === '4', `autoria ${contas[0]}, subscrição ${contas[1]}`);
   // A identificação sai da própria lista, sem depender de detalhar item a item.
   conferir('subaba de autoria mostra só a proposição apresentada',
     (await pagina.locator('.tabela tbody').innerText()).includes('PL 111/2025'));
@@ -349,9 +359,59 @@ console.log('\nUso normal, como chefe de gabinete\n');
   await pagina.waitForTimeout(250);
   const naSubscricao = await pagina.locator('.tabela tbody').innerText();
   conferir('subaba de subscrição troca o conteúdo',
-    naSubscricao.includes('PL 222/2025') && !naSubscricao.includes('PL 111/2025'));
+    naSubscricao.includes('PL 222/2024') && !naSubscricao.includes('PL 111/2025'));
   conferir('cada subaba agrupa pelo próprio tema',
     (await pagina.locator('.grupo-nome').first().innerText()).includes('SEGURANÇA'));
+
+  // ── facetas: o recorte que torna 1879 registros utilizáveis ──
+  // Na subscrição há 4 registros: 1 PL, 2 REQ e 1 EMC. O padrão mostra o PL.
+  conferir('o padrão esconde requerimentos e emendas de comissão',
+    !naSubscricao.includes('REQ 333') && !naSubscricao.includes('EMC 444'), naSubscricao.replace(/\s+/g, ' '));
+  conferir('a contagem avisa que há registro fora do recorte',
+    (await pagina.locator('.contagem').innerText()).includes('1 de 4'),
+    await pagina.locator('.contagem').innerText());
+
+  const chipReq = pagina.locator('.chip', { hasText: /^REQ/ });
+  conferir('o tipo escondido continua visível, com a contagem',
+    (await chipReq.innerText()).replace(/\s+/g, ' ').trim() === 'REQ 2',
+    (await chipReq.innerText()).replace(/\s+/g, ' ').trim());
+
+  await chipReq.click();
+  await pagina.waitForTimeout(250);
+  conferir('um clique traz de volta o que estava recortado',
+    (await pagina.locator('.tabela tbody').innerText()).includes('REQ 333'));
+
+  // O tema é multivalorado: a 111 é de Saúde e de Orçamento público, e precisa
+  // ser encontrável pelos dois.
+  await pagina.getByRole('tab', { name: /Autoria/ }).click();
+  await pagina.waitForTimeout(250);
+  await pagina.locator('.faceta-select').selectOption('Orçamento público');
+  await pagina.waitForTimeout(250);
+  const porTemaSecundario = await pagina.locator('.tabela tbody').innerText();
+  conferir('o filtro de tema alcança o tema secundário',
+    porTemaSecundario.includes('PL 111/2025') && !porTemaSecundario.includes('PEC 555'),
+    porTemaSecundario.replace(/\s+/g, ' '));
+
+  await pagina.getByRole('button', { name: /Limpar filtros/ }).click();
+  await pagina.waitForTimeout(250);
+  conferir('limpar filtros devolve a lista inteira da subaba',
+    (await pagina.locator('.contagem').innerText()).includes('2 de 2'),
+    await pagina.locator('.contagem').innerText());
+
+  // O recorte precisa sobreviver à navegação: reescolher os tipos a cada visita
+  // é o tipo de atrito que faz a equipe abandonar a ferramenta.
+  await pagina.locator('.chip', { hasText: /^PEC/ }).click();
+  await pagina.waitForTimeout(200);
+  await pagina.goto(`${BASE}/#/chefia/tarefas`, { waitUntil: 'domcontentloaded' });
+  await pagina.waitForSelector('.tabela');
+  await pagina.goto(`${BASE}/#/legislativo/autorias`, { waitUntil: 'domcontentloaded' });
+  await pagina.waitForSelector('.facetas');
+  await pagina.waitForTimeout(250);
+  conferir('o recorte escolhido sobrevive à navegação',
+    (await pagina.locator('.chip--ativo').innerText()).includes('PEC'),
+    await pagina.locator('.facetas').innerText());
+  await pagina.getByRole('button', { name: /Limpar filtros/ }).click();
+  await pagina.waitForTimeout(200);
 
   // Produção do gabinete não aceita cadastro manual.
   await pagina.goto(`${BASE}/#/legislativo/autorias`, { waitUntil: 'domcontentloaded' });

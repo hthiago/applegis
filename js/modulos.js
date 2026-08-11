@@ -383,6 +383,15 @@ export const MODULOS = [
         { v: 'pendente', l: 'A classificar' },
       ],
     },
+    // Os três cortes que a própria base oferece de graça. O padrão do tipo são
+    // as proposições legislativas propriamente ditas: numa produção de mandato,
+    // requerimentos e emendas de comissão são a maioria esmagadora e afogam o
+    // que o gabinete de fato acompanha. Ficam a um clique de distância.
+    facetas: [
+      { campo: 'tipo', l: 'Tipo', padrao: ['PL', 'PEC', 'PLP', 'PDL', 'PDC'] },
+      { campo: 'temas', l: 'Tema', multivalor: true, alternativo: 'tema', ateChips: 0 },
+      { campo: 'ano', l: 'Ano', ordem: 'valor-desc' },
+    ],
     agruparPor: 'tema',
     campos: [
       { k: 'identificacao', l: 'Proposição', t: 'texto', req: true, lista: true },
@@ -396,7 +405,8 @@ export const MODULOS = [
         { v: 'subscritor', l: 'Subscritor', cor: 'neutro' },
         { v: 'pendente', l: 'A classificar', cor: 'alerta' },
       ] },
-      { k: 'tema', l: 'Tema', t: 'texto' },
+      { k: 'tema', l: 'Tema principal', t: 'texto' },
+      { k: 'temas', l: 'Temas na Câmara', t: 'tags' },
       { k: 'tipo', l: 'Tipo', t: 'texto' },
       { k: 'ano', l: 'Ano', t: 'numero' },
       { k: 'situacaoEm', l: 'Nessa situação desde', t: 'data' },

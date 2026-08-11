@@ -11,6 +11,9 @@ import { listar, salvar, remover, opcoesDe, proximoNumero } from './dados.js';
 
 const CAMPOS_AUTONUMERADOS = ['numero', 'protocolo'];
 
+/** Linhas desenhadas de uma vez. O resto vem sob pedido. */
+const LIMITE_LINHAS = 300;
+
 function opcao(campo, valor) {
   return (campo.op || []).find((o) => o.v === valor) || null;
 }
@@ -370,6 +373,7 @@ export async function renderModulo(container, modulo, { editavel, extras = [], a
     termo: '',
     filtro: '',
     segmento: modulo.segmentos ? modulo.segmentos.op[0].v : null,
+    facetas: facetasIniciais(modulo, itens),
   };
 
   const recarregar = () => renderModulo(container, modulo, { editavel, extras, acoesItem });
@@ -379,13 +383,13 @@ export async function renderModulo(container, modulo, { editavel, extras = [], a
     class: 'busca',
     placeholder: `Buscar em ${modulo.nome.toLowerCase()}…`,
     'aria-label': 'Buscar',
-    oninput: (e) => { estado.termo = e.target.value.toLowerCase(); desenhar(); },
+    oninput: (e) => { estado.termo = e.target.value.toLowerCase(); atualizar(); },
   });
 
   const filtro = campoStatus ? el('select', {
     class: 'filtro',
     'aria-label': campoStatus.l,
-    onchange: (e) => { estado.filtro = e.target.value; desenhar(); },
+    onchange: (e) => { estado.filtro = e.target.value; atualizar(); },
   }, [
     el('option', { value: '', texto: `Todas as situações` }),
     ...campoStatus.op.map((o) => el('option', { value: o.v, texto: o.l })),
@@ -427,7 +431,7 @@ export async function renderModulo(container, modulo, { editavel, extras = [], a
           role: 'tab',
           'aria-selected': estado.segmento === o.v ? 'true' : 'false',
           class: `segmento${estado.segmento === o.v ? ' segmento--ativo' : ''}`,
-          onclick: () => { estado.segmento = o.v; pintar(); desenhar(); },
+          onclick: () => { estado.segmento = o.v; pintar(); atualizar(); },
         }, [
           el('span', { texto: o.l }),
           el('span', { class: 'segmento-conta', texto: String(quantos) }),
@@ -439,10 +443,18 @@ export async function renderModulo(container, modulo, { editavel, extras = [], a
     return barra;
   }
 
-  function filtrados() {
+  /**
+   * O conjunto visível. `ignorar` deixa uma faceta de fora do cálculo, que é
+   * como se obtém a contagem de cada opção dela: quantos registros restariam
+   * se aquela opção fosse escolhida, com todo o resto do filtro mantido.
+   */
+  function filtrados(ignorar = null) {
     return itens.filter((i) => {
       if (modulo.segmentos && i[modulo.segmentos.campo] !== estado.segmento) return false;
       if (estado.filtro && campoStatus && i[campoStatus.k] !== estado.filtro) return false;
+      for (const f of (modulo.facetas || [])) {
+        if (f.campo !== ignorar && !passaNaFaceta(i, f, estado.facetas[f.campo])) return false;
+      }
       if (!estado.termo) return true;
       return (modulo.busca || []).some((k) => {
         const campo = modulo.campos.find((c) => c.k === k);
@@ -450,6 +462,86 @@ export async function renderModulo(container, modulo, { editavel, extras = [], a
         return texto.toLowerCase().includes(estado.termo);
       });
     }).sort(ordenador(modulo));
+  }
+
+  const barraFacetas = el('div', { class: 'facetas' });
+
+  /**
+   * Desenha as facetas com a contagem de cada opção, recalculada a cada
+   * mudança: um número parado ao lado de uma opção mente assim que outro
+   * filtro se move.
+   */
+  function pintarFacetas() {
+    if (!modulo.facetas?.length) return;
+    limpar(barraFacetas);
+
+    modulo.facetas.forEach((f) => {
+      const contagem = contarFaceta(filtrados(f.campo), f);
+      if (contagem.size <= 1) return;
+
+      const escolhidos = estado.facetas[f.campo] || new Set();
+      const trocar = (valor) => {
+        if (escolhidos.has(valor)) escolhidos.delete(valor);
+        else escolhidos.add(valor);
+        estado.facetas[f.campo] = escolhidos;
+        guardarFacetas(modulo, estado.facetas);
+        pintarFacetas();
+        desenhar();
+      };
+
+      const opcoes = [...contagem.entries()].sort(ordenaFaceta(f));
+      const bloco = el('div', { class: 'faceta' }, [
+        el('span', { class: 'faceta-rotulo', texto: f.l }),
+      ]);
+
+      // Poucas opções cabem como botões, que mostram tudo de uma vez. Muitas
+      // — os temas passam de trinta — só cabem numa lista.
+      if (opcoes.length <= (f.ateChips ?? 12)) {
+        bloco.appendChild(el('div', { class: 'faceta-chips' }, opcoes.map(([valor, quantos]) => el('button', {
+          type: 'button',
+          class: `chip${escolhidos.has(valor) ? ' chip--ativo' : ''}`,
+          'aria-pressed': escolhidos.has(valor) ? 'true' : 'false',
+          onclick: () => trocar(valor),
+        }, [
+          el('span', { texto: rotuloDaFaceta(valor) }),
+          el('span', { class: 'chip-conta', texto: String(quantos) }),
+        ]))));
+      } else {
+        bloco.appendChild(el('select', {
+          class: 'faceta-select',
+          'aria-label': f.l,
+          onchange: (e) => {
+            estado.facetas[f.campo] = e.target.value ? new Set([e.target.value]) : new Set();
+            guardarFacetas(modulo, estado.facetas);
+            pintarFacetas();
+            desenhar();
+          },
+        }, [
+          el('option', { value: '', texto: `Todos — ${f.l.toLowerCase()}` }),
+          ...opcoes.map(([valor, quantos]) => el('option', {
+            value: valor,
+            selected: escolhidos.has(valor) ? 'selected' : null,
+            texto: `${rotuloDaFaceta(valor)} (${quantos})`,
+          })),
+        ]));
+      }
+
+      barraFacetas.appendChild(bloco);
+    });
+
+    if (algumFiltroAtivo(estado)) {
+      barraFacetas.appendChild(el('button', {
+        class: 'btn btn--fantasma btn--pequeno',
+        type: 'button',
+        texto: 'Limpar filtros',
+        onclick: () => {
+          estado.facetas = {};
+          guardarFacetas(modulo, estado.facetas);
+          pintarFacetas();
+          desenhar();
+        },
+      }));
+    }
   }
 
   function desenhar() {
@@ -518,9 +610,13 @@ export async function renderModulo(container, modulo, { editavel, extras = [], a
       return tr;
     };
 
+    // Duas mil linhas na tela travam o navegador e ninguém as percorre. Mostra-se
+    // um teto e oferece-se o resto, para quem realmente quiser rolar tudo.
+    const visiveis = estado.verTudo ? lista : lista.slice(0, LIMITE_LINHAS);
+
     if (modulo.agruparPor) {
       const grupos = new Map();
-      lista.forEach((i) => {
+      visiveis.forEach((i) => {
         const chave = i[modulo.agruparPor] || 'Sem classificação';
         if (!grupos.has(chave)) grupos.set(chave, []);
         grupos.get(chave).push(i);
@@ -537,10 +633,34 @@ export async function renderModulo(container, modulo, { editavel, extras = [], a
           doGrupo.forEach((i) => tbody.appendChild(criarLinha(i)));
         });
     } else {
-      lista.forEach((i) => tbody.appendChild(criarLinha(i)));
+      visiveis.forEach((i) => tbody.appendChild(criarLinha(i)));
     }
 
-    corpo.appendChild(el('p', { class: 'contagem', texto: `${lista.length} de ${itens.length} ${lista.length === 1 ? 'registro' : 'registros'}` }));
+    // A contagem precisa dizer que há mais coisa escondida, senão um filtro
+    // padrão passa por dado faltando.
+    // O total é o da subaba aberta, não o da coleção inteira: na subscrição,
+    // comparar com o número global só confundiria.
+    const universo = modulo.segmentos
+      ? itens.filter((i) => i[modulo.segmentos.campo] === estado.segmento).length
+      : itens.length;
+    const recortado = lista.length < universo;
+    corpo.appendChild(el('p', { class: 'contagem' }, [
+      el('span', { texto: `${lista.length} de ${universo} ${universo === 1 ? 'registro' : 'registros'}` }),
+      recortado ? el('button', {
+        class: 'contagem-acao',
+        type: 'button',
+        texto: 'ver todos',
+        onclick: () => {
+          estado.termo = '';
+          estado.filtro = '';
+          estado.facetas = {};
+          busca.value = '';
+          if (filtro) filtro.value = '';
+          guardarFacetas(modulo, estado.facetas);
+          atualizar();
+        },
+      }) : null,
+    ]));
     corpo.appendChild(el('div', { class: 'tabela-rolagem' }, [
       el('table', { class: 'tabela' }, [
         el('thead', {}, [
@@ -552,14 +672,131 @@ export async function renderModulo(container, modulo, { editavel, extras = [], a
         tbody,
       ]),
     ]));
+
+    if (visiveis.length < lista.length) {
+      corpo.appendChild(el('div', { class: 'mostrar-mais' }, [
+        el('button', {
+          class: 'btn btn--fantasma',
+          type: 'button',
+          texto: `Mostrar as ${lista.length - visiveis.length} restantes`,
+          onclick: () => { estado.verTudo = true; desenhar(); },
+        }),
+      ]));
+    }
+  }
+
+  function atualizar() {
+    estado.verTudo = false;
+    pintarFacetas();
+    desenhar();
   }
 
   limpar(container);
   container.appendChild(cabecalho);
   const barraSegmentos = controleSegmentos();
   if (barraSegmentos) container.appendChild(barraSegmentos);
+  if (modulo.facetas?.length) container.appendChild(barraFacetas);
   container.appendChild(corpo);
-  desenhar();
+  atualizar();
+}
+
+// ─────────────────────────────── facetas ───────────────────────────────
+//
+// Uma coleção de duas mil proposições não se navega, se recorta. As facetas
+// são os cortes que o próprio dado oferece — tipo, tema, ano —, cada opção com
+// a contagem do que resta ao escolhê-la.
+
+/** Marca dos registros sem valor na faceta, para que não fiquem inalcançáveis. */
+const SEM_VALOR = ' sem';
+
+function rotuloDaFaceta(valor) {
+  return valor === SEM_VALOR ? 'Sem classificação' : valor;
+}
+
+/**
+ * Os valores de um registro numa faceta, sempre como lista.
+ *
+ * Um campo pode ser multivalorado (uma proposição tem vários temas) e os
+ * registros mais antigos guardavam esses vários num texto só, separados por
+ * vírgula — daí o campo alternativo e a repartição.
+ */
+function valoresDaFaceta(item, faceta) {
+  const bruto = item[faceta.campo] ?? (faceta.alternativo ? item[faceta.alternativo] : undefined);
+  if (Array.isArray(bruto)) return bruto.filter((v) => v != null && v !== '').map(String);
+  if (bruto === null || bruto === undefined || bruto === '') return [];
+  if (faceta.multivalor && typeof bruto === 'string') {
+    return bruto.split(',').map((v) => v.trim()).filter(Boolean);
+  }
+  return [String(bruto)];
+}
+
+function passaNaFaceta(item, faceta, escolhidos) {
+  if (!escolhidos || !escolhidos.size) return true;
+  const valores = valoresDaFaceta(item, faceta);
+  if (!valores.length) return escolhidos.has(SEM_VALOR);
+  return valores.some((v) => escolhidos.has(v));
+}
+
+function contarFaceta(lista, faceta) {
+  const contagem = new Map();
+  lista.forEach((item) => {
+    const valores = valoresDaFaceta(item, faceta);
+    (valores.length ? valores : [SEM_VALOR]).forEach((v) => {
+      contagem.set(v, (contagem.get(v) || 0) + 1);
+    });
+  });
+  return contagem;
+}
+
+function ordenaFaceta(faceta) {
+  if (faceta.ordem === 'valor-desc') {
+    return (a, b) => String(b[0]).localeCompare(String(a[0]), 'pt-BR', { numeric: true });
+  }
+  if (faceta.ordem === 'valor') {
+    return (a, b) => String(a[0]).localeCompare(String(b[0]), 'pt-BR', { numeric: true });
+  }
+  return (a, b) => b[1] - a[1] || String(a[0]).localeCompare(String(b[0]), 'pt-BR');
+}
+
+const chaveFacetas = (modulo) => `gab:facetas:${modulo.id}`;
+
+/**
+ * A escolha inicial: a da sessão anterior, se houver, senão o padrão do módulo
+ * — restrito ao que de fato existe nos dados, para que o padrão nunca produza
+ * uma tela vazia num gabinete cuja produção tenha outro perfil.
+ */
+function facetasIniciais(modulo, itens) {
+  const escolhidas = {};
+  if (!modulo.facetas?.length) return escolhidas;
+
+  let guardado = null;
+  try {
+    guardado = JSON.parse(localStorage.getItem(chaveFacetas(modulo)) || 'null');
+  } catch { guardado = null; }
+
+  modulo.facetas.forEach((f) => {
+    if (guardado && Array.isArray(guardado[f.campo])) {
+      escolhidas[f.campo] = new Set(guardado[f.campo]);
+      return;
+    }
+    if (!f.padrao) return;
+    const presentes = contarFaceta(itens, f);
+    const uteis = f.padrao.filter((v) => presentes.has(v));
+    if (uteis.length) escolhidas[f.campo] = new Set(uteis);
+  });
+  return escolhidas;
+}
+
+function guardarFacetas(modulo, facetas) {
+  const simples = {};
+  Object.entries(facetas).forEach(([campo, conjunto]) => { simples[campo] = [...conjunto]; });
+  try {
+    localStorage.setItem(chaveFacetas(modulo), JSON.stringify(simples));
+  } catch { /* modo anônimo, ou armazenamento cheio: filtra só nesta sessão */ }
+}
+
+function algumFiltroAtivo(estado) {
+  return Object.values(estado.facetas).some((c) => c && c.size);
 }
 
 function ordenador(modulo) {

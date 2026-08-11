@@ -217,9 +217,17 @@ function papelNaProposicao(autores, idDeputado) {
   return Number(nossa.ordemAssinatura || 9999) === menorOrdem ? 'autor' : 'subscritor';
 }
 
-async function temaDe(id) {
+/**
+ * Os temas com que a Câmara classifica a proposição.
+ *
+ * Vêm em ordem, e o primeiro é o principal — é por ele que a lista agrupa, para
+ * que cada proposição apareça uma vez só. A lista inteira fica guardada à parte
+ * e é ela que alimenta o filtro por tema, onde uma proposição de saúde e
+ * orçamento deve aparecer nos dois.
+ */
+async function temasDe(id) {
   const temas = await buscarJson(`/proposicoes/${id}/temas`).catch(() => []);
-  return temas.map((t) => t.tema).filter(Boolean).join(', ') || null;
+  return temas.map((t) => t.tema).filter(Boolean);
 }
 
 /** Páginas de 100 da consulta por autor. Um mandato longo passa de mil itens. */
@@ -309,15 +317,16 @@ export async function importarProducao(idDeputado, aoProgredir = () => {}) {
   let feitas = 0;
   await emLotes(porClassificar, CONSULTAS_EM_PARALELO, async (item) => {
     try {
-      const [autores, tema] = await Promise.all([
+      const [autores, temas] = await Promise.all([
         buscarJson(`/proposicoes/${item.idCamara}/autores`),
-        temaDe(item.idCamara),
+        temasDe(item.idCamara),
       ]);
       classificados.push({
         id: item.id,
         dados: {
           papel: papelNaProposicao(autores, idDeputado) || 'subscritor',
-          tema: tema || 'Sem tema classificado',
+          tema: temas[0] || 'Sem tema classificado',
+          temas,
           coautores: Math.max(autores.length - 1, 0),
         },
       });
