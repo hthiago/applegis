@@ -485,6 +485,59 @@ export async function importarPauta(idDeputado, dias = 7) {
   return { eventos: relevantes.length, importados };
 }
 
+/**
+ * Promove uma proposição da produção do gabinete para a lista de vigilância.
+ *
+ * A produção é o arquivo de tudo que ele assinou — milhares de itens que
+ * ninguém acompanha um a um. A lista de proposições acompanhadas é o oposto:
+ * poucas, escolhidas, com situação relida da Câmara sozinha e nota do gabinete.
+ * Faltava a ponte entre as duas, e ela é o gesto mais frequente de quem trabalha
+ * ali: "esta aqui eu quero olhar de perto".
+ *
+ * Não duplica: se a proposição já estiver sendo acompanhada, apenas diz isso.
+ * E busca o detalhamento na hora, para a linha nova já nascer completa em vez
+ * de esperar a próxima sincronização.
+ */
+export async function enviarParaAcompanhamento(item) {
+  if (!item.idCamara) {
+    throw new Error('Esta proposição não tem vínculo com a Câmara.');
+  }
+
+  const acompanhadas = await listar('proposicoes', { recarregar: true });
+  const jaEsta = acompanhadas.find((p) => String(p.idCamara) === String(item.idCamara));
+  if (jaEsta) return { novo: false, identificacao: jaEsta.identificacao || item.identificacao };
+
+  // O detalhe pode falhar sem que isso impeça o acompanhamento: melhor uma
+  // linha incompleta, que a sincronização preenche depois, do que nenhuma.
+  const detalhe = await detalharProposicao(item.idCamara).catch(() => null);
+
+  await salvar('proposicoes', null, {
+    idCamara: item.idCamara,
+    identificacao: detalhe?.identificacao || item.identificacao || null,
+    ementa: detalhe?.ementa ?? item.ementa ?? null,
+    autor: detalhe?.autor ?? null,
+    autoresTodos: detalhe?.autoresTodos ?? item.autoresTodos ?? null,
+    coautores: detalhe?.coautores ?? item.coautores ?? null,
+    situacao: detalhe?.situacao ?? item.situacao ?? null,
+    situacaoEm: detalhe?.situacaoEm ?? item.situacaoEm ?? null,
+    despacho: detalhe?.despacho ?? null,
+    orgao: detalhe?.orgao ?? null,
+    tramitacao: detalhe?.tramitacao ?? item.tramitacao ?? [],
+    tramitacaoCompleta: detalhe?.tramitacaoCompleta ?? [],
+    temas: item.temas || (item.tema ? [item.tema] : []),
+    prioridade: item.prioridade || 'normal',
+    // A nota escrita na produção segue junto: foi ela que motivou o
+    // acompanhamento, e reescrevê-la do outro lado seria trabalho perdido.
+    notaInterna: item.notaInterna ?? null,
+    sincronizadoEm: detalhe ? new Date().toISOString() : null,
+  });
+
+  // Marca a origem para que o botão saiba que o trabalho já foi feito.
+  await salvar('autorias', item.id, { acompanhando: true });
+
+  return { novo: true, identificacao: detalhe?.identificacao || item.identificacao };
+}
+
 // ─────────────────────────── histórico de votações ───────────────────────────
 
 /** Início da legislatura corrente. É o recorte padrão do histórico. */

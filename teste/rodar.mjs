@@ -467,6 +467,44 @@ console.log('\nUso normal, como chefe de gabinete\n');
   await pagina.getByRole('button', { name: /Limpar filtros/ }).click();
   await pagina.waitForTimeout(200);
 
+  // ── enviar para acompanhamento ──
+  // A produção é o arquivo de tudo que ele assinou; acompanhar de perto é
+  // escolher um punhado dali. O gesto precisa caber num clique na linha.
+  await pagina.goto(`${BASE}/#/legislativo/autorias`, { waitUntil: 'domcontentloaded' });
+  await pagina.waitForSelector('.tabela');
+  await pagina.waitForTimeout(250);
+
+  // Anota antes de promover: a nota é o que motivou o acompanhamento e não
+  // pode ficar para trás na travessia.
+  await pagina.locator('.tabela tbody .col-inline .inline-abrir').first().click();
+  await pagina.locator('.inline-entrada').first().fill('Relator é da bancada.');
+  await pagina.locator('.inline-entrada').first().blur();
+  await pagina.waitForTimeout(400);
+
+  await pagina.getByRole('button', { name: 'Enviar para acompanhamento' }).first().click();
+  await pagina.waitForTimeout(700);
+  conferir('a linha passa a dizer que está em acompanhamento',
+    (await pagina.locator('.ja-feito').count()) > 0,
+    await pagina.locator('.tabela tbody').innerText());
+
+  await pagina.goto(`${BASE}/#/legislativo/proposicoes`, { waitUntil: 'domcontentloaded' });
+  await pagina.waitForSelector('.tabela');
+  await pagina.waitForTimeout(300);
+  const acompanhadas = (await pagina.locator('.tabela tbody').innerText()).replace(/\s+/g, ' ');
+  conferir('a proposição aparece em acompanhadas', acompanhadas.includes('PL 111/2024'), acompanhadas);
+  conferir('a nota do gabinete atravessa junto',
+    acompanhadas.includes('Relator é da bancada.'), acompanhadas);
+  conferir('a linha nova já nasce com situação, sem esperar sincronização',
+    acompanhadas.includes('Pronta para Pauta'), acompanhadas);
+
+  // Promover de novo não pode criar uma segunda linha.
+  await pagina.goto(`${BASE}/#/legislativo/autorias`, { waitUntil: 'domcontentloaded' });
+  await pagina.waitForSelector('.tabela');
+  await pagina.waitForTimeout(250);
+  conferir('quem já está acompanhado não oferece o botão de novo',
+    (await pagina.getByRole('button', { name: 'Enviar para acompanhamento' }).count())
+      < (await pagina.locator('.tabela tbody tr').count()));
+
   // Produção do gabinete não aceita cadastro manual.
   await pagina.goto(`${BASE}/#/legislativo/autorias`, { waitUntil: 'domcontentloaded' });
   await pagina.waitForSelector('.modulo-topo');

@@ -370,6 +370,9 @@ export const MODULOS = [
     ordenar: { campo: 'ano', dir: 'desc' },
     busca: ['identificacao', 'ementa', 'tema'],
     importaProducao: true,
+    // A ponte para a lista de vigilância: a produção é o arquivo de tudo, e
+    // acompanhar de perto é escolher um punhado dali.
+    enviaParaAcompanhamento: true,
     // O conteúdo vem da Câmara; cadastrar à mão aqui só criaria divergência.
     semCriacao: true,
     // Subabas sobre a mesma coleção: o papel não é uma coluna, é a divisão.
@@ -414,6 +417,7 @@ export const MODULOS = [
       { k: 'autoresTodos', l: 'Lista completa de assinaturas', t: 'area' },
       { k: 'idCamara', l: 'ID na Câmara', t: 'numero' },
       { k: 'detalhadoEm', l: 'Detalhada em', t: 'data' },
+      { k: 'acompanhando', l: 'Em acompanhamento', t: 'sim-nao' },
     ],
   },
   {

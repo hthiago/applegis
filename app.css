@@ -333,6 +333,20 @@ input:focus, select:focus, textarea:focus { border-color: var(--verde); outline:
 
 .btn-icone:hover { color: var(--vermelho); background: var(--vermelho-fraco); }
 
+/* Ações não destrutivas na linha: o vermelho é reservado para a exclusão. */
+.btn-icone--acao:hover { color: var(--verde); background: var(--surface-2); }
+.btn-icone:disabled { opacity: .4; cursor: default; }
+
+.ja-feito {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: var(--verde);
+  padding: 0 6px;
+  white-space: nowrap;
+}
+
 /* ─────────────────────────── tabela ─────────────────────────── */
 .tabela-rolagem {
   overflow-x: auto;

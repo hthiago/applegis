@@ -382,6 +382,45 @@ function extrasDasVotacoes() {
   ];
 }
 
+/**
+ * Promove a proposição da produção para a lista de vigilância, direto da linha.
+ * Quando já está lá, o botão diz isso em vez de sumir: some seria pior, porque
+ * a pergunta de quem olha é "esta já está sendo acompanhada?".
+ */
+function acaoAcompanhar(item, recarregar) {
+  if (item.acompanhando) {
+    return el('span', {
+      class: 'ja-feito',
+      title: 'Já está em Proposições acompanhadas',
+      texto: 'acompanhando',
+    });
+  }
+
+  return el('button', {
+    class: 'btn-icone btn-icone--acao',
+    type: 'button',
+    title: 'Enviar para Proposições acompanhadas',
+    'aria-label': 'Enviar para acompanhamento',
+    texto: '★',
+    onclick: async (e) => {
+      e.stopPropagation();
+      const botao = e.currentTarget;
+      botao.disabled = true;
+      try {
+        const r = await nucleo.camara.enviarParaAcompanhamento(item);
+        aviso(r.novo
+          ? `${r.identificacao} entrou em Proposições acompanhadas.`
+          : `${r.identificacao} já estava em acompanhamento.`);
+        recarregar();
+      } catch (erro) {
+        console.error(erro);
+        aviso(`Não foi possível enviar para acompanhamento: ${erro.message || erro}`, 'erro');
+        botao.disabled = false;
+      }
+    },
+  });
+}
+
 function acoesDaMinuta() {
   return [
     (peca, aoConcluir) => el('button', {
@@ -427,8 +466,9 @@ async function desenharConteudo(alvo, areaId, abaId) {
   else if (modulo.importaVotacoes) extras = extrasDasVotacoes();
 
   const acoesItem = modulo.geraMinuta ? acoesDaMinuta() : [];
+  const acoesLinha = modulo.enviaParaAcompanhamento ? [acaoAcompanhar] : [];
 
-  await nucleo.crud.renderModulo(alvo, modulo, { editavel, extras, acoesItem });
+  await nucleo.crud.renderModulo(alvo, modulo, { editavel, extras, acoesItem, acoesLinha });
 
   // Consulta a Câmara sozinha ao abrir a lista, se a última já estiver velha.
   // Roda em segundo plano: a tela já está montada e só é redesenhada se algo

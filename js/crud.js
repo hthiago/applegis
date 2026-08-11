@@ -383,7 +383,7 @@ export async function abrirFormulario(modulo, item, aoSalvar, acoesItem = []) {
 
 // ──────────────────────────────── listagem ────────────────────────────────
 
-export async function renderModulo(container, modulo, { editavel, extras = [], acoesItem = [] }) {
+export async function renderModulo(container, modulo, { editavel, extras = [], acoesItem = [], acoesLinha = [] }) {
   limpar(container).appendChild(carregando());
 
   let itens;
@@ -406,7 +406,7 @@ export async function renderModulo(container, modulo, { editavel, extras = [], a
     facetas: facetasIniciais(modulo, itens),
   };
 
-  const recarregar = () => renderModulo(container, modulo, { editavel, extras, acoesItem });
+  const recarregar = () => renderModulo(container, modulo, { editavel, extras, acoesItem, acoesLinha });
 
   const busca = el('input', {
     type: 'search',
@@ -613,6 +613,12 @@ export async function renderModulo(container, modulo, { editavel, extras = [], a
       });
       const acoes = el('td', { class: 'col-acoes' });
       if (editavel) {
+        // Ações que o módulo oferece sobre a linha, antes da exclusão — que é
+        // a única irreversível e por isso fica por último.
+        acoesLinha.forEach((criar) => {
+          const botao = criar(item, recarregar);
+          if (botao) acoes.appendChild(botao);
+        });
         acoes.appendChild(el('button', {
           class: 'btn-icone',
           title: `Excluir ${modulo.singular}`,
