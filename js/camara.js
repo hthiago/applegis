@@ -175,6 +175,100 @@ export async function sincronizarSeNecessario() {
   return sincronizarProposicoes({ avisarSeVazio: false });
 }
 
+/** Quantas consultas simultâneas à Câmara. Alto demais, a base começa a recusar. */
+const CONSULTAS_EM_PARALELO = 6;
+
+async function emLotes(itens, tamanho, tarefa) {
+  const saida = [];
+  for (let i = 0; i < itens.length; i += tamanho) {
+    saida.push(...await Promise.all(itens.slice(i, i + tamanho).map(tarefa)));
+  }
+  return saida;
+}
+
+/**
+ * Autor ou subscritor?
+ *
+ * A base não responde isso diretamente: numa proposição coletiva, todos os
+ * signatários aparecem como autores. Quem de fato apresentou é quem assina em
+ * primeiro lugar, então a distinção sai da ordem de assinatura do parlamentar
+ * naquela proposição.
+ */
+function papelNaProposicao(autores, idDeputado) {
+  const uri = `/deputados/${idDeputado}`;
+  const nossa = autores.find((a) => String(a.uri || '').endsWith(uri));
+  if (!nossa) return null;
+  const menorOrdem = Math.min(...autores.map((a) => Number(a.ordemAssinatura || 9999)));
+  return Number(nossa.ordemAssinatura || 9999) === menorOrdem ? 'autor' : 'subscritor';
+}
+
+async function temaDe(id) {
+  const temas = await buscarJson(`/proposicoes/${id}/temas`).catch(() => []);
+  return temas.map((t) => t.tema).filter(Boolean).join(', ') || null;
+}
+
+/**
+ * Traz tudo que o parlamentar assinou e separa autoria de subscrição.
+ *
+ * A lista vem de uma consulta só, mas o papel e o tema exigem uma consulta por
+ * proposição — por isso o trabalho é feito em lotes e o resultado, guardado.
+ * Reimportar só custa as proposições novas.
+ */
+export async function importarProducao(idDeputado, aoProgredir = () => {}) {
+  const jaTemos = new Map(
+    (await listar('autorias', { recarregar: true })).map((i) => [i.idCamara, i]),
+  );
+
+  const achadas = [];
+  for (let pagina = 1; pagina <= 20; pagina += 1) {
+    const p = new URLSearchParams({
+      idDeputadoAutor: String(idDeputado),
+      itens: '100',
+      pagina: String(pagina),
+      ordem: 'DESC',
+      ordenarPor: 'id',
+    });
+    const lote = await buscarJson(`/proposicoes?${p}`);
+    achadas.push(...lote);
+    if (lote.length < 100) break;
+  }
+
+  const novas = achadas.filter((p) => !jaTemos.has(p.id));
+  aoProgredir({ total: achadas.length, novas: novas.length, feitas: 0 });
+
+  let feitas = 0;
+  await emLotes(novas, CONSULTAS_EM_PARALELO, async (p) => {
+    try {
+      const [autores, tema] = await Promise.all([
+        buscarJson(`/proposicoes/${p.id}/autores`).catch(() => []),
+        temaDe(p.id),
+      ]);
+      const detalhe = await detalharProposicao(p.id);
+
+      await salvar('autorias', null, {
+        idCamara: p.id,
+        identificacao: detalhe.identificacao,
+        ementa: detalhe.ementa,
+        papel: papelNaProposicao(autores, idDeputado) || 'subscritor',
+        tema: tema || 'Sem tema classificado',
+        apresentadaEm: p.dataApresentacao ? String(p.dataApresentacao).slice(0, 10) : null,
+        situacao: detalhe.situacao,
+        situacaoEm: detalhe.situacaoEm,
+        tramitacao: detalhe.tramitacao,
+        autoresTodos: detalhe.autoresTodos,
+        coautores: detalhe.coautores,
+      });
+    } catch (erro) {
+      console.error(`Falha ao importar proposição ${p.id}`, erro);
+    } finally {
+      feitas += 1;
+      aoProgredir({ total: achadas.length, novas: novas.length, feitas });
+    }
+  });
+
+  return { total: achadas.length, importadas: novas.length };
+}
+
 const TIPOS = ['PL', 'PEC', 'PLP', 'PDL', 'MPV', 'PRC', 'REQ'];
 
 export function abrirBuscaCamara(aoImportar) {

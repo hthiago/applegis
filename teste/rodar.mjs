@@ -86,15 +86,34 @@ async function abrir({ papel = 'chefe', areas = [], bancoVazio = false } = {}) {
   // dos subscritores, que é exatamente o caso que confundia a importação.
   await pagina.route(/dadosabertos\.camara\.leg\.br/, (rota) => {
     const url = rota.request().url();
+    const idProposicao = (/\/proposicoes\/(\d+)/.exec(url) || [])[1];
     let dados;
-    if (/\/autores/.test(url)) {
+
+    if (/idDeputadoAutor/.test(url)) {
+      // Só a primeira página tem resultado; a segunda encerra a paginação.
+      dados = /pagina=1/.test(url) ? [
+        { id: 111, siglaTipo: 'PL', numero: 111, ano: 2025, dataApresentacao: '2025-03-10T10:00' },
+        { id: 222, siglaTipo: 'PL', numero: 222, ano: 2025, dataApresentacao: '2025-04-20T10:00' },
+      ] : [];
+    } else if (/\/temas/.test(url)) {
+      dados = [{ tema: idProposicao === '111' ? 'Saúde' : 'Segurança pública' }];
+    } else if (/\/autores/.test(url)) {
+      // O parlamentar do gabinete é o 999: assina em primeiro lugar na 111,
+      // em terceiro na 222 — autor num caso, subscritor no outro.
+      if (idProposicao === '111' || idProposicao === '222') {
+        dados = [
+          { nome: 'Outro Deputado', uri: 'https://x/api/v2/deputados/1', proponente: 1, ordemAssinatura: idProposicao === '111' ? 2 : 1 },
+          { nome: 'Marcel van Hattem', uri: 'https://x/api/v2/deputados/999', proponente: 1, ordemAssinatura: idProposicao === '111' ? 1 : 3 },
+        ];
+      } else {
       // Caso real: a base marca proponente para todos os signatários, então
       // esse campo sozinho não separa quem apresentou de quem subscreveu.
-      dados = [
-        { nome: 'Deputado Subscritor Um', proponente: 1, ordemAssinatura: 2 },
-        { nome: 'Sóstenes Cavalcante', proponente: 1, ordemAssinatura: 1 },
-        { nome: 'Deputado Subscritor Dois', proponente: 1, ordemAssinatura: 3 },
-      ];
+        dados = [
+          { nome: 'Deputado Subscritor Um', proponente: 1, ordemAssinatura: 2 },
+          { nome: 'Sóstenes Cavalcante', proponente: 1, ordemAssinatura: 1 },
+          { nome: 'Deputado Subscritor Dois', proponente: 1, ordemAssinatura: 3 },
+        ];
+      }
     } else if (/\/tramitacoes/.test(url)) {
       // O mesmo órgão aparece a cada despacho; a trilha deve juntar repetições.
       dados = [
@@ -107,9 +126,9 @@ async function abrir({ papel = 'chefe', areas = [], bancoVazio = false } = {}) {
       ];
     } else if (/\/proposicoes\/\d+(\?|$)/.test(url)) {
       dados = {
-        id: 2430726,
+        id: Number(idProposicao),
         siglaTipo: 'PL',
-        numero: 1904,
+        numero: Number(idProposicao) === 2430726 ? 1904 : Number(idProposicao),
         ano: 2024,
         ementa: 'Acresce dois parágrafos ao art. 124.',
         statusProposicao: {
@@ -283,6 +302,33 @@ console.log('\nUso normal, como chefe de gabinete\n');
   await pagina.waitForSelector('.tabela');
   conferir('nota escrita na lista persiste',
     (await pagina.locator('.tabela tbody').innerText()).includes('Cobrar relator na quarta.'));
+
+  // Produção do gabinete: importa da Câmara e separa autoria de subscrição.
+  await pagina.goto(`${BASE}/#/legislativo/autorias`, { waitUntil: 'domcontentloaded' });
+  await pagina.waitForSelector('.segmentos');
+  await pagina.getByRole('button', { name: /Importar da Câmara/ }).click();
+  await pagina.waitForFunction(
+    () => document.querySelectorAll('.segmento-conta')[0]?.textContent === '1',
+    null,
+    { timeout: 15000 },
+  ).catch(() => {});
+
+  const contas = await pagina.locator('.segmento-conta').allInnerTexts();
+  conferir('separa autoria de subscrição pela ordem de assinatura',
+    contas[0] === '1' && contas[1] === '1', `autoria ${contas[0]}, subscrição ${contas[1]}`);
+  conferir('subaba de autoria mostra só a proposição apresentada',
+    (await pagina.locator('.tabela tbody').innerText()).includes('PL 111/2024'));
+  conferir('agrupa por tema',
+    (await pagina.locator('.grupo-nome').first().innerText()) === 'SAÚDE',
+    await pagina.locator('.grupo-nome').first().innerText());
+
+  await pagina.getByRole('tab', { name: /Subscrição/ }).click();
+  await pagina.waitForTimeout(250);
+  const naSubscricao = await pagina.locator('.tabela tbody').innerText();
+  conferir('subaba de subscrição troca o conteúdo',
+    naSubscricao.includes('PL 222/2024') && !naSubscricao.includes('PL 111/2024'));
+  conferir('cada subaba agrupa pelo próprio tema',
+    (await pagina.locator('.grupo-nome').first().innerText()).includes('SEGURANÇA'));
 
   await pagina.goto(`${BASE}/#/chefia/painel`, { waitUntil: 'domcontentloaded' });
   await pagina.waitForSelector('.indicadores');

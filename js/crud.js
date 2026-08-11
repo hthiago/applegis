@@ -364,7 +364,11 @@ export async function renderModulo(container, modulo, { editavel, extras = [] })
   const colunas = modulo.campos.filter((c) => c.lista);
   const campoStatus = modulo.campos.find((c) => c.t === 'select' && ['status', 'situacao', 'fase'].includes(c.k));
 
-  const estado = { termo: '', filtro: '' };
+  const estado = {
+    termo: '',
+    filtro: '',
+    segmento: modulo.segmentos ? modulo.segmentos.op[0].v : null,
+  };
 
   const recarregar = () => renderModulo(container, modulo, { editavel, extras });
 
@@ -406,8 +410,35 @@ export async function renderModulo(container, modulo, { editavel, extras = [] })
     ]),
   ]);
 
+  /** Subabas sobre a mesma coleção, com a contagem de cada uma. */
+  function controleSegmentos() {
+    if (!modulo.segmentos) return null;
+    const barra = el('div', { class: 'segmentos', role: 'tablist' });
+
+    const pintar = () => {
+      limpar(barra);
+      modulo.segmentos.op.forEach((o) => {
+        const quantos = itens.filter((i) => i[modulo.segmentos.campo] === o.v).length;
+        barra.appendChild(el('button', {
+          type: 'button',
+          role: 'tab',
+          'aria-selected': estado.segmento === o.v ? 'true' : 'false',
+          class: `segmento${estado.segmento === o.v ? ' segmento--ativo' : ''}`,
+          onclick: () => { estado.segmento = o.v; pintar(); desenhar(); },
+        }, [
+          el('span', { texto: o.l }),
+          el('span', { class: 'segmento-conta', texto: String(quantos) }),
+        ]));
+      });
+    };
+
+    pintar();
+    return barra;
+  }
+
   function filtrados() {
     return itens.filter((i) => {
+      if (modulo.segmentos && i[modulo.segmentos.campo] !== estado.segmento) return false;
       if (estado.filtro && campoStatus && i[campoStatus.k] !== estado.filtro) return false;
       if (!estado.termo) return true;
       return (modulo.busca || []).some((k) => {
@@ -439,7 +470,7 @@ export async function renderModulo(container, modulo, { editavel, extras = [] })
     }
 
     const tbody = el('tbody');
-    lista.forEach((item) => {
+    const criarLinha = (item) => {
       const tr = el('tr', {
         tabindex: '0',
         role: 'button',
@@ -481,8 +512,30 @@ export async function renderModulo(container, modulo, { editavel, extras = [] })
         }));
       }
       tr.appendChild(acoes);
-      tbody.appendChild(tr);
-    });
+      return tr;
+    };
+
+    if (modulo.agruparPor) {
+      const grupos = new Map();
+      lista.forEach((i) => {
+        const chave = i[modulo.agruparPor] || 'Sem classificação';
+        if (!grupos.has(chave)) grupos.set(chave, []);
+        grupos.get(chave).push(i);
+      });
+      [...grupos.entries()]
+        .sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0], 'pt-BR'))
+        .forEach(([nome, doGrupo]) => {
+          tbody.appendChild(el('tr', { class: 'linha-grupo' }, [
+            el('td', { colspan: String(colunas.length + 1) }, [
+              el('span', { class: 'grupo-nome', texto: nome }),
+              el('span', { class: 'grupo-conta', texto: String(doGrupo.length) }),
+            ]),
+          ]));
+          doGrupo.forEach((i) => tbody.appendChild(criarLinha(i)));
+        });
+    } else {
+      lista.forEach((i) => tbody.appendChild(criarLinha(i)));
+    }
 
     corpo.appendChild(el('p', { class: 'contagem', texto: `${lista.length} de ${itens.length} ${lista.length === 1 ? 'registro' : 'registros'}` }));
     corpo.appendChild(el('div', { class: 'tabela-rolagem' }, [
@@ -500,6 +553,8 @@ export async function renderModulo(container, modulo, { editavel, extras = [] })
 
   limpar(container);
   container.appendChild(cabecalho);
+  const barraSegmentos = controleSegmentos();
+  if (barraSegmentos) container.appendChild(barraSegmentos);
   container.appendChild(corpo);
   desenhar();
 }

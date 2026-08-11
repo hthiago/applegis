@@ -10,7 +10,9 @@ function colecaoDe(caminho) {
 // Com __BANCO_VAZIO_TESTE não se semeia nada, para exercitar o primeiro acesso.
 if (!globalThis.__BANCO_VAZIO_TESTE) {
   colecaoDe('sistema').set('instalado', { por: 'chefe@teste.br' });
-  colecaoDe('gabinetes').set('g1', { nome: 'Gabinete de Teste', deputado: 'Deputada Teste', uf: 'RS' });
+  colecaoDe('gabinetes').set('g1', {
+    nome: 'Gabinete de Teste', deputado: 'Deputada Teste', uf: 'RS', idDeputadoCamara: 999,
+  });
   colecaoDe('autorizados').set('chefe@teste.br', {
     nome: 'Chefe Teste',
     papel: globalThis.__PAPEL_TESTE || 'chefe',

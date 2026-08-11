@@ -258,6 +258,39 @@ function extrasDaCamara() {
   ];
 }
 
+function extrasDaProducao() {
+  return [
+    (recarregar) => el('button', {
+      class: 'btn btn--fantasma',
+      texto: 'Importar da Câmara',
+      onclick: async (e) => {
+        const btn = e.currentTarget;
+        const idDeputado = nucleo.sessaoMod.sessao.gabinete?.idDeputadoCamara;
+        if (!idDeputado) {
+          aviso('Informe o ID do deputado na Câmara em Acessos → Dados do gabinete.', 'erro');
+          return;
+        }
+        btn.disabled = true;
+        btn.textContent = 'Consultando…';
+        try {
+          const r = await nucleo.camara.importarProducao(idDeputado, ({ novas, feitas }) => {
+            if (novas) btn.textContent = `Importando ${feitas} de ${novas}…`;
+          });
+          aviso(r.importadas
+            ? `${r.importadas} proposições importadas. O parlamentar assinou ${r.total} ao todo.`
+            : `Nada novo. As ${r.total} proposições assinadas já estavam aqui.`);
+          recarregar();
+        } catch (erro) {
+          console.error(erro);
+          aviso('Não foi possível importar da Câmara agora.', 'erro');
+          btn.disabled = false;
+          btn.textContent = 'Importar da Câmara';
+        }
+      },
+    }),
+  ];
+}
+
 async function desenharConteudo(alvo, areaId, abaId) {
   if (areaId === 'acessos') {
     await nucleo.admin.renderAdmin(alvo);
@@ -285,10 +318,11 @@ async function desenharConteudo(alvo, areaId, abaId) {
   else if (modulo.abertaATodos) editavel = podeEditarTarefas(membro);
   else editavel = podeEditar(membro, modulo.area);
 
-  await nucleo.crud.renderModulo(alvo, modulo, {
-    editavel,
-    extras: modulo.importaCamara ? extrasDaCamara() : [],
-  });
+  let extras = [];
+  if (modulo.importaCamara) extras = extrasDaCamara();
+  else if (modulo.importaProducao) extras = extrasDaProducao();
+
+  await nucleo.crud.renderModulo(alvo, modulo, { editavel, extras });
 
   // Consulta a Câmara sozinha ao abrir a lista, se a última já estiver velha.
   // Roda em segundo plano: a tela já está montada e só é redesenhada se algo

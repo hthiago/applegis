@@ -427,6 +427,77 @@ input:focus, select:focus, textarea:focus { border-color: var(--verde); outline:
 .inline-abrir--vazio { color: var(--ink-3); font-style: italic; }
 .inline-entrada { font-size: 13.5px; padding: 5px 7px; }
 
+/* ─────────────── subabas e agrupamento ─────────────── */
+.segmentos {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  background: var(--surface-2);
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  align-self: flex-start;
+}
+
+.segmento {
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 14px;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+
+.segmento:hover { color: var(--ink); }
+
+.segmento--ativo {
+  background: var(--surface);
+  color: var(--verde);
+  box-shadow: var(--sombra);
+}
+
+.segmento-conta {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.segmento--ativo .segmento-conta { color: var(--verde); }
+
+.linha-grupo { cursor: default !important; background: var(--surface-2); }
+.linha-grupo:hover { background: var(--surface-2) !important; }
+
+.linha-grupo td {
+  padding: 7px 14px;
+  border-bottom: 1px solid var(--rule);
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+}
+
+.grupo-nome {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: .09em;
+  text-transform: uppercase;
+  color: var(--verde);
+  font-weight: 600;
+}
+
+.grupo-conta {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+
 .celula-dupla { display: flex; flex-direction: column; gap: 1px; }
 
 .celula-sub {
