@@ -184,6 +184,34 @@ console.log('\nUso normal, como chefe de gabinete\n');
   conferir('campo de referência mostra o nome, não o identificador',
     (await pagina.locator('.tabela tbody').innerText()).includes('Ana Assessora'));
 
+  // Edição direto na lista, sem abrir o formulário.
+  const situacao = pagina.locator('.tabela tbody tr').first().locator('select.inline-select').nth(1);
+  await situacao.selectOption('concluida');
+  await pagina.waitForTimeout(400);
+  await pagina.goto(`${BASE}/#/legislativo/proposicoes`, { waitUntil: 'domcontentloaded' });
+  await pagina.waitForSelector('.tabela');
+  await pagina.goto(`${BASE}/#/chefia/tarefas`, { waitUntil: 'domcontentloaded' });
+  await pagina.waitForSelector('.tabela');
+  conferir('situação alterada na lista persiste',
+    (await pagina.locator('.tabela tbody tr').first().locator('select.inline-select').nth(1)
+      .inputValue()) === 'concluida');
+
+  await pagina.goto(`${BASE}/#/legislativo/proposicoes`, { waitUntil: 'domcontentloaded' });
+  await pagina.waitForSelector('.tabela');
+  conferir('proposição mostra só o autor principal',
+    (await pagina.locator('.tabela tbody').innerText()).includes('Sóstenes Cavalcante'));
+
+  await pagina.locator('.inline-abrir').first().click();
+  await pagina.locator('.inline-entrada').first().fill('Cobrar relator na quarta.');
+  await pagina.locator('.inline-entrada').first().blur();
+  await pagina.waitForTimeout(400);
+  await pagina.goto(`${BASE}/#/chefia/tarefas`, { waitUntil: 'domcontentloaded' });
+  await pagina.waitForSelector('.tabela');
+  await pagina.goto(`${BASE}/#/legislativo/proposicoes`, { waitUntil: 'domcontentloaded' });
+  await pagina.waitForSelector('.tabela');
+  conferir('nota escrita na lista persiste',
+    (await pagina.locator('.tabela tbody').innerText()).includes('Cobrar relator na quarta.'));
+
   await pagina.setViewportSize({ width: 390, height: 780 });
   await pagina.goto(`${BASE}/#/administrativo/equipe`, { waitUntil: 'domcontentloaded' });
   await pagina.waitForSelector('.tabela');

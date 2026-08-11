@@ -48,8 +48,8 @@ export const MODULOS = [
       ] },
       { k: 'responsavel', l: 'Responsável', t: 'ref', ref: 'equipe', rotulo: 'nome', lista: true },
       { k: 'prazo', l: 'Prazo', t: 'data', lista: true },
-      { k: 'prioridade', l: 'Prioridade', t: 'select', op: PRIORIDADES, padrao: 'normal', lista: true },
-      { k: 'status', l: 'Situação', t: 'select', padrao: 'aberta', lista: true, op: [
+      { k: 'prioridade', l: 'Prioridade', t: 'select', op: PRIORIDADES, padrao: 'normal', lista: true, inline: true },
+      { k: 'status', l: 'Situação', t: 'select', padrao: 'aberta', lista: true, inline: true, op: [
         { v: 'aberta', l: 'Aberta', cor: 'info' },
         { v: 'andamento', l: 'Em andamento', cor: 'atencao' },
         { v: 'aguardando', l: 'Aguardando terceiros', cor: 'neutro' },
@@ -101,7 +101,7 @@ export const MODULOS = [
       { k: 'local', l: 'Local', t: 'texto' },
       { k: 'comQuem', l: 'Participantes', t: 'texto' },
       { k: 'justificativa', l: 'Por que atender', t: 'area' },
-      { k: 'status', l: 'Triagem', t: 'select', padrao: 'pendente', lista: true, op: [
+      { k: 'status', l: 'Triagem', t: 'select', padrao: 'pendente', lista: true, inline: true, op: [
         { v: 'pendente', l: 'Pendente', cor: 'atencao' },
         { v: 'aprovado', l: 'Aprovado', cor: 'ok' },
         { v: 'recusado', l: 'Recusado', cor: 'neutro' },
@@ -172,7 +172,7 @@ export const MODULOS = [
       { k: 'volta', l: 'Volta', t: 'data' },
       { k: 'motivo', l: 'Motivo', t: 'area' },
       { k: 'custo', l: 'Custo', t: 'dinheiro', lista: true },
-      { k: 'status', l: 'Situação', t: 'select', padrao: 'solicitada', lista: true, op: [
+      { k: 'status', l: 'Situação', t: 'select', padrao: 'solicitada', lista: true, inline: true, op: [
         { v: 'solicitada', l: 'Solicitada', cor: 'atencao' },
         { v: 'aprovada', l: 'Aprovada', cor: 'info' },
         { v: 'emitida', l: 'Passagem emitida', cor: 'info' },
@@ -204,7 +204,7 @@ export const MODULOS = [
       { k: 'assunto', l: 'Assunto', t: 'texto', req: true, lista: true },
       { k: 'data', l: 'Data', t: 'data', req: true, lista: true },
       { k: 'prazoResposta', l: 'Prazo de resposta', t: 'data', lista: true },
-      { k: 'respondido', l: 'Respondido', t: 'sim-nao', lista: true },
+      { k: 'respondido', l: 'Respondido', t: 'sim-nao', lista: true, inline: true },
       { k: 'atendimento', l: 'Atendimento de origem', t: 'ref', ref: 'atendimentos', rotulo: 'assunto' },
       { k: 'link', l: 'Arquivo no Drive', t: 'url' },
     ],
@@ -238,7 +238,7 @@ export const MODULOS = [
       { k: 'descricao', l: 'Descrição', t: 'texto' },
       { k: 'valor', l: 'Valor', t: 'dinheiro', req: true, lista: true },
       { k: 'notaFiscal', l: 'Nota fiscal', t: 'texto' },
-      { k: 'situacao', l: 'Situação', t: 'select', padrao: 'lancado', lista: true, op: [
+      { k: 'situacao', l: 'Situação', t: 'select', padrao: 'lancado', lista: true, inline: true, op: [
         { v: 'lancado', l: 'Lançado', cor: 'info' },
         { v: 'enviado', l: 'Enviado à Câmara', cor: 'atencao' },
         { v: 'reembolsado', l: 'Reembolsado', cor: 'ok' },
@@ -317,7 +317,7 @@ export const MODULOS = [
       { k: 'responsavel', l: 'Responsável', t: 'ref', ref: 'equipe', rotulo: 'nome', lista: true },
       { k: 'descricao', l: 'O que foi pedido', t: 'area', req: true },
       { k: 'encaminhamento', l: 'Encaminhamento dado', t: 'area' },
-      { k: 'status', l: 'Situação', t: 'select', padrao: 'aberto', lista: true, op: [
+      { k: 'status', l: 'Situação', t: 'select', padrao: 'aberto', lista: true, inline: true, op: [
         { v: 'aberto', l: 'Aberto', cor: 'atencao' },
         { v: 'andamento', l: 'Em andamento', cor: 'info' },
         { v: 'aguardando', l: 'Aguardando órgão', cor: 'neutro' },
@@ -343,11 +343,12 @@ export const MODULOS = [
       { k: 'idCamara', l: 'ID na Câmara', t: 'numero', dica: 'Preenchido pela busca automática.' },
       { k: 'ementa', l: 'Ementa', t: 'area', lista: true },
       { k: 'autor', l: 'Autor', t: 'texto', lista: true },
+      { k: 'coautores', l: 'Coautores e subscritores', t: 'numero' },
       { k: 'situacao', l: 'Situação', t: 'texto', lista: true },
       { k: 'orgao', l: 'Onde está', t: 'texto', lista: true },
-      { k: 'prioridade', l: 'Prioridade', t: 'select', padrao: 'normal', lista: true, op: PRIORIDADES },
+      { k: 'prioridade', l: 'Prioridade', t: 'select', padrao: 'normal', lista: true, inline: true, op: PRIORIDADES },
       { k: 'temas', l: 'Temas', t: 'tags' },
-      { k: 'notaInterna', l: 'Nota do gabinete', t: 'area' },
+      { k: 'notaInterna', l: 'Nota do gabinete', t: 'area', lista: true, inline: true },
     ],
   },
   {
@@ -369,7 +370,7 @@ export const MODULOS = [
       ] },
       { k: 'tema', l: 'Tema', t: 'texto', lista: true },
       { k: 'autorInterno', l: 'Quem redigiu', t: 'ref', ref: 'equipe', rotulo: 'nome', lista: true },
-      { k: 'status', l: 'Etapa', t: 'select', padrao: 'rascunho', lista: true, op: [
+      { k: 'status', l: 'Etapa', t: 'select', padrao: 'rascunho', lista: true, inline: true, op: [
         { v: 'rascunho', l: 'Rascunho', cor: 'neutro' },
         { v: 'revisao', l: 'Em revisão', cor: 'info' },
         { v: 'aval', l: 'Aguardando aval', cor: 'atencao' },
@@ -394,7 +395,7 @@ export const MODULOS = [
       { k: 'data', l: 'Data', t: 'data', req: true, lista: true },
       { k: 'orgao', l: 'Órgão', t: 'texto', req: true, lista: true, dica: 'Plenário ou a sigla da comissão.' },
       { k: 'item', l: 'Matéria', t: 'texto', req: true, lista: true },
-      { k: 'posicionamento', l: 'Orientação', t: 'select', lista: true, op: [
+      { k: 'posicionamento', l: 'Orientação', t: 'select', lista: true, inline: true, op: [
         { v: 'favor', l: 'A favor', cor: 'ok' },
         { v: 'contra', l: 'Contra', cor: 'critico' },
         { v: 'abstencao', l: 'Abstenção', cor: 'neutro' },
@@ -455,7 +456,7 @@ export const MODULOS = [
       ] },
       { k: 'dataPrevista', l: 'Data prevista', t: 'data', lista: true },
       { k: 'responsavel', l: 'Responsável', t: 'ref', ref: 'equipe', rotulo: 'nome', lista: true },
-      { k: 'status', l: 'Etapa', t: 'select', padrao: 'ideia', lista: true, op: [
+      { k: 'status', l: 'Etapa', t: 'select', padrao: 'ideia', lista: true, inline: true, op: [
         { v: 'ideia', l: 'Ideia', cor: 'neutro' },
         { v: 'producao', l: 'Em produção', cor: 'info' },
         { v: 'aprovacao', l: 'Aguardando aprovação', cor: 'atencao' },
@@ -478,7 +479,7 @@ export const MODULOS = [
       { k: 'data', l: 'Data', t: 'data', req: true, lista: true },
       { k: 'veiculo', l: 'Veículo', t: 'texto', req: true, lista: true },
       { k: 'titulo', l: 'Título da matéria', t: 'texto', req: true, lista: true },
-      { k: 'tom', l: 'Tom', t: 'select', lista: true, op: [
+      { k: 'tom', l: 'Tom', t: 'select', lista: true, inline: true, op: [
         { v: 'positivo', l: 'Positivo', cor: 'ok' },
         { v: 'neutro', l: 'Neutro', cor: 'neutro' },
         { v: 'negativo', l: 'Negativo', cor: 'critico' },
@@ -508,7 +509,7 @@ export const MODULOS = [
       { k: 'jornalista', l: 'Jornalista', t: 'texto', lista: true },
       { k: 'prazo', l: 'Prazo de fechamento', t: 'datahora', lista: true },
       { k: 'responsavel', l: 'Responsável', t: 'ref', ref: 'equipe', rotulo: 'nome' },
-      { k: 'status', l: 'Situação', t: 'select', padrao: 'pendente', lista: true, op: [
+      { k: 'status', l: 'Situação', t: 'select', padrao: 'pendente', lista: true, inline: true, op: [
         { v: 'pendente', l: 'Pendente', cor: 'critico' },
         { v: 'producao', l: 'Em produção', cor: 'atencao' },
         { v: 'respondido', l: 'Respondido', cor: 'ok' },
@@ -569,7 +570,7 @@ export const MODULOS = [
       { k: 'valorIndicado', l: 'Valor indicado', t: 'dinheiro', lista: true },
       { k: 'valorEmpenhado', l: 'Empenhado', t: 'dinheiro', lista: true },
       { k: 'valorPago', l: 'Pago', t: 'dinheiro', lista: true },
-      { k: 'fase', l: 'Fase', t: 'select', padrao: 'indicada', lista: true, op: [
+      { k: 'fase', l: 'Fase', t: 'select', padrao: 'indicada', lista: true, inline: true, op: [
         { v: 'indicada', l: 'Indicada', cor: 'neutro' },
         { v: 'empenhada', l: 'Empenhada', cor: 'info' },
         { v: 'instrumento', l: 'Instrumento assinado', cor: 'info' },

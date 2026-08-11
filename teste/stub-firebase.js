@@ -30,6 +30,11 @@ colecaoDe('gabinetes/g1/emendas').set('em1', {
   uf: 'RS', areaDestino: 'saude', valorIndicado: 500000, valorEmpenhado: 300000,
   valorPago: 100000, fase: 'execucao',
 });
+colecaoDe('gabinetes/g1/proposicoes').set('p1', {
+  identificacao: 'PL 1904/2024', idCamara: 2430726, autor: 'Sóstenes Cavalcante',
+  coautores: 42, ementa: 'Acresce dois parágrafos ao art. 124.',
+  situacao: 'Aguardando Despacho', orgao: 'CPASF', prioridade: 'normal', notaInterna: null,
+});
 }
 
 let proximoId = 100;

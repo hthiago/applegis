@@ -30,7 +30,107 @@ function textoDe(campo, item, refs) {
   }
 }
 
-function celula(campo, item, refs) {
+/**
+ * Grava um único campo, sem passar pelo formulário. Atualiza o item em memória
+ * antes de confirmar e desfaz se o banco recusar, para a lista não precisar ser
+ * redesenhada a cada alteração.
+ */
+async function gravarCampo(campo, item, ctx, valor) {
+  const anterior = item[campo.k] ?? null;
+  item[campo.k] = valor;
+  try {
+    await salvar(ctx.modulo.id, item.id, { [campo.k]: valor });
+    return true;
+  } catch (erro) {
+    console.error(erro);
+    item[campo.k] = anterior;
+    aviso('Não foi possível salvar a alteração.', 'erro');
+    return false;
+  }
+}
+
+/** Campos marcados como `inline` são alterados na própria lista. */
+function celulaEditavel(campo, item, ctx) {
+  const naoPropagar = (n) => {
+    n.addEventListener('click', (e) => e.stopPropagation());
+    n.addEventListener('keydown', (e) => e.stopPropagation());
+    return n;
+  };
+
+  if (campo.t === 'select') {
+    const sel = naoPropagar(el('select', { class: 'inline-select', 'aria-label': campo.l }, [
+      el('option', { value: '', texto: '—' }),
+      ...campo.op.map((o) => el('option', { value: o.v, texto: o.l })),
+    ]));
+    sel.value = item[campo.k] ?? '';
+    const pintar = () => {
+      sel.className = `inline-select inline-select--${opcao(campo, sel.value)?.cor || 'neutro'}`;
+    };
+    pintar();
+    sel.addEventListener('change', async () => {
+      const escolhido = sel.value || null;
+      if (!await gravarCampo(campo, item, ctx, escolhido)) sel.value = item[campo.k] ?? '';
+      pintar();
+    });
+    return sel;
+  }
+
+  if (campo.t === 'sim-nao') {
+    const btn = naoPropagar(el('button', { type: 'button', 'aria-label': campo.l }));
+    const pintar = () => {
+      btn.textContent = item[campo.k] ? 'Sim' : 'Não';
+      btn.className = `inline-toggle inline-toggle--${item[campo.k] ? 'ok' : 'neutro'}`;
+    };
+    pintar();
+    btn.addEventListener('click', async () => {
+      await gravarCampo(campo, item, ctx, !item[campo.k]);
+      pintar();
+    });
+    return btn;
+  }
+
+  // Texto e área: o clique troca o rótulo por um campo de edição.
+  const caixa = el('div', { class: 'inline-texto' });
+
+  const mostrar = () => {
+    const valor = item[campo.k];
+    limpar(caixa).appendChild(naoPropagar(el('button', {
+      type: 'button',
+      class: `inline-abrir${valor ? '' : ' inline-abrir--vazio'}`,
+      title: `Editar ${campo.l.toLowerCase()}`,
+      texto: valor || 'anotar…',
+      onclick: () => editar(),
+    })));
+  };
+
+  const editar = () => {
+    const entrada = naoPropagar(campo.t === 'area'
+      ? el('textarea', { class: 'inline-entrada', rows: '3' })
+      : el('input', { class: 'inline-entrada', type: 'text' }));
+    entrada.value = item[campo.k] ?? '';
+
+    let desistiu = false;
+    entrada.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') { desistiu = true; entrada.blur(); }
+      if (e.key === 'Enter' && campo.t !== 'area') { e.preventDefault(); entrada.blur(); }
+    });
+    entrada.addEventListener('blur', async () => {
+      const valor = entrada.value.trim() || null;
+      if (!desistiu && valor !== (item[campo.k] ?? null)) await gravarCampo(campo, item, ctx, valor);
+      mostrar();
+    });
+
+    limpar(caixa).appendChild(entrada);
+    entrada.focus();
+  };
+
+  mostrar();
+  return caixa;
+}
+
+function celula(campo, item, refs, ctx) {
+  if (ctx?.editavel && campo.inline) return celulaEditavel(campo, item, ctx);
+
   if (campo.t === 'select') {
     const o = opcao(campo, item[campo.k]);
     return o ? etiqueta(o.l, o.cor || 'neutro') : document.createTextNode('—');
@@ -297,8 +397,8 @@ export async function renderModulo(container, modulo, { editavel, extras = [] })
         },
       });
       colunas.forEach((c) => {
-        const td = el('td', { 'data-rotulo': c.l });
-        td.appendChild(celula(c, item, refs));
+        const td = el('td', { 'data-rotulo': c.l, class: c.inline ? 'col-inline' : null });
+        td.appendChild(celula(c, item, refs, { modulo, editavel }));
         tr.appendChild(td);
       });
       const acoes = el('td', { class: 'col-acoes' });

@@ -19,6 +19,23 @@ export async function procurarProposicoes({ sigla, numero, ano }) {
   return buscarJson(`/proposicoes?${p}`);
 }
 
+/**
+ * A Câmara devolve autores e subscritores na mesma lista, sem ordem útil — um
+ * projeto com 40 apoiadores esconde quem de fato o apresentou. Quem propõe vem
+ * marcado em `proponente`; na falta dele, vale a primeira assinatura.
+ */
+function autoria(autores) {
+  const proponentes = autores.filter((a) => Number(a.proponente) === 1);
+  const primeiraAssinatura = autores.filter((a) => Number(a.ordemAssinatura) === 1);
+  const principais = proponentes.length ? proponentes
+    : (primeiraAssinatura.length ? primeiraAssinatura : autores.slice(0, 1));
+
+  return {
+    autor: principais.map((a) => a.nome).join(', ') || null,
+    coautores: Math.max(0, autores.length - principais.length),
+  };
+}
+
 export async function detalharProposicao(id) {
   const [dados, autores] = await Promise.all([
     buscarJson(`/proposicoes/${id}`),
@@ -28,7 +45,7 @@ export async function detalharProposicao(id) {
     idCamara: dados.id,
     identificacao: `${dados.siglaTipo} ${dados.numero}/${dados.ano}`,
     ementa: dados.ementa || null,
-    autor: autores.map((a) => a.nome).join(', ') || null,
+    ...autoria(autores),
     situacao: dados.statusProposicao?.descricaoSituacao || dados.statusProposicao?.descricaoTramitacao || null,
     orgao: dados.statusProposicao?.siglaOrgao || null,
   };
@@ -49,6 +66,7 @@ export async function sincronizarProposicoes() {
       await salvar('proposicoes', item.id, {
         ementa: novo.ementa ?? item.ementa ?? null,
         autor: novo.autor ?? item.autor ?? null,
+        coautores: novo.coautores,
         situacao: novo.situacao,
         orgao: novo.orgao,
       });
