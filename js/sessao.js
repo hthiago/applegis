@@ -39,7 +39,9 @@ function recadoDeFalha(erro) {
       return 'O banco recusou a consulta. Na prática isso significa que as regras de segurança não foram publicadas: abra o Firestore, aba Regras, e confira se o conteúdo é o do arquivo firestore.rules.';
     case 'unavailable':
     case 'deadline-exceeded':
-      return 'O banco não respondeu. Verifique a conexão e tente de novo em instantes.';
+      // O SDK reporta banco inexistente como "cliente offline", o que manda
+      // quem está instalando procurar problema de rede que não existe.
+      return 'O banco não respondeu. Ou a rede está bloqueando o Firestore, ou o banco (default) ainda não foi criado neste projeto — confira no console do Firebase qual dos dois.';
     case 'failed-precondition':
       return 'O Firestore deste projeto parece não estar criado, ou está com outro nome que não o padrão.';
     case 'not-found':
