@@ -121,11 +121,26 @@ function celulaEditavel(campo, item, ctx) {
     return btn;
   }
 
-  // Texto e área: o clique troca o rótulo por um campo de edição.
+  // Texto, área e etiquetas: o clique troca o rótulo por um campo de edição.
   const caixa = el('div', { class: 'inline-texto' });
+
+  const comoLista = (v) => (Array.isArray(v) ? v : String(v || '').split(','))
+    .map((t) => String(t).trim()).filter(Boolean);
 
   const mostrar = () => {
     const valor = item[campo.k];
+    if (campo.t === 'tags') {
+      const etiquetas = comoLista(valor);
+      limpar(caixa).appendChild(naoPropagar(el('button', {
+        type: 'button',
+        class: `inline-abrir${etiquetas.length ? '' : ' inline-abrir--vazio'}`,
+        title: `Editar ${campo.l.toLowerCase()}`,
+        onclick: () => editar(),
+      }, etiquetas.length
+        ? etiquetas.map((t) => el('span', { class: 'marcador', texto: t }))
+        : [el('span', { texto: 'etiquetar…' })])));
+      return;
+    }
     limpar(caixa).appendChild(naoPropagar(el('button', {
       type: 'button',
       class: `inline-abrir${valor ? '' : ' inline-abrir--vazio'}`,
@@ -138,8 +153,14 @@ function celulaEditavel(campo, item, ctx) {
   const editar = () => {
     const entrada = naoPropagar(campo.t === 'area'
       ? el('textarea', { class: 'inline-entrada', rows: '3' })
-      : el('input', { class: 'inline-entrada', type: 'text' }));
-    entrada.value = item[campo.k] ?? '';
+      : el('input', {
+        class: 'inline-entrada',
+        type: 'text',
+        placeholder: campo.t === 'tags' ? 'separe por vírgula' : null,
+      }));
+    entrada.value = campo.t === 'tags'
+      ? comoLista(item[campo.k]).join(', ')
+      : (item[campo.k] ?? '');
 
     let desistiu = false;
     entrada.addEventListener('keydown', (e) => {
@@ -147,8 +168,12 @@ function celulaEditavel(campo, item, ctx) {
       if (e.key === 'Enter' && campo.t !== 'area') { e.preventDefault(); entrada.blur(); }
     });
     entrada.addEventListener('blur', async () => {
-      const valor = entrada.value.trim() || null;
-      if (!desistiu && valor !== (item[campo.k] ?? null)) await gravarCampo(campo, item, ctx, valor);
+      const bruto = entrada.value.trim();
+      const valor = campo.t === 'tags' ? comoLista(bruto) : (bruto || null);
+      const mudou = campo.t === 'tags'
+        ? valor.join('|') !== comoLista(item[campo.k]).join('|')
+        : valor !== (item[campo.k] ?? null);
+      if (!desistiu && mudou) await gravarCampo(campo, item, ctx, valor);
       mostrar();
     });
 
@@ -164,6 +189,11 @@ function celula(campo, item, refs, ctx) {
   if (ctx?.editavel && campo.inline) return celulaEditavel(campo, item, ctx);
 
   if (campo.t === 'trilha') return trilha(item[campo.k]);
+
+  if (campo.t === 'tags' && Array.isArray(item[campo.k]) && item[campo.k].length) {
+    return el('div', { class: 'marcadores' },
+      item[campo.k].map((t) => el('span', { class: 'marcador', texto: String(t) })));
+  }
 
   // Alguns valores só fazem sentido acompanhados de outro — uma situação sem a
   // data desde quando vigora parece contradizer o resto da linha.
@@ -490,6 +520,7 @@ export async function renderModulo(container, modulo, { editavel, extras = [], a
       };
 
       const opcoes = [...contagem.entries()].sort(ordenaFaceta(f));
+      const campoDaFaceta = modulo.campos.find((c) => c.k === f.campo) || null;
       const bloco = el('div', { class: 'faceta' }, [
         el('span', { class: 'faceta-rotulo', texto: f.l }),
       ]);
@@ -503,7 +534,7 @@ export async function renderModulo(container, modulo, { editavel, extras = [], a
           'aria-pressed': escolhidos.has(valor) ? 'true' : 'false',
           onclick: () => trocar(valor),
         }, [
-          el('span', { texto: rotuloDaFaceta(valor) }),
+          el('span', { texto: rotuloDaFaceta(valor, campoDaFaceta) }),
           el('span', { class: 'chip-conta', texto: String(quantos) }),
         ]))));
       } else {
@@ -521,7 +552,7 @@ export async function renderModulo(container, modulo, { editavel, extras = [], a
           ...opcoes.map(([valor, quantos]) => el('option', {
             value: valor,
             selected: escolhidos.has(valor) ? 'selected' : null,
-            texto: `${rotuloDaFaceta(valor)} (${quantos})`,
+            texto: `${rotuloDaFaceta(valor, campoDaFaceta)} (${quantos})`,
           })),
         ]));
       }
@@ -709,8 +740,14 @@ export async function renderModulo(container, modulo, { editavel, extras = [], a
 /** Marca dos registros sem valor na faceta, para que não fiquem inalcançáveis. */
 const SEM_VALOR = ' sem';
 
-function rotuloDaFaceta(valor) {
-  return valor === SEM_VALOR ? 'Sem classificação' : valor;
+/**
+ * O rótulo de um valor de faceta. Quando a faceta recai sobre um campo de
+ * seleção, o que está gravado é o código — `retirada-pauta` —, e é o rótulo
+ * declarado no módulo que a pessoa reconhece.
+ */
+function rotuloDaFaceta(valor, campo = null) {
+  if (valor === SEM_VALOR) return 'Sem classificação';
+  return opcao(campo || {}, valor)?.l || valor;
 }
 
 /**

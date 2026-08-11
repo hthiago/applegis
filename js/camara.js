@@ -1,5 +1,6 @@
 import { el, aviso, limpar } from './ui.js';
 import { salvar, salvarEmLote, listar } from './dados.js';
+import { naturezaDe, votoDe, sentidoDo, resumoDo, seguiuOrientacao } from './votos.js';
 
 /**
  * Integração com os dados abertos da Câmara dos Deputados.
@@ -458,6 +459,155 @@ export async function importarPauta(idDeputado, dias = 7) {
   });
 
   return { eventos: relevantes.length, importados };
+}
+
+// ─────────────────────────── histórico de votações ───────────────────────────
+
+/** Início da legislatura corrente. É o recorte padrão do histórico. */
+export const INICIO_LEGISLATURA = '2023-02-01';
+
+/**
+ * A Câmara não publica um "extrato de votos" por parlamentar. O caminho é
+ * percorrer as votações do período e, em cada uma, procurar o nome. Como isso
+ * custa uma consulta por votação, a lista é peneirada antes: fica só o que
+ * aconteceu nos colegiados de que o parlamentar participa, mais o Plenário.
+ */
+async function votacoesDoPeriodo(desde, ate, siglas, aoProgredir) {
+  const achadas = [];
+  // A base recusa intervalos longos demais; ano a ano sempre passa.
+  for (let ano = Number(desde.slice(0, 4)); ano <= Number(ate.slice(0, 4)); ano += 1) {
+    const inicio = ano === Number(desde.slice(0, 4)) ? desde : `${ano}-01-01`;
+    const fim = ano === Number(ate.slice(0, 4)) ? ate : `${ano}-12-31`;
+
+    for (let pagina = 1; pagina <= 40; pagina += 1) {
+      const p = new URLSearchParams({
+        dataInicio: inicio, dataFim: fim, itens: '200', pagina: String(pagina),
+        ordem: 'DESC', ordenarPor: 'dataHoraRegistro',
+      });
+      const lote = await buscarJson(`/votacoes?${p}`);
+      achadas.push(...lote);
+      aoProgredir({ fase: 'lista', total: achadas.length });
+      if (lote.length < 200) break;
+    }
+  }
+
+  // Sem sigla identificável não dá para dizer se interessa; melhor manter do
+  // que descartar em silêncio.
+  return achadas.filter((v) => !v.siglaOrgao || siglas.has(v.siglaOrgao));
+}
+
+/** O identificador da proposição votada, quando a votação o traz. */
+function proposicaoDaVotacao(votacao) {
+  const uri = votacao.uriProposicaoObjeto || votacao.proposicaoObjeto_?.uri || '';
+  const id = /\/proposicoes\/(\d+)/.exec(String(uri));
+  return id ? Number(id[1]) : null;
+}
+
+/** O nome da matéria votada, como a Câmara o escreve. */
+function tituloDaVotacao(votacao) {
+  const objeto = votacao.proposicaoObjeto;
+  if (typeof objeto === 'string' && objeto.trim()) return objeto.trim();
+  if (objeto?.siglaTipo) return `${objeto.siglaTipo} ${objeto.numero}/${objeto.ano}`;
+  return null;
+}
+
+/**
+ * Traz o histórico de posições do parlamentar nas votações da Casa.
+ *
+ * Duas coisas precisam ficar claras sobre o que este histórico é:
+ *
+ *   1. Só existe registro individual em votação nominal. O voto simbólico —
+ *      que é a maior parte do que a Câmara vota — não produz lista de nomes em
+ *      lugar nenhum, nem aqui nem no site oficial. O que não estiver aqui não
+ *      é omissão do sistema, é ausência na fonte, e o número aparece no fim da
+ *      importação para que ninguém leia a lista como se fosse completa.
+ *   2. Votação processual entra junto com a de mérito, e é justamente ela que
+ *      revela a posição real: retirada de pauta, adiamento, urgência. O efeito
+ *      de cada voto é traduzido em `js/votos.js`.
+ */
+export async function importarVotacoes(idDeputado, { desde = INICIO_LEGISLATURA } = {}, aoProgredir = () => {}) {
+  const ate = new Date().toISOString().slice(0, 10);
+  const siglas = await orgaosDoDeputado(idDeputado);
+
+  const candidatas = await votacoesDoPeriodo(desde, ate, siglas, aoProgredir);
+
+  const jaTemos = new Set(
+    (await listar('votacoes', { recarregar: true })).map((i) => String(i.idVotacao)),
+  );
+  const novas = candidatas.filter((v) => !jaTemos.has(String(v.id)));
+
+  // Os temas das proposições já importadas saem de graça: a produção do
+  // gabinete guarda a classificação de tudo que ele assinou.
+  const temasConhecidos = new Map(
+    (await listar('autorias')).filter((i) => i.idCamara).map((i) => [String(i.idCamara), i]),
+  );
+
+  const registros = [];
+  let semRegistroNominal = 0;
+  let feitas = 0;
+
+  await emLotes(novas, CONSULTAS_EM_PARALELO, async (v) => {
+    try {
+      const [votos, orientacoes] = await Promise.all([
+        buscarJson(`/votacoes/${v.id}/votos`).catch(() => []),
+        buscarJson(`/votacoes/${v.id}/orientacoes`).catch(() => []),
+      ]);
+
+      // Lista vazia é voto simbólico: não há nome a registrar, de ninguém.
+      if (!votos.length) { semRegistroNominal += 1; return; }
+
+      const nosso = votos.find((x) => String(x.deputado_?.id) === String(idDeputado));
+      const voto = nosso ? (votoDe(nosso.tipoVoto) || 'outro') : 'ausente';
+
+      const idProposicao = proposicaoDaVotacao(v);
+      const conhecida = idProposicao ? temasConhecidos.get(String(idProposicao)) : null;
+      const temas = conhecida?.temas
+        || (idProposicao ? await temasDe(idProposicao).catch(() => []) : []);
+
+      const natureza = naturezaDe(v.descricao);
+      const proposicao = tituloDaVotacao(v) || conhecida?.identificacao || null;
+      // A orientação da própria bancada é a que interessa para medir
+      // alinhamento; as demais só fazem ruído numa lista de mil linhas.
+      const daBancada = orientacoes.find((o) => o.siglaOrgao === 'GOV' || o.siglaPartidoBloco);
+
+      registros.push({
+        id: String(v.id),
+        dados: {
+          idVotacao: v.id,
+          data: String(v.dataHoraRegistro || v.data || '').slice(0, 10),
+          ano: Number(String(v.dataHoraRegistro || v.data || '').slice(0, 4)) || null,
+          orgao: v.siglaOrgao || null,
+          descricao: v.descricao || null,
+          proposicao,
+          idProposicao,
+          natureza,
+          voto,
+          sentido: sentidoDo(voto, natureza),
+          resumo: resumoDo({ voto, natureza, proposicao }),
+          resultado: v.aprovacao === 1 ? 'aprovada' : (v.aprovacao === 0 ? 'rejeitada' : null),
+          orientacaoBancada: daBancada ? votoDe(daBancada.orientacaoVoto) : null,
+          seguiuBancada: daBancada ? seguiuOrientacao(voto, daBancada.orientacaoVoto) : null,
+          tema: temas[0] || 'Sem tema classificado',
+          temas,
+        },
+      });
+    } catch (erro) {
+      console.error(`Não leu a votação ${v.id}`, erro);
+    } finally {
+      feitas += 1;
+      aoProgredir({ fase: 'lendo', total: novas.length, feitas });
+    }
+  });
+
+  const gravacao = await salvarEmLote('votacoes', registros);
+  if (gravacao.falhas.length) throw gravacao.falhas[0];
+
+  return {
+    periodo: `${desde} a ${ate}`,
+    examinadas: candidatas.length,
+    registradas: registros.length,
+    simbolicas: semRegistroNominal,
+  };
 }
 
 const TIPOS = ['PL', 'PEC', 'PLP', 'PDL', 'MPV', 'PRC', 'REQ'];

@@ -343,6 +343,45 @@ function extrasDaPauta() {
   ];
 }
 
+function extrasDasVotacoes() {
+  return [
+    (recarregar) => el('button', {
+      class: 'btn btn--fantasma',
+      texto: 'Importar votações',
+      onclick: async (e) => {
+        const btn = e.currentTarget;
+        const idDeputado = nucleo.sessaoMod.sessao.gabinete?.idDeputadoCamara;
+        if (!idDeputado) {
+          aviso('Informe o ID do deputado na Câmara em Acessos → Dados do gabinete.', 'erro');
+          return;
+        }
+        btn.disabled = true;
+        btn.textContent = 'Consultando…';
+        try {
+          const r = await nucleo.camara.importarVotacoes(idDeputado, {}, (p) => {
+            if (p.fase === 'lista') btn.textContent = `Listando ${p.total} votações…`;
+            if (p.fase === 'lendo') btn.textContent = `Lendo ${p.feitas} de ${p.total}…`;
+          });
+          // A contagem de simbólicas é obrigatória: sem ela a lista parece
+          // completa, e ela nunca é.
+          aviso([
+            `${r.registradas} votações com voto registrado.`,
+            r.simbolicas
+              ? `${r.simbolicas} foram simbólicas e não têm registro individual em lugar nenhum.`
+              : null,
+          ].filter(Boolean).join(' '), 'ok');
+          recarregar();
+        } catch (erro) {
+          console.error(erro);
+          aviso(`Não foi possível importar as votações: ${erro.message || erro}`, 'erro');
+          btn.disabled = false;
+          btn.textContent = 'Importar votações';
+        }
+      },
+    }),
+  ];
+}
+
 function acoesDaMinuta() {
   return [
     (peca, aoConcluir) => el('button', {
@@ -385,6 +424,7 @@ async function desenharConteudo(alvo, areaId, abaId) {
   if (modulo.importaCamara) extras = extrasDaCamara();
   else if (modulo.importaProducao) extras = extrasDaProducao();
   else if (modulo.importaPauta) extras = extrasDaPauta();
+  else if (modulo.importaVotacoes) extras = extrasDasVotacoes();
 
   const acoesItem = modulo.geraMinuta ? acoesDaMinuta() : [];
 

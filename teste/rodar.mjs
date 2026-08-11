@@ -106,6 +106,42 @@ async function abrir({
         { id: 555, siglaTipo: 'PEC', numero: 555, ano: 2024, ementa: 'Altera o art. 5º.' },
         { id: 666, siglaTipo: 'REQ', numero: 666, ano: 2024, ementa: 'Requer informações.' },
       ] : [];
+    } else if (/\/votacoes\/[\w-]+\/votos/.test(url)) {
+      const idVotacao = (/\/votacoes\/([\w-]+)\/votos/.exec(url) || [])[1];
+      // A 4 é simbólica: não produz lista de nomes, nem aqui nem no site
+      // oficial. É a maior parte do que a Câmara vota.
+      const registrados = {
+        'v1': 'Sim', 'v2': 'Sim', 'v3': 'Não',
+      };
+      dados = registrados[idVotacao]
+        ? [
+          { deputado_: { id: 1, nome: 'Outro Deputado' }, tipoVoto: 'Não' },
+          { deputado_: { id: 999, nome: 'Marcel van Hattem' }, tipoVoto: registrados[idVotacao] },
+        ]
+        : [];
+    } else if (/\/votacoes\/[\w-]+\/orientacoes/.test(url)) {
+      dados = [{ siglaPartidoBloco: 'NOVO', orientacaoVoto: 'Sim' }];
+    } else if (/\/votacoes\?/.test(url)) {
+      // Mérito, retirada de pauta, urgência, uma fora dos colegiados dele e
+      // uma simbólica — o retrato do que uma semana de Plenário produz.
+      dados = (/pagina=1/.test(url) && /dataInicio=2025/.test(url)) ? [
+        { id: 'v1', dataHoraRegistro: '2025-03-12T16:20', siglaOrgao: 'PLEN', aprovacao: 1,
+          descricao: 'Votação em turno único do PL 111/2025',
+          proposicaoObjeto: 'PL 111/2025',
+          uriProposicaoObjeto: 'https://x/api/v2/proposicoes/111' },
+        { id: 'v2', dataHoraRegistro: '2025-04-02T18:40', siglaOrgao: 'PLEN', aprovacao: 1,
+          descricao: 'Requerimento de Retirada de Pauta do PL 222/2024',
+          proposicaoObjeto: 'PL 222/2024',
+          uriProposicaoObjeto: 'https://x/api/v2/proposicoes/222' },
+        { id: 'v3', dataHoraRegistro: '2025-05-08T20:10', siglaOrgao: 'PLEN', aprovacao: 0,
+          descricao: 'Requerimento de Urgência para o PL 222/2024',
+          proposicaoObjeto: 'PL 222/2024',
+          uriProposicaoObjeto: 'https://x/api/v2/proposicoes/222' },
+        { id: 'v4', dataHoraRegistro: '2025-05-09T10:00', siglaOrgao: 'CVT', aprovacao: 1,
+          descricao: 'Votação do PL 999/2025', proposicaoObjeto: 'PL 999/2025' },
+        { id: 'v5', dataHoraRegistro: '2025-06-01T15:00', siglaOrgao: 'PLEN', aprovacao: 1,
+          descricao: 'Votação simbólica do PL 888/2025', proposicaoObjeto: 'PL 888/2025' },
+      ] : [];
     } else if (/\/deputados\/\d+\/orgaos/.test(url)) {
       dados = [
         { siglaOrgao: 'CCJC', nomeOrgao: 'Constituição e Justiça', dataFim: null },
@@ -590,7 +626,115 @@ console.log('\nFalha de gravação\n');
   await pagina.close();
 }
 
-// ───────────── suíte 5: as regras cobrem todas as coleções da tela ─────────────
+// ────────── suíte 5: histórico por tema, importado da Câmara ──────────
+
+console.log('\nHistórico por tema\n');
+
+{
+  const pagina = await abrir();
+  await pagina.goto(`${BASE}/#/legislativo/votacoes`, { waitUntil: 'domcontentloaded' });
+  await pagina.waitForSelector('.modulo-topo');
+  await pagina.getByRole('button', { name: /Importar votações/ }).click();
+  await pagina.waitForSelector('.tabela tbody tr', { timeout: 15000 }).catch(() => {});
+  await pagina.waitForTimeout(400);
+
+  const tabela = (await pagina.locator('.tabela tbody').innerText()).replace(/\s+/g, ' ');
+
+  conferir('registra a votação de mérito', tabela.includes('PL 111/2025'), tabela);
+  conferir('a votação em colegiado alheio fica de fora', !tabela.includes('PL 999/2025'));
+  conferir('a votação simbólica não vira linha', !tabela.includes('PL 888/2025'));
+
+  const recado = await pagina.locator('.aviso').first().innerText().catch(() => '');
+  conferir('o aviso admite quantas votações não têm registro individual',
+    /simb[óo]lica/i.test(recado), recado.replace(/\s+/g, ' '));
+
+  // O ponto central: votou SIM na retirada de pauta do PL 222, ou seja, votou
+  // para travá-lo. A lista precisa dizer isso, não "Sim".
+  conferir('o SIM na retirada de pauta aparece como trava, não como apoio',
+    tabela.includes('travar o PL 222/2024'), tabela);
+  conferir('o efeito do voto vira etiqueta na lista',
+    (await pagina.locator('.tabela tbody').innerText()).includes('Freou o andamento'));
+
+  // Recorte por natureza — a pergunta do gabinete é "onde ele votou para tirar
+  // de pauta?", e ela precisa ser respondível num clique.
+  await pagina.locator('.chip', { hasText: /Retirada de pauta/ }).click();
+  await pagina.waitForTimeout(250);
+  const soRetiradas = (await pagina.locator('.tabela tbody').innerText()).replace(/\s+/g, ' ');
+  conferir('dá para isolar as votações de retirada de pauta',
+    soRetiradas.includes('PL 222/2024') && !soRetiradas.includes('PL 111/2025'), soRetiradas);
+  await pagina.getByRole('button', { name: /Limpar filtros/ }).click();
+  await pagina.waitForTimeout(250);
+
+  // Etiquetas do gabinete: o vocabulário da Câmara não conhece "pauta do agro".
+  await pagina.locator('.col-inline .inline-abrir').first().click();
+  await pagina.locator('.inline-entrada').first().fill('pauta do agro, prioridade');
+  await pagina.locator('.inline-entrada').first().blur();
+  await pagina.waitForTimeout(500);
+  conferir('etiqueta escrita na própria lista aparece como etiqueta',
+    (await pagina.locator('.tabela tbody .marcador').first().innerText()).includes('pauta do agro'),
+    await pagina.locator('.tabela tbody').innerText());
+
+  await pagina.goto(`${BASE}/#/chefia/tarefas`, { waitUntil: 'domcontentloaded' });
+  await pagina.waitForSelector('.tabela');
+  await pagina.goto(`${BASE}/#/legislativo/votacoes`, { waitUntil: 'domcontentloaded' });
+  await pagina.waitForSelector('.facetas');
+  await pagina.waitForTimeout(300);
+  conferir('a etiqueta persiste e vira recorte',
+    (await pagina.locator('.facetas').innerText()).includes('pauta do agro'),
+    await pagina.locator('.facetas').innerText().catch(() => ''));
+
+  await pagina.close();
+}
+
+// ────────── suíte 6: leitura política do voto (sem navegador) ──────────
+//
+// É a parte mais fácil de errar do sistema inteiro: "Sim" numa retirada de
+// pauta é voto CONTRA a matéria. Um histórico que registre só Sim e Não
+// descreve o mandato ao contrário na maioria das votações processuais.
+
+console.log('\nLeitura política do voto\n');
+
+{
+  const v = await import('../js/votos.js');
+
+  conferir('reconhece retirada de pauta',
+    v.naturezaDe('Requerimento de Retirada de Pauta do PL 1904/2024') === 'retirada-pauta');
+  conferir('retirada de pauta vence "requerimento" genérico',
+    v.naturezaDe('Requerimento de retirada de pauta') === 'retirada-pauta');
+  conferir('destaque vence emenda quando os dois aparecem',
+    v.naturezaDe('Destaque para Votação em Separado da Emenda nº 3') === 'destaque');
+  conferir('reconhece urgência',
+    v.naturezaDe('Requerimento de Urgência para o PL 222/2024') === 'urgencia');
+  conferir('votação comum cai em mérito',
+    v.naturezaDe('Votação em turno único do PL 111/2025') === 'merito');
+
+  conferir('sim no mérito é a favor',
+    v.sentidoDo('sim', 'merito') === 'a-favor');
+  conferir('SIM na retirada de pauta trava a matéria — o ponto todo',
+    v.sentidoDo('sim', 'retirada-pauta') === 'freou');
+  conferir('NÃO na retirada de pauta favorece a matéria',
+    v.sentidoDo('nao', 'retirada-pauta') === 'avancou');
+  conferir('não na urgência freia sem julgar o mérito',
+    v.sentidoDo('nao', 'urgencia') === 'freou');
+  conferir('destaque não recebe leitura inventada',
+    v.sentidoDo('sim', 'destaque') === 'depende');
+  conferir('obstrução é obstrução em qualquer natureza',
+    v.sentidoDo('obstrucao', 'merito') === 'obstruiu');
+
+  conferir('o resumo diz o que o voto fez, não como foi registrado',
+    v.resumoDo({ voto: 'sim', natureza: 'retirada-pauta', proposicao: 'PL 222/2024' })
+      === 'Votou de modo a travar o PL 222/2024 (retirada de pauta).',
+    v.resumoDo({ voto: 'sim', natureza: 'retirada-pauta', proposicao: 'PL 222/2024' }));
+
+  conferir('normaliza o voto vindo da Câmara',
+    v.votoDe('Não') === 'nao' && v.votoDe('Obstrução') === 'obstrucao' && v.votoDe('Sim') === 'sim');
+  conferir('sem orientação registrada não se afirma alinhamento',
+    v.seguiuOrientacao('sim', null) === null);
+  conferir('mede alinhamento com a bancada',
+    v.seguiuOrientacao('sim', 'Sim') === true && v.seguiuOrientacao('nao', 'Sim') === false);
+}
+
+// ───────────── suíte 7: as regras cobrem todas as coleções da tela ─────────────
 //
 // Coleção que não está no mapa `areaDa` das regras é recusada em toda gravação,
 // e o sintoma é cruel: a tela funciona, o botão diz que importou, e nada

@@ -66,6 +66,7 @@ service cloud.firestore {
         'atendimentos': 'administrativo',
         'proposicoes': 'legislativo',
         'autorias': 'legislativo',
+        'votacoes': 'legislativo',
         'valores': 'legislativo',
         'producao': 'legislativo',
         'pauta': 'legislativo',
