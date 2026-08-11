@@ -88,10 +88,12 @@ async function abrir({ papel = 'chefe', areas = [], bancoVazio = false } = {}) {
     const url = rota.request().url();
     let dados;
     if (/\/autores/.test(url)) {
+      // Caso real: a base marca proponente para todos os signatários, então
+      // esse campo sozinho não separa quem apresentou de quem subscreveu.
       dados = [
-        { nome: 'Deputado Subscritor Um', proponente: 0, ordemAssinatura: 2 },
+        { nome: 'Deputado Subscritor Um', proponente: 1, ordemAssinatura: 2 },
         { nome: 'Sóstenes Cavalcante', proponente: 1, ordemAssinatura: 1 },
-        { nome: 'Deputado Subscritor Dois', proponente: 0, ordemAssinatura: 3 },
+        { nome: 'Deputado Subscritor Dois', proponente: 1, ordemAssinatura: 3 },
       ];
     } else if (/\/proposicoes\/\d+(\?|$)/.test(url)) {
       dados = {

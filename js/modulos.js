@@ -344,6 +344,7 @@ export const MODULOS = [
       { k: 'ementa', l: 'Ementa', t: 'area', lista: true },
       { k: 'autor', l: 'Autor', t: 'texto', lista: true },
       { k: 'coautores', l: 'Coautores e subscritores', t: 'numero' },
+      { k: 'autoresTodos', l: 'Lista completa de assinaturas', t: 'area' },
       { k: 'situacao', l: 'Situação', t: 'texto', lista: true },
       { k: 'orgao', l: 'Onde está', t: 'texto', lista: true },
       { k: 'mudouEm', l: 'Mudou em', t: 'data', lista: true },

@@ -20,19 +20,28 @@ export async function procurarProposicoes({ sigla, numero, ano }) {
 }
 
 /**
- * A Câmara devolve autores e subscritores na mesma lista, sem ordem útil — um
- * projeto com 40 apoiadores esconde quem de fato o apresentou. Quem propõe vem
- * marcado em `proponente`; na falta dele, vale a primeira assinatura.
+ * A Câmara devolve autores e subscritores na mesma lista, e um projeto com
+ * quarenta apoiadores esconde quem de fato o apresentou.
+ *
+ * Filtrar por `proponente` não resolve: a base marca esse campo para todos os
+ * signatários em boa parte das proposições. A regra que sobrevive a isso é
+ * ordenar — proponente à frente, depois ordem de assinatura — e ficar com o
+ * primeiro. Assim sai sempre exatamente um nome, qualquer que seja o formato
+ * dos dados. A lista completa é preservada num campo à parte.
  */
 function autoria(autores) {
-  const proponentes = autores.filter((a) => Number(a.proponente) === 1);
-  const primeiraAssinatura = autores.filter((a) => Number(a.ordemAssinatura) === 1);
-  const principais = proponentes.length ? proponentes
-    : (primeiraAssinatura.length ? primeiraAssinatura : autores.slice(0, 1));
+  if (!autores.length) return { autor: null, coautores: 0, autoresTodos: null };
+
+  const ordenados = [...autores].sort((a, b) => {
+    const porProponente = Number(b.proponente || 0) - Number(a.proponente || 0);
+    if (porProponente) return porProponente;
+    return Number(a.ordemAssinatura || 9999) - Number(b.ordemAssinatura || 9999);
+  });
 
   return {
-    autor: principais.map((a) => a.nome).join(', ') || null,
-    coautores: Math.max(0, autores.length - principais.length),
+    autor: ordenados[0].nome,
+    coautores: autores.length - 1,
+    autoresTodos: autores.map((a) => a.nome).join(', '),
   };
 }
 
@@ -77,6 +86,7 @@ export async function sincronizarProposicoes({ avisarSeVazio = true } = {}) {
         ementa: novo.ementa ?? item.ementa ?? null,
         autor: novo.autor ?? item.autor ?? null,
         coautores: novo.coautores,
+        autoresTodos: novo.autoresTodos ?? item.autoresTodos ?? null,
         situacao: novo.situacao,
         orgao: novo.orgao,
         sincronizadoEm: agora,
