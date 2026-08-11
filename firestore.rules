@@ -34,6 +34,14 @@ service cloud.firestore {
       return liberado() && autorizacao().papel == 'admin';
     }
 
+    // Instalação: enquanto `sistema/instalado` não existir, a primeira pessoa a
+    // entrar pode criar o gabinete e se tornar chefe dele. Gravar esse
+    // documento fecha a porta em definitivo — por isso o primeiro acesso deve
+    // ser feito logo depois de publicar estas regras.
+    function naoInstalado() {
+      return !exists(/databases/$(database)/documents/sistema/instalado);
+    }
+
     function ehMembro(g) {
       return liberado() && autorizacao().gabineteId == g;
     }
@@ -74,6 +82,13 @@ service cloud.firestore {
         || (ehMembro(g) && autorizacao().papel == 'escritorio' && area in ['administrativo', 'orcamento']);
     }
 
+    // ───────────────────────── trava de instalação ─────────────────────────
+    match /sistema/{documento} {
+      allow read: if request.auth != null;
+      allow create: if temEmail() && naoInstalado();
+      allow update, delete: if false;
+    }
+
     // ─────────────────────────── lista de acesso ───────────────────────────
     // Cada pessoa lê a própria entrada. A chefia lê e administra as do seu
     // gabinete; o administrador do sistema, as de todos.
@@ -86,7 +101,13 @@ service cloud.firestore {
       allow create, update: if ehAdminGlobal()
         || (liberado() && autorizacao().papel in ['chefe', 'deputado']
             && request.resource.data.gabineteId == autorizacao().gabineteId
-            && request.resource.data.papel != 'admin');
+            && request.resource.data.papel != 'admin')
+        // Instalação: a primeira pessoa se cadastra como chefe do gabinete que
+        // acabou de criar, e só isso.
+        || (temEmail() && naoInstalado()
+            && conta == email()
+            && request.resource.data.papel == 'chefe'
+            && request.resource.data.gabineteId != null);
 
       allow delete: if ehAdminGlobal()
         || (liberado() && autorizacao().papel in ['chefe', 'deputado']
@@ -97,7 +118,8 @@ service cloud.firestore {
     // ───────────────────────────── gabinetes ─────────────────────────────
     match /gabinetes/{g} {
       allow read: if ehMembro(g) || ehAdminGlobal();
-      allow create, update, delete: if ehAdminGlobal();
+      allow create: if ehAdminGlobal() || (temEmail() && naoInstalado());
+      allow update, delete: if ehAdminGlobal();
 
       // Espelho do acesso dentro do gabinete. A pessoa só grava o próprio
       // documento, e apenas com o papel que a lista de autorizados atribuiu —

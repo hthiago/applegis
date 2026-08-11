@@ -62,17 +62,18 @@ const conferir = (nome, ok, detalhe = '') => {
 
 const navegador = await chromium.launch();
 
-async function abrir({ papel = 'chefe', areas = [] } = {}) {
+async function abrir({ papel = 'chefe', areas = [], bancoVazio = false } = {}) {
   const pagina = await navegador.newPage();
   pagina.on('pageerror', (e) => conferir(`erro de página inesperado (${papel})`, false, e.message));
   pagina.on('console', (m) => {
     if (m.type() === 'error') conferir(`erro de console inesperado (${papel})`, false, m.text());
   });
 
-  await pagina.addInitScript(([p, a]) => {
+  await pagina.addInitScript(([p, a, v]) => {
     globalThis.__PAPEL_TESTE = p;
     globalThis.__AREAS_TESTE = a;
-  }, [papel, areas]);
+    globalThis.__BANCO_VAZIO_TESTE = v;
+  }, [papel, areas, bancoVazio]);
 
   await pagina.route(/gstatic\.com/, (rota) => rota.fulfill({
     status: 200,
@@ -93,6 +94,31 @@ async function abrir({ papel = 'chefe', areas = [] } = {}) {
   });
 
   return pagina;
+}
+
+// ────────────────────── suíte 0: instalação do zero ──────────────────────
+
+console.log('\nPrimeiro acesso, com o banco vazio\n');
+{
+  const pagina = await abrir({ bancoVazio: true });
+  await pagina.goto(`${BASE}/`, { waitUntil: 'domcontentloaded' });
+  await pagina.waitForSelector('.cartao-central', { timeout: 10000 });
+
+  const titulo = await pagina.locator('.cartao-central h1').innerText();
+  conferir('banco vazio oferece a criação do gabinete', titulo === 'Vamos criar o gabinete', `mostrou "${titulo}"`);
+
+  await pagina.fill('.cartao-central input[type="text"]', 'Gabinete Recém-Criado');
+  await pagina.getByRole('button', { name: /Criar gabinete e entrar/ }).click();
+  await pagina.waitForSelector('.topo', { timeout: 10000 });
+
+  conferir('instalação leva direto para dentro do sistema',
+    (await pagina.locator('.topo-marca strong').innerText()) === 'Gabinete Recém-Criado');
+  conferir('quem instala vira chefe de gabinete',
+    (await pagina.locator('.usuario-papel').innerText()) === 'Chefe de gabinete');
+  conferir('chefe recém-criado enxerga a tela de acessos',
+    await pagina.locator('.nav-item', { hasText: 'Acessos' }).isVisible());
+
+  await pagina.close();
 }
 
 // ─────────────────────────── suíte 1: uso normal ───────────────────────────

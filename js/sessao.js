@@ -1,5 +1,5 @@
 import {
-  auth, db, doc, getDoc, setDoc, onAuthStateChanged, serverTimestamp,
+  auth, db, doc, getDoc, setDoc, addDoc, collection, onAuthStateChanged, serverTimestamp,
 } from './firebase.js';
 
 /**
@@ -11,9 +11,23 @@ export const sessao = {
   usuario: null,
   membro: null,
   gabinete: null,
-  estado: 'carregando', // carregando | anonimo | sem-acesso | pronto
+  estado: 'carregando', // carregando | anonimo | primeiro-acesso | sem-acesso | pronto
   erro: null,
 };
+
+/**
+ * O banco vazio aceita uma única instalação: quem entrar primeiro cria o
+ * gabinete e vira chefe. A partir daí o documento `sistema/instalado` existe e
+ * as regras fecham essa porta para sempre — por isso o primeiro acesso deve ser
+ * feito logo depois de publicar as regras.
+ */
+async function jaInstalado() {
+  try {
+    return (await getDoc(doc(db, 'sistema', 'instalado'))).exists();
+  } catch {
+    return true; // na dúvida, não oferece a instalação
+  }
+}
 
 const ouvintes = new Set();
 
@@ -58,8 +72,19 @@ async function carregarAcesso(usuario) {
   }
 
   const autorizacao = await getDoc(doc(db, 'autorizados', email));
-  if (!autorizacao.exists() || autorizacao.data().ativo === false) {
-    definir('sem-acesso', { membro: null, gabinete: null, erro: null });
+
+  if (!autorizacao.exists()) {
+    definir(await jaInstalado() ? 'sem-acesso' : 'primeiro-acesso',
+      { membro: null, gabinete: null, erro: null });
+    return;
+  }
+
+  if (autorizacao.data().ativo === false) {
+    definir('sem-acesso', {
+      membro: null,
+      gabinete: null,
+      erro: 'Seu acesso foi suspenso. Fale com a chefia de gabinete.',
+    });
     return;
   }
 
@@ -105,6 +130,42 @@ async function carregarAcesso(usuario) {
   }
 
   definir('pronto', { membro, gabinete, erro: null });
+}
+
+/**
+ * Instalação: cria o gabinete, torna quem está logado o chefe dele e fecha a
+ * porta de instalação. A ordem importa — `sistema/instalado` é gravado por
+ * último, para que uma falha no meio possa ser repetida.
+ */
+export async function instalar({ nome, deputado, uf, idDeputadoCamara }) {
+  const usuario = sessao.usuario;
+  const email = usuario.email.trim().toLowerCase();
+
+  const gabinete = await addDoc(collection(db, 'gabinetes'), {
+    nome,
+    deputado: deputado || null,
+    uf: uf || null,
+    idDeputadoCamara: idDeputadoCamara || null,
+    criadoEm: serverTimestamp(),
+    criadoPor: email,
+  });
+
+  await setDoc(doc(db, 'autorizados', email), {
+    nome: usuario.displayName || email,
+    papel: 'chefe',
+    gabineteId: gabinete.id,
+    areas: [],
+    ativo: true,
+    criadoEm: serverTimestamp(),
+  });
+
+  await setDoc(doc(db, 'sistema', 'instalado'), {
+    em: serverTimestamp(),
+    por: email,
+    gabineteId: gabinete.id,
+  });
+
+  await carregarAcesso(usuario);
 }
 
 /** Caminho de qualquer coleção do gabinete atual. Nada é lido fora dele. */

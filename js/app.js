@@ -68,6 +68,58 @@ function telaLogin() {
   ]);
 }
 
+function telaPrimeiroAcesso() {
+  const s = nucleo.sessaoMod.sessao;
+  const nome = el('input', { type: 'text', required: true, placeholder: 'Gabinete do Deputado Fulano' });
+  const deputado = el('input', { type: 'text', placeholder: 'Nome do parlamentar' });
+  const uf = el('input', { type: 'text', maxlength: '2', placeholder: 'RS' });
+  const idCamara = el('input', { type: 'number', inputmode: 'numeric', placeholder: 'opcional' });
+
+  const botao = el('button', { class: 'btn btn--primario', type: 'submit', texto: 'Criar gabinete e entrar' });
+
+  const form = el('form', { class: 'form' }, [
+    el('div', { class: 'campo' }, [el('label', { texto: 'Nome do gabinete *' }), nome]),
+    el('div', { class: 'campo' }, [el('label', { texto: 'Parlamentar' }), deputado]),
+    el('div', { class: 'linha-campos' }, [
+      el('div', { class: 'campo' }, [el('label', { texto: 'UF' }), uf]),
+      el('div', { class: 'campo' }, [
+        el('label', { texto: 'ID na Câmara' }), idCamara,
+        el('p', { class: 'campo-dica', texto: 'Usado depois para buscar proposições e despesas.' }),
+      ]),
+    ]),
+    botao,
+  ]);
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    botao.disabled = true;
+    botao.textContent = 'Criando…';
+    try {
+      await nucleo.sessaoMod.instalar({
+        nome: nome.value.trim(),
+        deputado: deputado.value.trim(),
+        uf: uf.value.trim().toUpperCase(),
+        idDeputadoCamara: idCamara.value ? Number(idCamara.value) : null,
+      });
+    } catch (erro) {
+      console.error(erro);
+      aviso('Não foi possível criar o gabinete. Confira se as regras de segurança foram publicadas.', 'erro');
+      botao.disabled = false;
+      botao.textContent = 'Criar gabinete e entrar';
+    }
+  });
+
+  return el('div', { class: 'tela-central' }, [
+    el('div', { class: 'cartao-central' }, [
+      el('p', { class: 'marca', texto: 'Primeiro acesso' }),
+      el('h1', { texto: 'Vamos criar o gabinete' }),
+      el('p', { texto: `O banco está vazio, então ${s.usuario?.email || 'você'} será o chefe de gabinete e poderá liberar o acesso do resto da equipe.` }),
+      el('p', { texto: 'Esta tela aparece uma única vez: assim que o gabinete for criado, ninguém mais consegue se cadastrar sozinho.' }),
+      form,
+    ]),
+  ]);
+}
+
 function telaSemAcesso() {
   const s = nucleo.sessaoMod.sessao;
   return cartao('Sua conta ainda não tem acesso', [
@@ -262,6 +314,7 @@ function desenhar() {
       limpar(raiz).appendChild(el('div', { class: 'tela-central' }, [carregando('Verificando seu acesso…')]));
       break;
     case 'anonimo': limpar(raiz).appendChild(telaLogin()); break;
+    case 'primeiro-acesso': limpar(raiz).appendChild(telaPrimeiroAcesso()); break;
     case 'sem-acesso': limpar(raiz).appendChild(telaSemAcesso()); break;
     case 'pronto': desenharApp(); break;
     default: break;

@@ -7,14 +7,19 @@ function colecaoDe(caminho) {
 }
 
 // ── semente ──
-colecaoDe('gabinetes').set('g1', { nome: 'Gabinete de Teste', deputado: 'Deputada Teste', uf: 'RS' });
-colecaoDe('autorizados').set('chefe@teste.br', {
-  nome: 'Chefe Teste',
-  papel: globalThis.__PAPEL_TESTE || 'chefe',
-  gabineteId: 'g1',
-  areas: globalThis.__AREAS_TESTE || [],
-  ativo: true,
-});
+// Com __BANCO_VAZIO_TESTE não se semeia nada, para exercitar o primeiro acesso.
+if (!globalThis.__BANCO_VAZIO_TESTE) {
+  colecaoDe('sistema').set('instalado', { por: 'chefe@teste.br' });
+  colecaoDe('gabinetes').set('g1', { nome: 'Gabinete de Teste', deputado: 'Deputada Teste', uf: 'RS' });
+  colecaoDe('autorizados').set('chefe@teste.br', {
+    nome: 'Chefe Teste',
+    papel: globalThis.__PAPEL_TESTE || 'chefe',
+    gabineteId: 'g1',
+    areas: globalThis.__AREAS_TESTE || [],
+    ativo: true,
+  });
+}
+if (!globalThis.__BANCO_VAZIO_TESTE) {
 colecaoDe('gabinetes/g1/equipe').set('e1', { nome: 'Ana Assessora', cargo: 'Secretária parlamentar', funcao: 'legislativo', lotacao: 'brasilia', situacao: 'ativo' });
 colecaoDe('gabinetes/g1/tarefas').set('t1', {
   titulo: 'Preparar parecer da comissão', area: 'legislativo', responsavel: 'e1',
@@ -25,6 +30,7 @@ colecaoDe('gabinetes/g1/emendas').set('em1', {
   uf: 'RS', areaDestino: 'saude', valorIndicado: 500000, valorEmpenhado: 300000,
   valorPago: 100000, fase: 'execucao',
 });
+}
 
 let proximoId = 100;
 

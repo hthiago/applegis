@@ -69,38 +69,27 @@ firebase deploy --only firestore:rules
 firebase deploy --only hosting
 ```
 
-### 5. Criar o primeiro acesso
+### 5. Fazer o primeiro acesso
 
-O sistema não tem como liberar o primeiro usuário sozinho — é preciso semear a lista de
-autorizados pelo console. No Firestore, crie manualmente:
+Abra o site e entre com sua conta Google. Como o banco está vazio, o sistema mostra a tela
+**Vamos criar o gabinete**: preencha o nome, crie, e você entra já como chefe de gabinete.
 
-**Coleção `gabinetes`** → documento novo (o ID é gerado automaticamente):
+**Faça isso logo depois de publicar as regras.** Enquanto o gabinete não existe, qualquer
+pessoa que entre pode reivindicá-lo — é a única janela aberta do sistema, e ela se fecha
+sozinha e em definitivo assim que o primeiro gabinete é criado.
 
-| Campo | Valor |
-| --- | --- |
-| `nome` | Nome do gabinete |
-| `deputado` | Nome do parlamentar |
-| `uf` | `RS` |
-| `idDeputadoCamara` | ID do deputado na Câmara (número) |
+A partir daí, use a tela **Acessos** para liberar o resto da equipe. Não é preciso voltar
+ao console do Firebase.
 
-Copie o ID do documento criado.
-
-**Coleção `autorizados`** → documento cujo **ID é o e-mail em minúsculas** da pessoa
-(por exemplo `fulano@camara.leg.br`):
-
-| Campo | Valor |
-| --- | --- |
-| `nome` | Nome da pessoa |
-| `papel` | `chefe` |
-| `gabineteId` | O ID copiado acima |
-| `areas` | lista vazia |
-| `ativo` | `true` |
-
-Pronto: essa pessoa entra pelo Google e, a partir da tela **Acessos**, libera todo o resto
-da equipe sem precisar voltar ao console.
-
-> O `idDeputadoCamara` está em
+> O ID do deputado na Câmara — campo opcional, usado depois para buscar proposições e
+> despesas — está em
 > <https://dadosabertos.camara.leg.br/api/v2/deputados?nome=SOBRENOME>.
+
+### 6. Abrir outros gabinetes (opcional)
+
+O primeiro gabinete nasce pela tela de instalação. Para atender mais de um, promova
+alguém a `admin` editando o documento correspondente em `autorizados` no console: esse
+papel não edita conteúdo, mas cria novos gabinetes e administra os acessos de todos eles.
 
 ---
 
