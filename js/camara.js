@@ -19,12 +19,36 @@ const espera = (ms) => new Promise((r) => setTimeout(r, ms));
  * é pedido para ir mais devagar, então se espera e se tenta de novo. Sem isso,
  * uma importação longa perde silenciosamente boa parte do que buscou.
  */
+/**
+ * A base explica suas recusas no corpo da resposta. Engolir esse texto e
+ * mostrar só o número transforma um erro que se conserta em dez minutos num
+ * enigma — foi o que aconteceu com o 400 de /votacoes.
+ */
+async function motivoDaRecusa(r) {
+  try {
+    const texto = await r.text();
+    const corpo = JSON.parse(texto);
+    const msg = corpo.mensagem || corpo.message || corpo.detail
+      || (Array.isArray(corpo.erros) ? corpo.erros.map((e) => e.mensagem || e).join('; ') : null);
+    return String(msg || texto).slice(0, 200);
+  } catch {
+    return '';
+  }
+}
+
 async function buscarJson(caminho, tentativas = 3) {
   for (let n = 1; ; n += 1) {
     const r = await fetch(`${BASE}${caminho}`, { headers: { Accept: 'application/json' } });
     if (r.ok) return (await r.json()).dados;
+
     const podeInsistir = (r.status === 429 || r.status >= 500) && n < tentativas;
-    if (!podeInsistir) throw new Error(`Câmara respondeu ${r.status}`);
+    if (!podeInsistir) {
+      const motivo = await motivoDaRecusa(r);
+      const erro = new Error(`Câmara respondeu ${r.status}${motivo ? ` — ${motivo}` : ''}`);
+      erro.status = r.status;
+      erro.caminho = caminho;
+      throw erro;
+    }
     await espera(600 * 2 ** (n - 1));
   }
 }
@@ -466,34 +490,90 @@ export async function importarPauta(idDeputado, dias = 7) {
 /** Início da legislatura corrente. É o recorte padrão do histórico. */
 export const INICIO_LEGISLATURA = '2023-02-01';
 
+/** Tamanho da janela de consulta. A base limita o intervalo de datas. */
+const DIAS_POR_JANELA = 30;
+
+function janelas(desde, ate) {
+  const saida = [];
+  const fim = new Date(`${ate}T00:00:00Z`);
+  let corrente = new Date(`${desde}T00:00:00Z`);
+  while (corrente <= fim) {
+    const proxima = new Date(corrente);
+    proxima.setUTCDate(proxima.getUTCDate() + DIAS_POR_JANELA - 1);
+    saida.push({
+      inicio: corrente.toISOString().slice(0, 10),
+      fim: (proxima < fim ? proxima : fim).toISOString().slice(0, 10),
+    });
+    corrente = new Date(proxima);
+    corrente.setUTCDate(corrente.getUTCDate() + 1);
+  }
+  return saida;
+}
+
 /**
- * A Câmara não publica um "extrato de votos" por parlamentar. O caminho é
- * percorrer as votações do período e, em cada uma, procurar o nome. Como isso
- * custa uma consulta por votação, a lista é peneirada antes: fica só o que
- * aconteceu nos colegiados de que o parlamentar participa, mais o Plenário.
+ * Formas de consultar /votacoes, da mais informativa para a mais conservadora.
+ *
+ * A base recusa com 400 — sem dizer qual parâmetro a incomodou — quando um
+ * valor de ordenação não é dos que ela aceita, e o conjunto aceito muda entre
+ * endpoints. Em vez de adivinhar de fora, tenta-se a mais completa e desce-se
+ * a escada até uma que passe; a que funcionou fica lembrada e as seguintes já
+ * saem certas.
+ */
+const FORMAS_DE_CONSULTA = [
+  (base) => ({ ...base, ordem: 'DESC', ordenarPor: 'dataHoraRegistro' }),
+  (base) => ({ ...base, ordem: 'DESC', ordenarPor: 'id' }),
+  (base) => ({ ...base, ordem: 'DESC' }),
+  (base) => ({ ...base }),
+];
+
+let formaAceita = null;
+
+async function consultarVotacoes(base) {
+  const inicio = formaAceita ?? 0;
+  let ultimoErro = null;
+
+  for (let i = inicio; i < FORMAS_DE_CONSULTA.length; i += 1) {
+    try {
+      const p = new URLSearchParams(FORMAS_DE_CONSULTA[i](base));
+      const dados = await buscarJson(`/votacoes?${p}`);
+      formaAceita = i;
+      return dados;
+    } catch (erro) {
+      // Só faz sentido descer a escada quando o problema é o pedido em si.
+      if (erro.status !== 400) throw erro;
+      ultimoErro = erro;
+    }
+  }
+  throw ultimoErro;
+}
+
+/**
+ * A Câmara não publica um extrato de votos por parlamentar. O caminho é
+ * percorrer as votações do período e procurar o nome em cada uma — por isso a
+ * lista é peneirada pelos colegiados dele antes de gastar uma consulta por
+ * votação.
  */
 async function votacoesDoPeriodo(desde, ate, siglas, aoProgredir) {
-  const achadas = [];
-  // A base recusa intervalos longos demais; ano a ano sempre passa.
-  for (let ano = Number(desde.slice(0, 4)); ano <= Number(ate.slice(0, 4)); ano += 1) {
-    const inicio = ano === Number(desde.slice(0, 4)) ? desde : `${ano}-01-01`;
-    const fim = ano === Number(ate.slice(0, 4)) ? ate : `${ano}-12-31`;
+  const porId = new Map();
 
-    for (let pagina = 1; pagina <= 40; pagina += 1) {
-      const p = new URLSearchParams({
-        dataInicio: inicio, dataFim: fim, itens: '200', pagina: String(pagina),
-        ordem: 'DESC', ordenarPor: 'dataHoraRegistro',
+  for (const janela of janelas(desde, ate)) {
+    for (let pagina = 1; pagina <= 20; pagina += 1) {
+      const lote = await consultarVotacoes({
+        dataInicio: janela.inicio,
+        dataFim: janela.fim,
+        itens: '100',
+        pagina: String(pagina),
       });
-      const lote = await buscarJson(`/votacoes?${p}`);
-      achadas.push(...lote);
-      aoProgredir({ fase: 'lista', total: achadas.length });
-      if (lote.length < 200) break;
+      // Janelas vizinhas podem devolver a mesma votação na borda.
+      lote.forEach((v) => porId.set(String(v.id), v));
+      aoProgredir({ fase: 'lista', total: porId.size });
+      if (lote.length < 100) break;
     }
   }
 
   // Sem sigla identificável não dá para dizer se interessa; melhor manter do
   // que descartar em silêncio.
-  return achadas.filter((v) => !v.siglaOrgao || siglas.has(v.siglaOrgao));
+  return [...porId.values()].filter((v) => !v.siglaOrgao || siglas.has(v.siglaOrgao));
 }
 
 /** O identificador da proposição votada, quando a votação o traz. */

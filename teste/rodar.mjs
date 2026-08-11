@@ -67,8 +67,14 @@ async function abrir({
 } = {}) {
   const pagina = await navegador.newPage();
   pagina.on('pageerror', (e) => conferir(`erro de página inesperado (${papel})`, false, e.message));
+  // O navegador registra no console toda resposta HTTP de erro, inclusive as
+  // que o sistema trata de propósito — a recusa da Câmara, por exemplo. Ruído
+  // de rede não é erro de aplicação; o que interessa aqui é exceção nossa.
+  const ruidoDeRede = (t) => !t.trim()
+    || /Failed to load resource|status of [45]\d\d|net::ERR/i.test(t);
+
   pagina.on('console', (m) => {
-    if (m.type() === 'error' && !ignorarConsole) {
+    if (m.type() === 'error' && !ignorarConsole && !ruidoDeRede(m.text())) {
       conferir(`erro de console inesperado (${papel})`, false, m.text());
     }
   });
@@ -122,6 +128,18 @@ async function abrir({
     } else if (/\/votacoes\/[\w-]+\/orientacoes/.test(url)) {
       dados = [{ siglaPartidoBloco: 'NOVO', orientacaoVoto: 'Sim' }];
     } else if (/\/votacoes\?/.test(url)) {
+      // Reproduz a recusa real: a base rejeita esta ordenação com 400 e explica
+      // o motivo no corpo. A consulta precisa descer para a forma seguinte
+      // sozinha, em vez de desistir da importação inteira.
+      if (/ordenarPor=dataHoraRegistro/.test(url)) {
+        rota.fulfill({
+          status: 400,
+          contentType: 'application/json',
+          headers: { 'Access-Control-Allow-Origin': '*' },
+          body: JSON.stringify({ mensagem: 'O parâmetro ordenarPor não aceita esse valor.' }),
+        });
+        return;
+      }
       // Mérito, retirada de pauta, urgência, uma fora dos colegiados dele e
       // uma simbólica — o retrato do que uma semana de Plenário produz.
       dados = (/pagina=1/.test(url) && /dataInicio=2025/.test(url)) ? [
@@ -640,6 +658,8 @@ console.log('\nHistórico por tema\n');
 
   const tabela = (await pagina.locator('.tabela tbody').innerText()).replace(/\s+/g, ' ');
 
+  conferir('a recusa da base não derruba a importação: a consulta se ajusta',
+    tabela.includes('PL 111/2025'), tabela);
   conferir('registra a votação de mérito', tabela.includes('PL 111/2025'), tabela);
   conferir('a votação em colegiado alheio fica de fora', !tabela.includes('PL 999/2025'));
   conferir('a votação simbólica não vira linha', !tabela.includes('PL 888/2025'));
