@@ -29,6 +29,26 @@ async function jaInstalado() {
   }
 }
 
+/**
+ * Falha ao consultar o banco quase sempre é configuração faltando, não defeito.
+ * Dizer qual poupa horas — a mensagem genérica anterior escondia a causa.
+ */
+function recadoDeFalha(erro) {
+  switch (erro?.code) {
+    case 'permission-denied':
+      return 'O banco recusou a consulta. Na prática isso significa que as regras de segurança não foram publicadas: abra o Firestore, aba Regras, e confira se o conteúdo é o do arquivo firestore.rules.';
+    case 'unavailable':
+    case 'deadline-exceeded':
+      return 'O banco não respondeu. Verifique a conexão e tente de novo em instantes.';
+    case 'failed-precondition':
+      return 'O Firestore deste projeto parece não estar criado, ou está com outro nome que não o padrão.';
+    case 'not-found':
+      return 'O banco de dados não foi encontrado neste projeto. Confira se o Firestore foi criado.';
+    default:
+      return `Não foi possível verificar seu acesso (${erro?.code || 'erro desconhecido'}).`;
+  }
+}
+
 const ouvintes = new Set();
 
 export function aoMudarSessao(fn) {
@@ -57,9 +77,7 @@ export function iniciarSessao() {
       await carregarAcesso(usuario);
     } catch (e) {
       console.error(e);
-      definir('sem-acesso', {
-        erro: 'Não foi possível verificar seu acesso. Tente novamente em instantes.',
-      });
+      definir('sem-acesso', { erro: recadoDeFalha(e) });
     }
   });
 }
