@@ -54,7 +54,7 @@ function nomePor(lista, id) {
 export async function painelChefia(container) {
   limpar(container).appendChild(carregando());
 
-  const [tarefas, pedidos, imprensa, atendimentos, agenda, equipe, emendas] = await Promise.all([
+  const [tarefas, pedidos, imprensa, atendimentos, agenda, equipe, emendas, proposicoes] = await Promise.all([
     listar('tarefas', { recarregar: true }),
     listar('solicitacoesAgenda', { recarregar: true }),
     listar('imprensa', { recarregar: true }),
@@ -62,7 +62,14 @@ export async function painelChefia(container) {
     listar('agenda', { recarregar: true }),
     listar('equipe'),
     listar('emendas'),
+    listar('proposicoes', { recarregar: true }),
   ]);
+
+  // Proposições que andaram nos últimos dias — o que a equipe legislativa
+  // precisa ver sem ter de abrir a lista e comparar de cabeça.
+  const mexeram = proposicoes
+    .filter((p) => p.mudouEm && diasAte(p.mudouEm) >= -7)
+    .sort((a, b) => String(b.mudouEm).localeCompare(String(a.mudouEm)));
 
   const abertas = tarefas.filter((t) => !['concluida', 'cancelada'].includes(t.status));
   const atrasadas = abertas.filter((t) => t.prazo && diasAte(t.prazo) < 0);
@@ -96,6 +103,7 @@ export async function painelChefia(container) {
     indicador('Pedidos de agenda', String(pendentesAgenda.length), pendentesAgenda.length ? 'atencao' : 'ok'),
     indicador('Imprensa em aberto', String(imprensaAberta.length), imprensaAberta.length ? 'atencao' : 'ok'),
     indicador('Atendimentos abertos', String(atendimentosAbertos.length), atendimentosAbertos.length ? 'info' : 'ok'),
+    indicador('Proposições que andaram', String(mexeram.length), mexeram.length ? 'info' : 'neutro', 'últimos 7 dias'),
     indicador('Emendas a cobrar', String(emendasParadas.length), emendasParadas.length ? 'atencao' : 'ok'),
   ]));
 
@@ -138,6 +146,16 @@ export async function painelChefia(container) {
         .map((p) => linha(p.assunto, p.solicitante,
           p.dataPretendida ? prazoMarcador(p.dataPretendida) : null)))
       : nada('Nenhum pedido aguardando decisão.'),
+  ]));
+
+  grade.appendChild(bloco('Proposições que mudaram de situação', mexeram.length ? `${mexeram.length}` : null, [
+    mexeram.length
+      ? el('ul', { class: 'lista' }, mexeram.slice(0, 8).map((p) => linha(
+        `${p.identificacao} · ${p.situacao || 'sem situação'}`,
+        [p.situacaoAnterior ? `antes: ${p.situacaoAnterior}` : null, p.orgao].filter(Boolean).join(' · '),
+        etiqueta(fmtData(p.mudouEm), 'info'),
+      )))
+      : nada('Nada se moveu nos últimos sete dias.'),
   ]));
 
   grade.appendChild(bloco('Emendas que pedem cobrança', emendasParadas.length ? `${emendasParadas.length}` : null, [

@@ -51,30 +51,62 @@ export async function detalharProposicao(id) {
   };
 }
 
+/** De quanto em quanto tempo a lista se atualiza sozinha ao ser aberta. */
+const HORAS_ENTRE_CONSULTAS = 6;
+
 /** Relê na Câmara a situação de tudo que está na lista de vigilância. */
-export async function sincronizarProposicoes() {
+export async function sincronizarProposicoes({ avisarSeVazio = true } = {}) {
   const itens = (await listar('proposicoes', { recarregar: true })).filter((i) => i.idCamara);
   if (!itens.length) {
-    aviso('Nenhuma proposição com vínculo à Câmara. Use "Buscar na Câmara" para adicionar.', 'erro');
+    if (avisarSeVazio) {
+      aviso('Nenhuma proposição com vínculo à Câmara. Use "Buscar na Câmara" para adicionar.', 'erro');
+    }
     return 0;
   }
+
+  const agora = new Date().toISOString();
   let atualizadas = 0;
+
   for (const item of itens) {
     try {
       const novo = await detalharProposicao(item.idCamara);
-      if (novo.situacao !== item.situacao || novo.orgao !== item.orgao) atualizadas += 1;
+      const mudou = novo.situacao !== item.situacao || novo.orgao !== item.orgao;
+      if (mudou) atualizadas += 1;
+
       await salvar('proposicoes', item.id, {
         ementa: novo.ementa ?? item.ementa ?? null,
         autor: novo.autor ?? item.autor ?? null,
         coautores: novo.coautores,
         situacao: novo.situacao,
         orgao: novo.orgao,
+        sincronizadoEm: agora,
+        // Guardar de onde veio é o que permite ao painel dizer o que mudou,
+        // e não apenas que algo mudou.
+        ...(mudou ? {
+          situacaoAnterior: [item.situacao, item.orgao].filter(Boolean).join(' · ') || null,
+          mudouEm: agora.slice(0, 10),
+        } : {}),
       });
     } catch (erro) {
       console.error(`Falha ao atualizar ${item.identificacao}`, erro);
     }
   }
   return atualizadas;
+}
+
+/**
+ * Consulta em segundo plano ao abrir a lista, se a última já estiver velha.
+ * Devolve null quando não havia o que fazer — a data da última consulta sai
+ * das próprias proposições, sem precisar de um registro de controle à parte.
+ */
+export async function sincronizarSeNecessario() {
+  const comVinculo = (await listar('proposicoes')).filter((i) => i.idCamara);
+  if (!comVinculo.length) return null;
+
+  const ultima = comVinculo.map((i) => i.sincronizadoEm || '').sort().pop();
+  if (ultima && Date.now() - new Date(ultima).getTime() < HORAS_ENTRE_CONSULTAS * 3600e3) return null;
+
+  return sincronizarProposicoes({ avisarSeVazio: false });
 }
 
 const TIPOS = ['PL', 'PEC', 'PLP', 'PDL', 'MPV', 'PRC', 'REQ'];

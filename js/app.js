@@ -289,6 +289,20 @@ async function desenharConteudo(alvo, areaId, abaId) {
     editavel,
     extras: modulo.importaCamara ? extrasDaCamara() : [],
   });
+
+  // Consulta a Câmara sozinha ao abrir a lista, se a última já estiver velha.
+  // Roda em segundo plano: a tela já está montada e só é redesenhada se algo
+  // tiver de fato mudado, e apenas se o usuário ainda estiver nela.
+  if (modulo.importaCamara && editavel) {
+    const rotaQuandoComecou = location.hash;
+    nucleo.camara.sincronizarSeNecessario()
+      .then((mudaram) => {
+        if (!mudaram || location.hash !== rotaQuandoComecou) return;
+        aviso(`${mudaram} proposição(ões) mudaram de situação desde a última consulta.`);
+        desenharApp();
+      })
+      .catch((erro) => console.error('Consulta automática à Câmara falhou', erro));
+  }
 }
 
 async function desenharApp() {

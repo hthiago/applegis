@@ -82,6 +82,37 @@ async function abrir({ papel = 'chefe', areas = [], bancoVazio = false } = {}) {
     body: stub,
   }));
 
+  // Duplo da base da Câmara. A lista de autores traz o proponente real no meio
+  // dos subscritores, que é exatamente o caso que confundia a importação.
+  await pagina.route(/dadosabertos\.camara\.leg\.br/, (rota) => {
+    const url = rota.request().url();
+    let dados;
+    if (/\/autores/.test(url)) {
+      dados = [
+        { nome: 'Deputado Subscritor Um', proponente: 0, ordemAssinatura: 2 },
+        { nome: 'Sóstenes Cavalcante', proponente: 1, ordemAssinatura: 1 },
+        { nome: 'Deputado Subscritor Dois', proponente: 0, ordemAssinatura: 3 },
+      ];
+    } else if (/\/proposicoes\/\d+(\?|$)/.test(url)) {
+      dados = {
+        id: 2430726,
+        siglaTipo: 'PL',
+        numero: 1904,
+        ano: 2024,
+        ementa: 'Acresce dois parágrafos ao art. 124.',
+        statusProposicao: { descricaoSituacao: 'Pronta para Pauta', siglaOrgao: 'CCJC' },
+      };
+    } else {
+      dados = [{ id: 2430726, siglaTipo: 'PL', numero: 1904, ano: 2024, ementa: 'Acresce dois parágrafos.' }];
+    }
+    rota.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      headers: { 'Access-Control-Allow-Origin': '*' },
+      body: JSON.stringify({ dados }),
+    });
+  });
+
   // Garante que o sistema se considere configurado mesmo num clone sem chaves.
   // Troca só a chave: mexer em todas as ocorrências atingiria a sentinela que
   // decide se o sistema está configurado.
@@ -196,10 +227,22 @@ console.log('\nUso normal, como chefe de gabinete\n');
     (await pagina.locator('.tabela tbody tr').first().locator('select.inline-select').nth(1)
       .inputValue()) === 'concluida');
 
+  // Ao abrir a lista, a consulta à Câmara roda sozinha e corrige situação e autoria.
   await pagina.goto(`${BASE}/#/legislativo/proposicoes`, { waitUntil: 'domcontentloaded' });
   await pagina.waitForSelector('.tabela');
-  conferir('proposição mostra só o autor principal',
-    (await pagina.locator('.tabela tbody').innerText()).includes('Sóstenes Cavalcante'));
+  await pagina.waitForFunction(
+    () => document.querySelector('.tabela tbody')?.innerText.includes('Pronta para Pauta'),
+    null,
+    { timeout: 10000 },
+  ).catch(() => {});
+
+  const textoProposicoes = await pagina.locator('.tabela tbody').innerText();
+  conferir('consulta automática atualiza a situação sem clique',
+    textoProposicoes.includes('Pronta para Pauta'));
+  conferir('mostra só o autor principal, não os subscritores',
+    textoProposicoes.includes('Sóstenes Cavalcante') && !textoProposicoes.includes('Subscritor'));
+  conferir('registra a situação anterior para o painel',
+    (await pagina.locator('.tabela tbody').innerText()).includes(new Date().toISOString().slice(8, 10)));
 
   await pagina.locator('.inline-abrir').first().click();
   await pagina.locator('.inline-entrada').first().fill('Cobrar relator na quarta.');
@@ -211,6 +254,15 @@ console.log('\nUso normal, como chefe de gabinete\n');
   await pagina.waitForSelector('.tabela');
   conferir('nota escrita na lista persiste',
     (await pagina.locator('.tabela tbody').innerText()).includes('Cobrar relator na quarta.'));
+
+  await pagina.goto(`${BASE}/#/chefia/painel`, { waitUntil: 'domcontentloaded' });
+  await pagina.waitForSelector('.indicadores');
+  const andaram = await pagina.locator('.indicador').filter({ hasText: 'Proposições que andaram' })
+    .locator('.indicador-valor').innerText();
+  conferir('painel da chefia conta as proposições que se moveram', andaram === '1', `leu ${andaram}`);
+  conferir('painel diz de onde a proposição saiu',
+    (await pagina.locator('.bloco').filter({ hasText: 'mudaram de situação' }).innerText())
+      .includes('Aguardando Despacho'));
 
   await pagina.setViewportSize({ width: 390, height: 780 });
   await pagina.goto(`${BASE}/#/administrativo/equipe`, { waitUntil: 'domcontentloaded' });

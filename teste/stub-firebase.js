@@ -30,9 +30,12 @@ colecaoDe('gabinetes/g1/emendas').set('em1', {
   uf: 'RS', areaDestino: 'saude', valorIndicado: 500000, valorEmpenhado: 300000,
   valorPago: 100000, fase: 'execucao',
 });
+// Situação propositalmente desatualizada e autoria "suja": a consulta
+// automática ao abrir a lista precisa corrigir as duas.
 colecaoDe('gabinetes/g1/proposicoes').set('p1', {
-  identificacao: 'PL 1904/2024', idCamara: 2430726, autor: 'Sóstenes Cavalcante',
-  coautores: 42, ementa: 'Acresce dois parágrafos ao art. 124.',
+  identificacao: 'PL 1904/2024', idCamara: 2430726,
+  autor: 'Fulano, Beltrano, Sicrano e mais 40',
+  ementa: 'Acresce dois parágrafos ao art. 124.',
   situacao: 'Aguardando Despacho', orgao: 'CPASF', prioridade: 'normal', notaInterna: null,
 });
 }
