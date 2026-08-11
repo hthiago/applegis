@@ -88,16 +88,37 @@ export function getDoc(ref) {
   });
 }
 
+// Registro das consultas feitas, para o teste conferir que a segunda sessão
+// pede só o que mudou em vez de reler a coleção inteira.
+globalThis.__CONSULTAS = [];
+
 export function getDocs(alvo) {
   const col = alvo.tipo === 'query' ? alvo.col : alvo;
+  globalThis.__CONSULTAS.push({
+    caminho: col.caminho,
+    operadores: (alvo.clausulas || []).map((c) => c.op).filter(Boolean),
+  });
   let itens = [...colecaoDe(col.caminho).entries()];
   if (alvo.tipo === 'query') {
     for (const c of alvo.clausulas) {
-      if (c.campo) itens = itens.filter(([, d]) => d[c.campo] === c.valor);
+      if (!c.campo) continue;
+      itens = itens.filter(([, d]) => {
+        const v = d[c.campo];
+        // A leitura incremental usa faixa; documento sem o campo fica de fora,
+        // como no Firestore de verdade.
+        if (c.op === '>') return v !== undefined && v !== null && v > c.valor;
+        if (c.op === '>=') return v !== undefined && v !== null && v >= c.valor;
+        return v === c.valor;
+      });
     }
   }
   return Promise.resolve({ docs: itens.map(([id, d]) => ({ id, data: () => d })) });
 }
+
+// Os carimbos do duplo são texto ISO, que compara na mesma ordem do relógio.
+export const Timestamp = {
+  fromMillis: (ms) => new Date(ms).toISOString(),
+};
 
 export function setDoc(ref, dados, opcoes = {}) {
   const col = colecaoDe(ref.colecao);

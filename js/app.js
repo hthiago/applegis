@@ -136,12 +136,25 @@ function telaPrimeiroAcesso() {
   ]);
 }
 
+/**
+ * Sair apaga a cópia local antes de encerrar a sessão. Num computador
+ * compartilhado do gabinete, o que ficou guardado no navegador continuaria
+ * legível por quem sentasse depois.
+ */
+async function sair() {
+  try {
+    await nucleo.dados.esquecerCopiaLocal();
+  } finally {
+    await nucleo.fb.sair();
+  }
+}
+
 function telaSemAcesso() {
   const s = nucleo.sessaoMod.sessao;
   return cartao('Sua conta ainda não tem acesso', [
     s.erro || `Entramos com ${s.usuario?.email || 'sua conta'}, mas ela não está na lista de pessoas autorizadas deste sistema.`,
     'Peça à chefia de gabinete para liberar este e-mail e entre novamente.',
-  ], el('button', { class: 'btn btn--fantasma', texto: 'Sair', onclick: () => nucleo.fb.sair() }));
+  ], el('button', { class: 'btn btn--fantasma', texto: 'Sair', onclick: () => sair() }));
 }
 
 // ────────────────────────────── navegação ──────────────────────────────
@@ -185,7 +198,7 @@ function cabecalho() {
         el('span', { class: 'usuario-nome', texto: s.membro.nome }),
         el('span', { class: 'usuario-papel', texto: PAPEIS[s.membro.papel]?.nome || s.membro.papel }),
       ]),
-      el('button', { class: 'btn btn--fantasma btn--pequeno', texto: 'Sair', onclick: () => nucleo.fb.sair() }),
+      el('button', { class: 'btn btn--fantasma btn--pequeno', texto: 'Sair', onclick: () => sair() }),
     ]),
   ]);
 }
@@ -447,7 +460,7 @@ async function iniciar() {
   }
 
   try {
-    const [fb, sessaoMod, crud, admin, paineis, camara, minuta] = await Promise.all([
+    const [fb, sessaoMod, crud, admin, paineis, camara, minuta, dados] = await Promise.all([
       import('./firebase.js'),
       import('./sessao.js'),
       import('./crud.js'),
@@ -455,8 +468,9 @@ async function iniciar() {
       import('./paineis.js'),
       import('./camara.js'),
       import('./minuta.js'),
+      import('./dados.js'),
     ]);
-    nucleo = { fb, sessaoMod, crud, admin, paineis, camara, minuta };
+    nucleo = { fb, sessaoMod, crud, admin, paineis, camara, minuta, dados };
   } catch (erro) {
     console.error(erro);
     limpar(raiz).appendChild(telaFalhaCarregamento());

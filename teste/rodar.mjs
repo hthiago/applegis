@@ -455,7 +455,61 @@ conferir('escritório no estado não edita a agenda', !escritorio['chefia/agenda
 const leitor = await editaveis('leitor', []);
 conferir('somente leitura não edita nada', TELAS.every((t) => !leitor[t]));
 
-// ────────── suíte 3: gravação recusada precisa aparecer, não sumir ──────────
+// ───────────── suíte 3: a segunda sessão não relê tudo de novo ─────────────
+//
+// Depois de recarregar a página, o duplo do servidor volta ao estado inicial e
+// não tem mais as proposições importadas. Se elas continuarem na tela, vieram
+// da cópia local — e a consulta ao servidor precisa ter sido por faixa, só do
+// que mudou, e não a coleção inteira.
+
+console.log('\nLeitura incremental\n');
+
+{
+  const pagina = await abrir();
+  await pagina.goto(`${BASE}/#/legislativo/autorias`, { waitUntil: 'domcontentloaded' });
+  await pagina.waitForSelector('.segmentos');
+  await pagina.getByRole('button', { name: /Importar da Câmara/ }).click();
+  await pagina.waitForFunction(
+    () => document.querySelectorAll('.segmento-conta')[0]?.textContent === '1',
+    null,
+    { timeout: 15000 },
+  ).catch(() => {});
+
+  await pagina.reload({ waitUntil: 'domcontentloaded' });
+  await pagina.waitForSelector('.tabela', { timeout: 10000 }).catch(() => {});
+  await pagina.waitForTimeout(300);
+
+  conferir('a produção sobrevive ao recarregamento, sem o servidor',
+    (await pagina.locator('.tabela tbody').innerText()).includes('PL 111/2025'));
+
+  const consultas = await pagina.evaluate(
+    () => globalThis.__CONSULTAS.filter((c) => c.caminho.endsWith('/autorias')),
+  );
+  conferir('a segunda sessão consulta o servidor por faixa, não inteiro',
+    consultas.length > 0 && consultas.every((c) => c.operadores.includes('>')),
+    JSON.stringify(consultas));
+
+  // Sair precisa levar a cópia local junto: o computador é compartilhado.
+  await pagina.getByRole('button', { name: /^Sair$/ }).first().click();
+  await pagina.waitForTimeout(400);
+  const sobrou = await pagina.evaluate(async () => {
+    const bd = await new Promise((ok) => {
+      const p = indexedDB.open('applegis', 1);
+      p.onsuccess = () => ok(p.result);
+      p.onerror = () => ok(null);
+    });
+    if (!bd) return -1;
+    return new Promise((ok) => {
+      const p = bd.transaction('documentos', 'readonly').objectStore('documentos').count();
+      p.onsuccess = () => ok(p.result);
+      p.onerror = () => ok(-1);
+    });
+  });
+  conferir('sair apaga a cópia local', sobrou === 0, `${sobrou} registros restaram`);
+  await pagina.close();
+}
+
+// ────────── suíte 4: gravação recusada precisa aparecer, não sumir ──────────
 //
 // Era esse o buraco: as regras recusavam a coleção, cada falha era engolida
 // num try/catch, e o botão terminava anunciando sucesso sobre uma lista vazia.
@@ -476,7 +530,7 @@ console.log('\nFalha de gravação\n');
   await pagina.close();
 }
 
-// ───────────── suíte 4: as regras cobrem todas as coleções da tela ─────────────
+// ───────────── suíte 5: as regras cobrem todas as coleções da tela ─────────────
 //
 // Coleção que não está no mapa `areaDa` das regras é recusada em toda gravação,
 // e o sintoma é cruel: a tela funciona, o botão diz que importou, e nada

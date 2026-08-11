@@ -273,8 +273,10 @@ export async function importarProducao(idDeputado, aoProgredir = () => {}) {
   const achadas = await assinaturasDe(idDeputado, aoProgredir);
   const registros = achadas.map((p) => ({
     // O ID da Câmara é o identificador do documento: reimportar atualiza o
-    // registro em vez de criar um segundo.
-    id: String(p.id),
+    // registro em vez de criar um segundo. Um registro antigo, de quando o
+    // identificador era sorteado, continua sendo o alvo — senão a reimportação
+    // criaria uma segunda linha para a mesma proposição.
+    id: jaTemos.get(String(p.id))?.id || String(p.id),
     dados: {
       idCamara: p.id,
       identificacao: `${p.siglaTipo} ${p.numero}/${p.ano}`,
@@ -291,8 +293,16 @@ export async function importarProducao(idDeputado, aoProgredir = () => {}) {
   if (gravacao.falhas.length) throw gravacao.falhas[0];
   aoProgredir({ fase: 'gravadas', total: achadas.length, gravadas: gravacao.gravados });
 
+  // O que segue trabalha sobre esta cópia em memória, e não sobre releituras do
+  // banco: reler milhares de registros entre uma etapa e outra custaria mais do
+  // que a importação inteira.
+  const emMaos = new Map(registros.map((r) => {
+    const anterior = jaTemos.get(String(r.dados.idCamara)) || {};
+    return [r.id, { ...anterior, ...r.dados, id: r.id }];
+  }));
+
   // ── 2. o papel e o tema de cada uma ──
-  const porClassificar = (await listar('autorias', { recarregar: true }))
+  const porClassificar = [...emMaos.values()]
     .filter((i) => i.idCamara && (!i.papel || i.papel === 'pendente'));
 
   const classificados = [];
@@ -320,9 +330,10 @@ export async function importarProducao(idDeputado, aoProgredir = () => {}) {
     }
   });
   await salvarEmLote('autorias', classificados);
+  classificados.forEach((c) => emMaos.set(c.id, { ...emMaos.get(c.id), ...c.dados }));
 
   // ── 3. o detalhe do que ele apresentou ──
-  const daCasa = (await listar('autorias', { recarregar: true }))
+  const daCasa = [...emMaos.values()]
     .filter((i) => i.papel === 'autor' && i.idCamara && !i.detalhadoEm);
 
   const detalhados = [];

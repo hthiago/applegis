@@ -2,7 +2,7 @@
 // uma queda de rede. Os dados do gabinete nunca são cacheados — eles vêm sempre
 // do Firestore, que já tem cache próprio e controle de permissão.
 
-const VERSAO = 'gabinete-v1';
+const VERSAO = 'gabinete-v2';
 const CASCA = [
   './',
   './index.html',
@@ -18,6 +18,8 @@ const CASCA = [
   './js/paineis.js',
   './js/admin.js',
   './js/camara.js',
+  './js/minuta.js',
+  './js/cachelocal.js',
   './js/ui.js',
 ];
 

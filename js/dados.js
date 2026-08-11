@@ -1,8 +1,9 @@
 import {
-  db, collection, doc, getDocs, getDoc, addDoc, updateDoc, deleteDoc, serverTimestamp,
-  writeBatch,
+  db, collection, doc, getDocs, getDoc, addDoc, updateDoc, serverTimestamp,
+  writeBatch, query, where, Timestamp,
 } from './firebase.js';
 import { sessao } from './sessao.js';
+import * as local from './cachelocal.js';
 
 /**
  * Acesso ao Firestore sempre dentro do gabinete da sessão.
@@ -25,12 +26,80 @@ export function invalidar(colecao) {
   else cache.clear();
 }
 
+/**
+ * O carimbo de atualização chega como Timestamp do Firestore em produção e
+ * como texto no ambiente de teste. Reduzir os dois a milissegundos deixa a
+ * comparação igual nos dois lugares.
+ */
+function emMilissegundos(valor) {
+  if (!valor) return 0;
+  if (typeof valor.toMillis === 'function') return valor.toMillis();
+  const n = Date.parse(valor);
+  return Number.isNaN(n) ? 0 : n;
+}
+
+/**
+ * Margem de segurança da leitura incremental.
+ *
+ * O carimbo é do servidor e a gravação pode demorar a chegar; buscar a partir
+ * de alguns minutos antes do último carimbo conhecido custa reler um punhado de
+ * registros recentes e evita o único erro que importa aqui, que é uma alteração
+ * passar despercebida e ficar invisível para sempre.
+ */
+const FOLGA_MS = 5 * 60 * 1000;
+
+/**
+ * Lê uma coleção, buscando no servidor apenas o que mudou.
+ *
+ * A cópia local guarda os registros e até quando ela está em dia. A partir daí
+ * a consulta ao Firestore pede só `atualizadoEm > último carimbo`, o que numa
+ * coleção de milhares de proposições quase sempre devolve zero documentos.
+ * Sem cópia local, ou quando o navegador não a oferece, lê tudo como antes.
+ */
+async function sincronizar(colecao) {
+  const gabinete = sessao.membro?.gabineteId;
+  const guardados = await local.ler(gabinete, colecao);
+  const desde = guardados?.length ? await local.marco(gabinete, colecao) : null;
+
+  const alvo = desde
+    ? query(ref(colecao), where('atualizadoEm', '>', Timestamp.fromMillis(desde - FOLGA_MS)))
+    : ref(colecao);
+
+  const snap = await getDocs(alvo);
+  const mudados = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+
+  const juntos = new Map((desde ? guardados : []).map((i) => [i.id, i]));
+  for (const i of mudados) juntos.set(i.id, i);
+
+  // Apagar de verdade impediria a leitura incremental de perceber a remoção —
+  // o registro simplesmente não voltaria na consulta e continuaria na cópia
+  // local para sempre. Por isso `remover` marca, e é aqui que a marca some.
+  const removidos = [...juntos.values()].filter((i) => i.removidoEm).map((i) => i.id);
+  removidos.forEach((id) => juntos.delete(id));
+
+  // O marco sai sempre de um carimbo do servidor. Usar o relógio do navegador
+  // como substituto pareceria funcionar e falharia justamente na máquina com a
+  // hora errada, pulando alterações que nunca mais seriam buscadas. Sem carimbo
+  // novo, o marco anterior permanece — no limite se relê tudo, que é lento e
+  // correto, e nunca incompleto.
+  const novoMarco = mudados.reduce((maior, i) => Math.max(maior, emMilissegundos(i.atualizadoEm)), 0);
+  await local.guardar(gabinete, colecao, mudados.filter((i) => !i.removidoEm), removidos);
+  if (novoMarco) await local.anotarMarco(gabinete, colecao, novoMarco);
+
+  return [...juntos.values()];
+}
+
 export async function listar(colecao, { recarregar = false } = {}) {
   if (!recarregar && cache.has(colecao)) return cache.get(colecao);
-  const snap = await getDocs(ref(colecao));
-  const itens = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  const itens = await sincronizar(colecao);
   cache.set(colecao, itens);
   return itens;
+}
+
+/** Descarta a cópia local — usado ao sair, e quando se quer reler tudo. */
+export async function esquecerCopiaLocal() {
+  cache.clear();
+  await local.limpar();
 }
 
 export async function obter(colecao, id) {
@@ -99,8 +168,21 @@ export async function salvarEmLote(colecao, itens) {
   return { gravados, falhas };
 }
 
+/**
+ * Remove um registro.
+ *
+ * A remoção é marcada, não executada: um documento apagado de fato desaparece
+ * da consulta incremental sem deixar rastro, e cada navegador continuaria
+ * mostrando a cópia local dele indefinidamente. A marca viaja como qualquer
+ * outra alteração e some de todos os lugares. Como efeito colateral útil, uma
+ * exclusão acidental continua recuperável no console do Firebase.
+ */
 export async function remover(colecao, id) {
-  await deleteDoc(doc(db, 'gabinetes', sessao.membro.gabineteId, colecao, id));
+  await updateDoc(doc(db, 'gabinetes', sessao.membro.gabineteId, colecao, id), {
+    removidoEm: serverTimestamp(),
+    removidoPor: sessao.membro.email,
+    atualizadoEm: serverTimestamp(),
+  });
   invalidar(colecao);
 }
 

@@ -5,6 +5,7 @@ import {
 import {
   initializeFirestore, collection, doc, getDoc, getDocs, setDoc, addDoc, updateDoc,
   deleteDoc, query, where, orderBy, limit, serverTimestamp, onSnapshot, writeBatch,
+  Timestamp,
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
 import { FIREBASE_CONFIG, FIRESTORE_DATABASE_ID } from './config.js';
@@ -40,5 +41,5 @@ export function sair() {
 export {
   onAuthStateChanged, collection, doc, getDoc, getDocs, setDoc, addDoc,
   updateDoc, deleteDoc, query, where, orderBy, limit, serverTimestamp, onSnapshot,
-  writeBatch,
+  writeBatch, Timestamp,
 };
