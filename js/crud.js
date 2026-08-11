@@ -162,6 +162,19 @@ function celula(campo, item, refs, ctx) {
 
   if (campo.t === 'trilha') return trilha(item[campo.k]);
 
+  // Alguns valores só fazem sentido acompanhados de outro — uma situação sem a
+  // data desde quando vigora parece contradizer o resto da linha.
+  if (campo.subLinha && item[campo.subLinha.campo]) {
+    const apoio = item[campo.subLinha.campo];
+    return el('div', { class: 'celula-dupla' }, [
+      el('span', { texto: textoDe(campo, item, refs) }),
+      el('span', {
+        class: 'celula-sub',
+        texto: campo.subLinha.prefixo + (/^\d{4}-\d{2}-\d{2}/.test(String(apoio)) ? fmtData(apoio) : apoio),
+      }),
+    ]);
+  }
+
   if (campo.t === 'select') {
     const o = opcao(campo, item[campo.k]);
     return o ? etiqueta(o.l, o.cor || 'neutro') : document.createTextNode('—');

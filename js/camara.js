@@ -49,6 +49,18 @@ function autoria(autores) {
 const PASSOS_GUARDADOS = 12;
 
 /**
+ * Órgãos por onde a matéria apenas passa. A Mesa recebe o processo toda vez
+ * que o Presidente precisa despachar o próximo destino, então ela reaparece
+ * entre cada comissão e polui o caminho sem dizer nada sobre ele.
+ */
+const ORGAOS_DE_PASSAGEM = ['MESA'];
+
+/** Junta entradas vizinhas no mesmo órgão. */
+function semRepeticoes(passos) {
+  return passos.filter((p, i, todos) => i === 0 || todos[i - 1].orgao !== p.orgao);
+}
+
+/**
  * Reduz o histórico de tramitações ao caminho percorrido: um passo por órgão,
  * com a data de chegada. A base repete o mesmo órgão a cada despacho, então
  * entradas consecutivas no mesmo lugar viram um passo só.
@@ -57,14 +69,20 @@ function trilhaDe(tramitacoes) {
   const cronologica = [...tramitacoes]
     .sort((a, b) => String(a.dataHora).localeCompare(String(b.dataHora)));
 
-  const passos = [];
-  for (const t of cronologica) {
-    const orgao = t.siglaOrgao;
-    if (!orgao) continue;
-    if (passos[passos.length - 1]?.orgao === orgao) continue;
-    passos.push({ orgao, data: String(t.dataHora).slice(0, 10) });
-  }
-  return passos.slice(-PASSOS_GUARDADOS);
+  return semRepeticoes(
+    cronologica
+      .filter((t) => t.siglaOrgao)
+      .map((t) => ({ orgao: t.siglaOrgao, data: String(t.dataHora).slice(0, 10) })),
+  );
+}
+
+/**
+ * O caminho que interessa: sem os órgãos de passagem. Tirá-los deixa vizinhos
+ * repetidos — CDHMIR, Mesa, CDHMIR vira CDHMIR duas vezes —, por isso a
+ * segunda limpeza.
+ */
+function trilhaEnxuta(passos) {
+  return semRepeticoes(passos.filter((p) => !ORGAOS_DE_PASSAGEM.includes(p.orgao)));
 }
 
 export async function detalharProposicao(id) {
@@ -74,15 +92,23 @@ export async function detalharProposicao(id) {
     buscarJson(`/proposicoes/${id}/tramitacoes`).catch(() => []),
   ]);
 
-  const trilha = trilhaDe(tramitacoes);
+  const completa = trilhaDe(tramitacoes);
+  const enxuta = trilhaEnxuta(completa);
+  const status = dados.statusProposicao || {};
+
   return {
     idCamara: dados.id,
     identificacao: `${dados.siglaTipo} ${dados.numero}/${dados.ano}`,
     ementa: dados.ementa || null,
     ...autoria(autores),
-    situacao: dados.statusProposicao?.descricaoSituacao || dados.statusProposicao?.descricaoTramitacao || null,
-    orgao: dados.statusProposicao?.siglaOrgao || trilha[trilha.length - 1]?.orgao || null,
-    tramitacao: trilha,
+    situacao: status.descricaoSituacao || status.descricaoTramitacao || null,
+    // Situação e órgão descrevem coisas diferentes — o estado da matéria e
+    // onde ela está. Sem a data, a combinação parece contraditória.
+    situacaoEm: status.dataHora ? String(status.dataHora).slice(0, 10) : null,
+    despacho: status.despacho || null,
+    orgao: status.siglaOrgao || enxuta[enxuta.length - 1]?.orgao || null,
+    tramitacao: enxuta.slice(-PASSOS_GUARDADOS),
+    tramitacaoCompleta: completa.slice(-PASSOS_GUARDADOS * 2),
   };
 }
 
@@ -114,8 +140,11 @@ export async function sincronizarProposicoes({ avisarSeVazio = true } = {}) {
         coautores: novo.coautores,
         autoresTodos: novo.autoresTodos ?? item.autoresTodos ?? null,
         situacao: novo.situacao,
+        situacaoEm: novo.situacaoEm,
+        despacho: novo.despacho,
         orgao: novo.orgao,
         tramitacao: novo.tramitacao,
+        tramitacaoCompleta: novo.tramitacaoCompleta,
         sincronizadoEm: agora,
         // Guardar de onde veio é o que permite ao painel dizer o que mudou,
         // e não apenas que algo mudou.

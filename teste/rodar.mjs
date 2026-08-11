@@ -99,8 +99,10 @@ async function abrir({ papel = 'chefe', areas = [], bancoVazio = false } = {}) {
       // O mesmo órgão aparece a cada despacho; a trilha deve juntar repetições.
       dados = [
         { dataHora: '2024-05-14T10:00', siglaOrgao: 'PLEN' },
+        { dataHora: '2024-05-20T10:00', siglaOrgao: 'MESA' },
         { dataHora: '2024-06-02T10:00', siglaOrgao: 'CCJC' },
         { dataHora: '2024-06-20T10:00', siglaOrgao: 'CCJC' },
+        { dataHora: '2024-07-01T10:00', siglaOrgao: 'MESA' },
         { dataHora: '2025-01-15T10:00', siglaOrgao: 'CPASF' },
       ];
     } else if (/\/proposicoes\/\d+(\?|$)/.test(url)) {
@@ -110,7 +112,12 @@ async function abrir({ papel = 'chefe', areas = [], bancoVazio = false } = {}) {
         numero: 1904,
         ano: 2024,
         ementa: 'Acresce dois parágrafos ao art. 124.',
-        statusProposicao: { descricaoSituacao: 'Pronta para Pauta', siglaOrgao: 'CCJC' },
+        statusProposicao: {
+          descricaoSituacao: 'Pronta para Pauta',
+          siglaOrgao: 'CPASF',
+          dataHora: '2025-01-15T10:00',
+          despacho: 'Às Comissões de Constituição e Justiça.',
+        },
       };
     } else {
       dados = [{ id: 2430726, siglaTipo: 'PL', numero: 1904, ano: 2024, ementa: 'Acresce dois parágrafos.' }];
@@ -252,8 +259,10 @@ console.log('\nUso normal, como chefe de gabinete\n');
   conferir('mostra só o autor principal, não os subscritores',
     textoProposicoes.includes('Sóstenes Cavalcante') && !textoProposicoes.includes('Subscritor'));
   const passos = pagina.locator('.tabela tbody .trilha-passo');
-  conferir('trilha junta despachos repetidos no mesmo órgão',
-    (await passos.count()) === 3, `${await passos.count()} passos`);
+  const textoTrilha = await pagina.locator('.tabela tbody .trilha').innerText();
+  conferir('trilha junta despachos repetidos e omite a Mesa',
+    (await passos.count()) === 3, `${await passos.count()} passos: ${textoTrilha.replace(/\s+/g, ' ')}`);
+  conferir('a Mesa não aparece na coluna', !textoTrilha.includes('MESA'));
   conferir('trilha mostra o caminho percorrido, do primeiro ao último órgão',
     (await passos.first().innerText()).includes('PLEN')
     && (await passos.last().innerText()).includes('CPASF'));
@@ -261,6 +270,8 @@ console.log('\nUso normal, como chefe de gabinete\n');
     (await pagina.locator('.tabela tbody .trilha-passo--atual').innerText()).includes('CPASF'));
   conferir('trilha traz a data de chegada em cada órgão',
     (await passos.first().innerText()).includes('14/05/24'));
+  conferir('situação vem acompanhada de desde quando',
+    (await pagina.locator('.tabela tbody .celula-sub').first().innerText()).includes('desde 15/01/2025'));
 
   await pagina.locator('.inline-abrir').first().click();
   await pagina.locator('.inline-entrada').first().fill('Cobrar relator na quarta.');
