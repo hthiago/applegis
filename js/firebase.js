@@ -7,7 +7,7 @@ import {
   deleteDoc, query, where, orderBy, limit, serverTimestamp, onSnapshot,
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-import { FIREBASE_CONFIG } from './config.js';
+import { FIREBASE_CONFIG, FIRESTORE_DATABASE_ID } from './config.js';
 
 export const app = initializeApp(FIREBASE_CONFIG);
 export const auth = getAuth(app);
@@ -24,7 +24,7 @@ export const auth = getAuth(app);
  */
 export const db = initializeFirestore(app, {
   experimentalForceLongPolling: true,
-});
+}, FIRESTORE_DATABASE_ID);
 
 const provider = new GoogleAuthProvider();
 provider.setCustomParameters({ prompt: 'select_account' });

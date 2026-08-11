@@ -12,6 +12,19 @@ export const FIREBASE_CONFIG = {
 
 export const CONFIGURADO = !FIREBASE_CONFIG.apiKey.startsWith('COLE_AQUI');
 
+/**
+ * ID do banco no Firestore.
+ *
+ * Um projeto pode ter vários bancos, e o SDK só encontra aquele cujo ID for
+ * informado aqui. Deixe '(default)' se o seu tiver o nome padrão; se tiver
+ * outro nome, escreva-o exatamente como aparece no console — banco errado dá
+ * erro de "cliente offline", que parece problema de rede e não é.
+ *
+ * As regras de segurança pertencem a cada banco: publique-as no que estiver
+ * apontado aqui.
+ */
+export const FIRESTORE_DATABASE_ID = 'appgab';
+
 export const AREAS = [
   { id: 'chefia', sigla: 'CHF', nome: 'Chefia de gabinete', descricao: 'Painel, tarefas e agenda do deputado' },
   { id: 'administrativo', sigla: 'ADM', nome: 'Administrativo', descricao: 'Equipe, viagens, ofícios, cota e atendimento' },

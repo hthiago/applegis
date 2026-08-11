@@ -40,10 +40,11 @@ Para acrescentar um campo — ou uma tela inteira — mexe-se em `js/modulos.js`
 
 1. Abra <https://console.firebase.google.com> e crie um projeto.
 2. Em **Criação › Firestore Database**, crie o banco. Três escolhas importam:
-   - **ID do banco: `(default)`.** O sistema fala com o banco padrão. Um banco com
-     outro nome existe, aparece no console e ainda assim não é encontrado — e o SDK
-     relata isso como "cliente offline", mandando você procurar problema de rede.
-   - **Modo nativo**, não modo Datastore. O SDK do Firebase não fala com o segundo.
+   - **Anote o ID do banco.** Um projeto aceita vários, e o SDK só acha aquele que
+     estiver escrito em `FIRESTORE_DATABASE_ID`, em `js/config.js`. Banco errado dá
+     erro de "cliente offline" — que parece problema de rede e não é.
+   - **Edição Padrão** e **modo nativo**. O SDK do Firebase não fala com o modo
+     Datastore, e a edição Corporativos tem preço e comportamento diferentes.
    - Região `southamerica-east1` (São Paulo). Essa não dá para mudar depois.
 3. Em **Criação › Authentication › Sign-in method**, ative o provedor **Google**.
 4. Ainda em Authentication, aba **Settings › Authorized domains**, confira que o domínio
