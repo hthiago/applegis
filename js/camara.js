@@ -269,6 +269,85 @@ export async function importarProducao(idDeputado, aoProgredir = () => {}) {
   return { total: achadas.length, importadas: novas.length };
 }
 
+/** Órgãos em que o parlamentar tem assento hoje, mais o Plenário. */
+async function orgaosDoDeputado(idDeputado) {
+  const orgaos = await buscarJson(`/deputados/${idDeputado}/orgaos?itens=100`).catch(() => []);
+  const atuais = orgaos
+    .filter((o) => !o.dataFim || o.dataFim >= new Date().toISOString().slice(0, 10))
+    .map((o) => o.siglaOrgao)
+    .filter(Boolean);
+  return new Set(['PLEN', ...atuais]);
+}
+
+function comoData(d) {
+  return d.toISOString().slice(0, 10);
+}
+
+/**
+ * Traz a pauta dos próximos dias: as sessões e reuniões dos órgãos em que o
+ * parlamentar tem assento, com os itens de cada uma.
+ *
+ * Cada item entra com a orientação em branco — a decisão é do gabinete, não da
+ * importação. O que a Câmara fornece é o que está em pauta, não o que fazer.
+ */
+export async function importarPauta(idDeputado, dias = 7) {
+  const hoje = new Date();
+  const ate = new Date(hoje.getTime() + dias * 86400e3);
+
+  const [meusOrgaos, jaTemos] = await Promise.all([
+    orgaosDoDeputado(idDeputado),
+    listar('pauta', { recarregar: true }),
+  ]);
+
+  const conhecidos = new Set(jaTemos.map((p) => `${p.data}|${p.orgao}|${p.item}`));
+
+  const p = new URLSearchParams({
+    dataInicio: comoData(hoje),
+    dataFim: comoData(ate),
+    itens: '100',
+    ordem: 'ASC',
+    ordenarPor: 'dataHoraInicio',
+  });
+  const eventos = await buscarJson(`/eventos?${p}`);
+
+  const relevantes = eventos.filter((e) => (e.orgaos || []).some((o) => meusOrgaos.has(o.sigla)));
+  let importados = 0;
+
+  await emLotes(relevantes, CONSULTAS_EM_PARALELO, async (evento) => {
+    try {
+      const itens = await buscarJson(`/eventos/${evento.id}/pauta`).catch(() => []);
+      const orgao = (evento.orgaos || []).find((o) => meusOrgaos.has(o.sigla))?.sigla || 'PLEN';
+      const data = String(evento.dataHoraInicio || '').slice(0, 10);
+
+      for (const item of itens) {
+        const prop = item.proposicao_ || {};
+        const nome = prop.siglaTipo
+          ? `${prop.siglaTipo} ${prop.numero}/${prop.ano}${prop.ementa ? ` — ${prop.ementa}` : ''}`
+          : (item.titulo || item.topico || '').trim();
+        if (!nome) continue;
+
+        const chave = `${data}|${orgao}|${nome}`;
+        if (conhecidos.has(chave)) continue;
+        conhecidos.add(chave);
+
+        await salvar('pauta', null, {
+          data,
+          orgao,
+          item: nome,
+          posicionamento: 'definir',
+          relator: item.relator?.nome || null,
+          idEventoCamara: evento.id,
+        });
+        importados += 1;
+      }
+    } catch (erro) {
+      console.error(`Falha ao ler a pauta do evento ${evento.id}`, erro);
+    }
+  });
+
+  return { eventos: relevantes.length, importados };
+}
+
 const TIPOS = ['PL', 'PEC', 'PLP', 'PDL', 'MPV', 'PRC', 'REQ'];
 
 export function abrirBuscaCamara(aoImportar) {

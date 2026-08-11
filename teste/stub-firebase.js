@@ -34,6 +34,15 @@ colecaoDe('gabinetes/g1/emendas').set('em1', {
 });
 // Situação propositalmente desatualizada e autoria "suja": a consulta
 // automática ao abrir a lista precisa corrigir as duas.
+colecaoDe('gabinetes/g1/valores').set('v1', {
+  tema: 'Segurança pública', posicao: 'favoravel', inegociavel: true,
+  diretriz: 'O mandato defende o direito do cidadão de bem à legítima defesa.',
+  fundamentacao: 'O monopólio estatal da força não alcança a zona rural.',
+});
+colecaoDe('gabinetes/g1/producao').set('pr1', {
+  titulo: 'Porte rural', tipo: 'pl', tema: 'Segurança pública', status: 'rascunho',
+  teor: 'Assegurar porte de arma de fogo ao produtor rural em sua propriedade.',
+});
 colecaoDe('gabinetes/g1/proposicoes').set('p1', {
   identificacao: 'PL 1904/2024', idCamara: 2430726,
   autor: 'Fulano, Beltrano, Sicrano e mais 40',

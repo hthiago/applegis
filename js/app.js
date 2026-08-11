@@ -291,6 +291,48 @@ function extrasDaProducao() {
   ];
 }
 
+function extrasDaPauta() {
+  return [
+    (recarregar) => el('button', {
+      class: 'btn btn--fantasma',
+      texto: 'Importar pauta da semana',
+      onclick: async (e) => {
+        const btn = e.currentTarget;
+        const idDeputado = nucleo.sessaoMod.sessao.gabinete?.idDeputadoCamara;
+        if (!idDeputado) {
+          aviso('Informe o ID do deputado na Câmara em Acessos → Dados do gabinete.', 'erro');
+          return;
+        }
+        btn.disabled = true;
+        btn.textContent = 'Consultando…';
+        try {
+          const r = await nucleo.camara.importarPauta(idDeputado);
+          aviso(r.importados
+            ? `${r.importados} itens de pauta importados de ${r.eventos} sessões e reuniões.`
+            : `Nada novo. As ${r.eventos} sessões da semana já estavam registradas.`);
+          recarregar();
+        } catch (erro) {
+          console.error(erro);
+          aviso('Não foi possível consultar a pauta na Câmara agora.', 'erro');
+          btn.disabled = false;
+          btn.textContent = 'Importar pauta da semana';
+        }
+      },
+    }),
+  ];
+}
+
+function acoesDaMinuta() {
+  return [
+    (peca, aoConcluir) => el('button', {
+      class: 'btn btn--fantasma',
+      type: 'button',
+      texto: 'Gerar minuta',
+      onclick: () => nucleo.minuta.abrirMinuta(peca, aoConcluir),
+    }),
+  ];
+}
+
 async function desenharConteudo(alvo, areaId, abaId) {
   if (areaId === 'acessos') {
     await nucleo.admin.renderAdmin(alvo);
@@ -321,8 +363,11 @@ async function desenharConteudo(alvo, areaId, abaId) {
   let extras = [];
   if (modulo.importaCamara) extras = extrasDaCamara();
   else if (modulo.importaProducao) extras = extrasDaProducao();
+  else if (modulo.importaPauta) extras = extrasDaPauta();
 
-  await nucleo.crud.renderModulo(alvo, modulo, { editavel, extras });
+  const acoesItem = modulo.geraMinuta ? acoesDaMinuta() : [];
+
+  await nucleo.crud.renderModulo(alvo, modulo, { editavel, extras, acoesItem });
 
   // Consulta a Câmara sozinha ao abrir a lista, se a última já estiver velha.
   // Roda em segundo plano: a tela já está montada e só é redesenhada se algo
@@ -394,15 +439,16 @@ async function iniciar() {
   }
 
   try {
-    const [fb, sessaoMod, crud, admin, paineis, camara] = await Promise.all([
+    const [fb, sessaoMod, crud, admin, paineis, camara, minuta] = await Promise.all([
       import('./firebase.js'),
       import('./sessao.js'),
       import('./crud.js'),
       import('./admin.js'),
       import('./paineis.js'),
       import('./camara.js'),
+      import('./minuta.js'),
     ]);
-    nucleo = { fb, sessaoMod, crud, admin, paineis, camara };
+    nucleo = { fb, sessaoMod, crud, admin, paineis, camara, minuta };
   } catch (erro) {
     console.error(erro);
     limpar(raiz).appendChild(telaFalhaCarregamento());

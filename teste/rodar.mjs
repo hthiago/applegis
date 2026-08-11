@@ -95,6 +95,23 @@ async function abrir({ papel = 'chefe', areas = [], bancoVazio = false } = {}) {
         { id: 111, siglaTipo: 'PL', numero: 111, ano: 2025, dataApresentacao: '2025-03-10T10:00' },
         { id: 222, siglaTipo: 'PL', numero: 222, ano: 2025, dataApresentacao: '2025-04-20T10:00' },
       ] : [];
+    } else if (/\/deputados\/\d+\/orgaos/.test(url)) {
+      dados = [
+        { siglaOrgao: 'CCJC', nomeOrgao: 'Constituição e Justiça', dataFim: null },
+        { siglaOrgao: 'CSPCCO', nomeOrgao: 'Segurança Pública', dataFim: null },
+        { siglaOrgao: 'CAPADR', nomeOrgao: 'Agricultura', dataFim: '2020-01-01' },
+      ];
+    } else if (/\/eventos\/\d+\/pauta/.test(url)) {
+      dados = [
+        { ordem: 1, proposicao_: { siglaTipo: 'PL', numero: 77, ano: 2026, ementa: 'Dispõe sobre X.' },
+          relator: { nome: 'Dep. Relatora' } },
+        { ordem: 2, proposicao_: { siglaTipo: 'REQ', numero: 12, ano: 2026, ementa: 'Requer audiência.' } },
+      ];
+    } else if (/\/eventos\?/.test(url)) {
+      dados = [
+        { id: 900, dataHoraInicio: '2026-08-12T14:00', orgaos: [{ sigla: 'CSPCCO' }] },
+        { id: 901, dataHoraInicio: '2026-08-13T10:00', orgaos: [{ sigla: 'CVT' }] },
+      ];
     } else if (/\/temas/.test(url)) {
       dados = [{ tema: idProposicao === '111' ? 'Saúde' : 'Segurança pública' }];
     } else if (/\/autores/.test(url)) {
@@ -329,6 +346,44 @@ console.log('\nUso normal, como chefe de gabinete\n');
     naSubscricao.includes('PL 222/2024') && !naSubscricao.includes('PL 111/2024'));
   conferir('cada subaba agrupa pelo próprio tema',
     (await pagina.locator('.grupo-nome').first().innerText()).includes('SEGURANÇA'));
+
+  // Produção do gabinete não aceita cadastro manual.
+  await pagina.goto(`${BASE}/#/legislativo/autorias`, { waitUntil: 'domcontentloaded' });
+  await pagina.waitForSelector('.modulo-topo');
+  conferir('produção do gabinete não oferece cadastro manual',
+    (await pagina.getByRole('button', { name: /Nova proposição/ }).count()) === 0);
+
+  // Pauta importada da Câmara, só dos órgãos do parlamentar.
+  await pagina.goto(`${BASE}/#/legislativo/pauta`, { waitUntil: 'domcontentloaded' });
+  await pagina.waitForSelector('.modulo-topo');
+  await pagina.getByRole('button', { name: /Importar pauta da semana/ }).click();
+  await pagina.waitForFunction(
+    () => document.querySelector('.tabela tbody')?.innerText.includes('PL 77/2026'),
+    null, { timeout: 15000 },
+  ).catch(() => {});
+  const textoPauta = await pagina.locator('.tabela tbody').innerText();
+  conferir('importa os itens de pauta dos órgãos do parlamentar', textoPauta.includes('PL 77/2026'));
+  conferir('ignora reuniões de órgãos alheios ao parlamentar', !textoPauta.includes('CVT'));
+  conferir('orientação entra em branco, para o gabinete decidir', textoPauta.includes('A definir'));
+
+  // Minuta: regras de redação + valores do mandato + teor descrito pela equipe.
+  await pagina.goto(`${BASE}/#/legislativo/producao`, { waitUntil: 'domcontentloaded' });
+  await pagina.waitForSelector('.tabela');
+  await pagina.locator('.tabela tbody tr').first().click();
+  await pagina.waitForSelector('.modal');
+  await pagina.getByRole('button', { name: /Gerar minuta/ }).click();
+  await pagina.waitForSelector('.minuta-prompt');
+  const instrucoes = await pagina.locator('.minuta-prompt').inputValue();
+  conferir('minuta traz as regras de técnica legislativa',
+    instrucoes.includes('Lei Complementar 95/1998'));
+  conferir('minuta traz a diretriz do mandato sobre o tema',
+    instrucoes.includes('legítima defesa'));
+  conferir('minuta traz o teor descrito pela equipe',
+    instrucoes.includes('produtor rural'));
+  conferir('minuta proíbe inventar dados', instrucoes.includes('[VERIFICAR]'));
+  await pagina.getByRole('button', { name: 'Fechar' }).click();
+  await pagina.waitForTimeout(200);
+  await pagina.keyboard.press('Escape');
 
   await pagina.goto(`${BASE}/#/chefia/painel`, { waitUntil: 'domcontentloaded' });
   await pagina.waitForSelector('.indicadores');

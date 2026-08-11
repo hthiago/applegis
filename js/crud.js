@@ -289,7 +289,7 @@ function lerFormulario(modulo, form) {
   return dados;
 }
 
-export async function abrirFormulario(modulo, item, aoSalvar) {
+export async function abrirFormulario(modulo, item, aoSalvar, acoesItem = []) {
   const refs = await carregarReferencias(modulo);
   const editando = !!item?.id;
 
@@ -308,6 +308,8 @@ export async function abrirFormulario(modulo, item, aoSalvar) {
   const aoTeclar = (e) => { if (e.key === 'Escape') fechar(); };
 
   form.appendChild(el('div', { class: 'modal-acoes' }, [
+    // Ações específicas do módulo — só fazem sentido sobre um registro salvo.
+    ...(editando ? acoesItem.map((criar) => criar(item, () => { fechar(); aoSalvar(); })) : []),
     el('button', { class: 'btn btn--fantasma', type: 'button', texto: 'Cancelar', onclick: fechar }),
     btnSalvar,
   ]));
@@ -348,7 +350,7 @@ export async function abrirFormulario(modulo, item, aoSalvar) {
 
 // ──────────────────────────────── listagem ────────────────────────────────
 
-export async function renderModulo(container, modulo, { editavel, extras = [] }) {
+export async function renderModulo(container, modulo, { editavel, extras = [], acoesItem = [] }) {
   limpar(container).appendChild(carregando());
 
   let itens;
@@ -370,7 +372,7 @@ export async function renderModulo(container, modulo, { editavel, extras = [] })
     segmento: modulo.segmentos ? modulo.segmentos.op[0].v : null,
   };
 
-  const recarregar = () => renderModulo(container, modulo, { editavel, extras });
+  const recarregar = () => renderModulo(container, modulo, { editavel, extras, acoesItem });
 
   const busca = el('input', {
     type: 'search',
@@ -400,13 +402,14 @@ export async function renderModulo(container, modulo, { editavel, extras = [] })
       busca,
       filtro,
       ...(editavel ? extras.map((criar) => criar(recarregar)) : []),
-      editavel
+      editavel && !modulo.semCriacao
         ? el('button', {
           class: 'btn btn--primario',
           texto: `Nova ${modulo.singular}`,
-          onclick: () => abrirFormulario(modulo, null, recarregar),
+          onclick: () => abrirFormulario(modulo, null, recarregar, acoesItem),
         })
-        : el('span', { class: 'somente-leitura', texto: 'Somente leitura' }),
+        : null,
+      editavel ? null : el('span', { class: 'somente-leitura', texto: 'Somente leitura' }),
     ]),
   ]);
 
@@ -458,11 +461,11 @@ export async function renderModulo(container, modulo, { editavel, extras = [] })
         itens.length
           ? 'Nenhum registro corresponde ao filtro.'
           : `Nenhuma ${modulo.singular} cadastrada ainda.`,
-        editavel && !itens.length
+        editavel && !itens.length && !modulo.semCriacao
           ? el('button', {
             class: 'btn btn--primario',
             texto: `Cadastrar a primeira ${modulo.singular}`,
-            onclick: () => abrirFormulario(modulo, null, recarregar),
+            onclick: () => abrirFormulario(modulo, null, recarregar, acoesItem),
           })
           : null,
       ));
@@ -475,9 +478,9 @@ export async function renderModulo(container, modulo, { editavel, extras = [] })
         tabindex: '0',
         role: 'button',
         'aria-label': `Abrir ${modulo.singular}`,
-        onclick: () => abrirFormulario(modulo, item, recarregar),
+        onclick: () => abrirFormulario(modulo, item, recarregar, acoesItem),
         onkeydown: (e) => {
-          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); abrirFormulario(modulo, item, recarregar); }
+          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); abrirFormulario(modulo, item, recarregar, acoesItem); }
         },
       });
       colunas.forEach((c) => {

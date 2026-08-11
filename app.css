@@ -738,6 +738,18 @@ input:focus, select:focus, textarea:focus { border-color: var(--verde); outline:
 
 .resultado p { font-size: 13px; color: var(--ink-2); margin-top: 3px; }
 
+/* ─────────────── geração de minuta ─────────────── */
+.minuta-prompt {
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.5;
+  background: var(--surface-2);
+  color: var(--ink-2);
+  max-height: 320px;
+}
+
+.minuta-resultado { font-size: 14px; line-height: 1.6; min-height: 180px; }
+
 /* ─────────────────────────── avisos ─────────────────────────── */
 .avisos {
   position: fixed;
