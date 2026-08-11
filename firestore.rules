@@ -119,7 +119,10 @@ service cloud.firestore {
     match /gabinetes/{g} {
       allow read: if ehMembro(g) || ehAdminGlobal();
       allow create: if ehAdminGlobal() || (temEmail() && naoInstalado());
-      allow update, delete: if ehAdminGlobal();
+      // A chefia mantém os dados do próprio gabinete — nome, parlamentar e o
+      // ID na Câmara, de que dependem as integrações. Apagar, só o admin.
+      allow update: if ehAdminGlobal() || ehChefia(g);
+      allow delete: if ehAdminGlobal();
 
       // Espelho do acesso dentro do gabinete. A pessoa só grava o próprio
       // documento, e apenas com o papel que a lista de autorizados atribuiu —

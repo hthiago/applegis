@@ -1,5 +1,5 @@
 import {
-  db, collection, doc, getDocs, setDoc, deleteDoc, addDoc, serverTimestamp, query, where,
+  db, collection, doc, getDocs, setDoc, deleteDoc, addDoc, updateDoc, serverTimestamp, query, where,
 } from './firebase.js';
 import { sessao } from './sessao.js';
 import { AREAS, PAPEIS, ehAdmin } from './config.js';
@@ -80,6 +80,8 @@ export async function renderAdmin(container) {
       }),
     ]),
   ]));
+
+  if (sessao.gabinete) container.appendChild(blocoGabinete(recarregar));
 
   if (podeGerirTudo()) {
     container.appendChild(el('section', { class: 'bloco' }, [
@@ -164,6 +166,97 @@ export async function renderAdmin(container) {
     ]));
   }
   container.appendChild(corpo);
+}
+
+/** Dados do próprio gabinete. O ID na Câmara é o que destrava as integrações. */
+function blocoGabinete(aoConcluir) {
+  const g = sessao.gabinete;
+  const linhas = [
+    ['Nome', g.nome || '—'],
+    ['Parlamentar', g.deputado || '—'],
+    ['UF', g.uf || '—'],
+    ['ID na Câmara', g.idDeputadoCamara || 'não informado'],
+  ];
+
+  return el('section', { class: 'bloco' }, [
+    el('header', { class: 'bloco-topo' }, [
+      el('h2', { texto: 'Dados do gabinete' }),
+      podeGerirAcessos()
+        ? el('button', { class: 'btn btn--fantasma btn--pequeno', texto: 'Editar', onclick: () => formGabineteAtual(aoConcluir) })
+        : null,
+    ]),
+    el('ul', { class: 'lista' }, linhas.map(([rotulo, valor]) => el('li', { class: 'linha' }, [
+      el('div', { class: 'linha-texto' }, [
+        el('span', { class: 'linha-secundaria', texto: rotulo }),
+        el('span', { class: 'linha-principal', texto: String(valor) }),
+      ]),
+    ]))),
+    g.idDeputadoCamara
+      ? null
+      : el('p', {
+        class: 'campo-dica',
+        texto: 'Sem o ID na Câmara, o acompanhamento de proposições e a conferência da cota não conseguem buscar os dados do parlamentar.',
+      }),
+  ]);
+}
+
+function formGabineteAtual(aoConcluir) {
+  const g = sessao.gabinete;
+  const form = el('form', { class: 'form' });
+  const nome = el('input', { type: 'text', required: true });
+  const deputado = el('input', { type: 'text' });
+  const uf = el('input', { type: 'text', maxlength: '2' });
+  const idCamara = el('input', { type: 'number', inputmode: 'numeric' });
+  nome.value = g.nome || '';
+  deputado.value = g.deputado || '';
+  uf.value = g.uf || '';
+  idCamara.value = g.idDeputadoCamara || '';
+
+  form.append(
+    el('div', { class: 'campo' }, [el('label', { texto: 'Nome do gabinete *' }), nome]),
+    el('div', { class: 'campo' }, [el('label', { texto: 'Parlamentar' }), deputado]),
+    el('div', { class: 'linha-campos' }, [
+      el('div', { class: 'campo' }, [el('label', { texto: 'UF' }), uf]),
+      el('div', { class: 'campo' }, [el('label', { texto: 'ID na Câmara' }), idCamara]),
+    ]),
+    el('p', {
+      class: 'campo-dica',
+      texto: 'O ID está em dadosabertos.camara.leg.br/api/v2/deputados?nome=SOBRENOME — é o campo "id" do resultado.',
+    }),
+  );
+
+  const btn = el('button', { class: 'btn btn--primario', type: 'submit', texto: 'Salvar' });
+  const fechar = modal('Dados do gabinete', form);
+  form.appendChild(el('div', { class: 'modal-acoes' }, [
+    el('button', { class: 'btn btn--fantasma', type: 'button', texto: 'Cancelar', onclick: () => fechar() }),
+    btn,
+  ]));
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    btn.disabled = true;
+    btn.textContent = 'Salvando…';
+    const dados = {
+      nome: nome.value.trim(),
+      deputado: deputado.value.trim() || null,
+      uf: uf.value.trim().toUpperCase() || null,
+      idDeputadoCamara: idCamara.value ? Number(idCamara.value) : null,
+      atualizadoEm: serverTimestamp(),
+      atualizadoPor: sessao.membro.email,
+    };
+    try {
+      await updateDoc(doc(db, 'gabinetes', g.id), dados);
+      Object.assign(sessao.gabinete, dados);
+      aviso('Dados do gabinete atualizados.');
+      fechar();
+      aoConcluir();
+    } catch (erro) {
+      console.error(erro);
+      aviso('Não foi possível salvar os dados do gabinete.', 'erro');
+      btn.disabled = false;
+      btn.textContent = 'Salvar';
+    }
+  });
 }
 
 function modal(titulo, form) {
