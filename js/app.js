@@ -427,6 +427,68 @@ function acaoAcompanhar(item, recarregar) {
   });
 }
 
+/**
+ * Importação das emendas por planilha.
+ *
+ * A execução de emendas mora no Portal da Transparência, no Transferegov e no
+ * Fundo Nacional de Saúde, e nenhum dos três entrega os dados a um site no
+ * navegador — o Portal exige chave de API, que não pode ficar em código
+ * público, e nenhum libera a chamada de outra origem. A exportação em planilha
+ * traz os mesmos números, é pública e o gabinete já a baixa hoje.
+ */
+function extrasDasEmendas() {
+  return [
+    (recarregar) => {
+      const escolher = el('input', {
+        type: 'file',
+        accept: '.csv,.txt,text/csv,text/plain',
+        style: 'display:none',
+      });
+
+      const btn = el('button', {
+        class: 'btn btn--fantasma',
+        texto: 'Importar planilha',
+        title: 'Portal da Transparência, Transferegov, SIOP ou Fundo Nacional de Saúde',
+        onclick: () => escolher.click(),
+      });
+
+      escolher.addEventListener('change', async () => {
+        const arquivo = escolher.files?.[0];
+        if (!arquivo) return;
+        btn.disabled = true;
+        btn.textContent = 'Lendo…';
+        try {
+          const nomeAutor = nucleo.sessaoMod.sessao.gabinete?.deputado || null;
+          const r = await nucleo.emendas.importarPlanilha(arquivo, { nomeAutor });
+
+          // O funil inteiro. O passo que mais falha em silêncio é o filtro por
+          // autor: o nome parlamentar nem sempre é o nome cadastrado aqui, e
+          // sem esse número uma importação vazia parece um arquivo errado.
+          aviso([
+            `${r.novas} emendas novas, ${r.atualizadas} atualizadas.`,
+            `Planilha lida como ${r.origem}, ${r.linhas} linhas`,
+            r.deOutroAutor
+              ? `${r.deOutroAutor} eram de outros parlamentares (filtrei por "${r.nomeUsado}")`
+              : null,
+            !r.temColunaAutor ? 'a planilha não traz coluna de autor, então importei tudo' : null,
+            r.semChave ? `${r.semChave} linhas sem código, proposta ou convênio` : null,
+          ].filter(Boolean).join(' · '), (r.novas + r.atualizadas) ? 'ok' : 'erro');
+          recarregar();
+        } catch (erro) {
+          console.error(erro);
+          aviso(`Não foi possível ler a planilha: ${erro.message || erro}`, 'erro');
+        } finally {
+          escolher.value = '';
+          btn.disabled = false;
+          btn.textContent = 'Importar planilha';
+        }
+      });
+
+      return el('span', { class: 'importador' }, [btn, escolher]);
+    },
+  ];
+}
+
 function acoesDaMinuta() {
   return [
     (peca, aoConcluir) => el('button', {
@@ -470,6 +532,7 @@ async function desenharConteudo(alvo, areaId, abaId) {
   else if (modulo.importaProducao) extras = extrasDaProducao();
   else if (modulo.importaPauta) extras = extrasDaPauta();
   else if (modulo.importaVotacoes) extras = extrasDasVotacoes();
+  else if (modulo.importaEmendas) extras = extrasDasEmendas();
 
   const acoesItem = modulo.geraMinuta ? acoesDaMinuta() : [];
   const acoesLinha = modulo.enviaParaAcompanhamento ? [acaoAcompanhar] : [];
@@ -546,7 +609,7 @@ async function iniciar() {
   }
 
   try {
-    const [fb, sessaoMod, crud, admin, paineis, camara, minuta, dados] = await Promise.all([
+    const [fb, sessaoMod, crud, admin, paineis, camara, minuta, dados, emendas] = await Promise.all([
       import('./firebase.js'),
       import('./sessao.js'),
       import('./crud.js'),
@@ -555,8 +618,9 @@ async function iniciar() {
       import('./camara.js'),
       import('./minuta.js'),
       import('./dados.js'),
+      import('./emendas.js'),
     ]);
-    nucleo = { fb, sessaoMod, crud, admin, paineis, camara, minuta, dados };
+    nucleo = { fb, sessaoMod, crud, admin, paineis, camara, minuta, dados, emendas };
   } catch (erro) {
     console.error(erro);
     limpar(raiz).appendChild(telaFalhaCarregamento());

@@ -698,9 +698,16 @@ export const MODULOS = [
     area: 'orcamento',
     nome: 'Emendas',
     singular: 'emenda',
-    descricao: 'Emendas do mandato: destino, valores e fase de execução, ligadas a quem pediu.',
+    descricao: 'Emendas do mandato — individuais, de bancada e de comissão — com a execução conferida contra a planilha oficial.',
     ordenar: { campo: 'ano', dir: 'desc' },
-    busca: ['codigo', 'beneficiario', 'municipio', 'objeto'],
+    busca: ['codigo', 'beneficiario', 'municipio', 'objeto', 'proposta'],
+    importaEmendas: true,
+    facetas: [
+      { campo: 'tipo', l: 'Tipo' },
+      { campo: 'ano', l: 'Ano', ordem: 'valor-desc' },
+      { campo: 'fase', l: 'Fase' },
+      { campo: 'uf', l: 'UF' },
+    ],
     campos: [
       { k: 'codigo', l: 'Código da emenda', t: 'texto', lista: true },
       { k: 'ano', l: 'Ano', t: 'numero', req: true, lista: true },
@@ -709,6 +716,7 @@ export const MODULOS = [
         { v: 'especial', l: 'Transferência especial' },
         { v: 'bancada', l: 'Bancada' },
         { v: 'comissao', l: 'Comissão' },
+        { v: 'relator', l: 'Relator-geral' },
       ] },
       { k: 'beneficiario', l: 'Beneficiário', t: 'texto', req: true, lista: true },
       { k: 'municipio', l: 'Município', t: 'texto', lista: true },
@@ -720,9 +728,15 @@ export const MODULOS = [
         { v: 'agricultura', l: 'Agricultura' }, { v: 'outro', l: 'Outro' },
       ] },
       { k: 'objeto', l: 'Objeto', t: 'area' },
+      // A escada do dinheiro, como a execução orçamentária de fato acontece.
+      // Sem liquidado e sem restos a pagar, uma emenda paga no ano seguinte
+      // aparece como se nada tivesse saído.
       { k: 'valorIndicado', l: 'Valor indicado', t: 'dinheiro', lista: true },
       { k: 'valorEmpenhado', l: 'Empenhado', t: 'dinheiro', lista: true },
+      { k: 'valorLiquidado', l: 'Liquidado', t: 'dinheiro' },
       { k: 'valorPago', l: 'Pago', t: 'dinheiro', lista: true },
+      { k: 'restosInscritos', l: 'Restos a pagar inscritos', t: 'dinheiro' },
+      { k: 'restosPagos', l: 'Restos a pagar pagos', t: 'dinheiro' },
       { k: 'fase', l: 'Fase', t: 'select', padrao: 'indicada', lista: true, inline: true, op: [
         { v: 'indicada', l: 'Indicada', cor: 'neutro' },
         { v: 'empenhada', l: 'Empenhada', cor: 'info' },
@@ -736,6 +750,16 @@ export const MODULOS = [
         dica: 'Cadastre a liderança ou prefeitura em Contatos para ligar a emenda a ela.' },
       { k: 'responsavel', l: 'Responsável no gabinete', t: 'ref', ref: 'equipe', rotulo: 'nome' },
       { k: 'observacoes', l: 'Observações', t: 'area' },
+      // O que veio da planilha, guardado como veio: quando um número não bate,
+      // é por aqui que se descobre se o erro é de leitura ou da fonte.
+      { k: 'proposta', l: 'Nº da proposta', t: 'texto' },
+      { k: 'instrumento', l: 'Nº do convênio ou instrumento', t: 'texto' },
+      { k: 'funcao', l: 'Função orçamentária', t: 'texto' },
+      { k: 'situacaoNaFonte', l: 'Situação na fonte', t: 'texto' },
+      { k: 'autorNaFonte', l: 'Autor como consta na fonte', t: 'texto' },
+      { k: 'fonte', l: 'Planilha de origem', t: 'texto' },
+      { k: 'atualizadoNaFonte', l: 'Atualizado na fonte em', t: 'data' },
+      { k: 'importadoEm', l: 'Importado em', t: 'data' },
     ],
   },
 ];

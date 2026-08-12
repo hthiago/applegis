@@ -813,7 +813,134 @@ console.log('\nHistórico por tema\n');
   await pagina.close();
 }
 
-// ────────── suíte 6: leitura política do voto (sem navegador) ──────────
+// ────────── suíte 6: leitura das planilhas de emendas (sem navegador) ──────────
+//
+// A execução de emendas chega por arquivo, e cada sistema escreve o seu de um
+// jeito. Separador, codificação e número à brasileira são onde a importação
+// erra calada — um valor lido errado vira uma cobrança errada a uma prefeitura.
+
+console.log('\nPlanilhas de emenda\n');
+
+{
+  const pl = await import('../js/planilha.js');
+  const em = await import('../js/emendas.js');
+
+  conferir('número à brasileira vira número',
+    pl.numeroBr('1.234.567,89') === 1234567.89
+    && pl.numeroBr('R$ 500.000,00') === 500000
+    && pl.numeroBr('0,50') === 0.5);
+  conferir('ponto de milhar sem decimal não vira centavo',
+    pl.numeroBr('1.234') === 1234, String(pl.numeroBr('1.234')));
+  conferir('célula vazia é ausência, não zero',
+    pl.numeroBr('') === null && pl.numeroBr('-') === null);
+
+  // O objeto de um convênio quase sempre tem ponto e vírgula e quebra de linha.
+  const csv = 'Código da Emenda;Ano da Emenda;Autor da Emenda;Localidade do gasto;Valor Empenhado;Valor Pago\n'
+    + '202512340001;2025;MARCEL VAN HATTEM;ERECHIM - RS;"1.000.000,00";"250.000,00"\n'
+    + '202512340002;2025;OUTRO DEPUTADO;PASSO FUNDO - RS;"900.000,00";"0,00"\n';
+  const lido = pl.lerCsv(csv);
+  conferir('reconhece o separador e o cabeçalho',
+    lido.cabecalho.length === 6 && lido.linhas.length === 2, JSON.stringify(lido.cabecalho));
+
+  const mapa = em.mapearColunas(lido.cabecalho);
+  conferir('mapeia as colunas do Portal da Transparência',
+    mapa.codigo === 0 && mapa.ano === 1 && mapa.autor === 2 && mapa.valorEmpenhado === 4 && mapa.valorPago === 5,
+    JSON.stringify(mapa));
+  conferir('identifica de onde a planilha veio',
+    em.origemDaPlanilha(['Código da Emenda', 'Valor Restos A Pagar Inscritos']) === 'Portal da Transparência');
+  conferir('reconhece a planilha do Transferegov',
+    em.origemDaPlanilha(['Nº Proposta', 'Convenente', 'Valor Global']) === 'Transferegov');
+
+  conferir('separa município e UF da coluna de localidade',
+    em.separarLocalidade('ERECHIM - RS').municipio === 'ERECHIM'
+    && em.separarLocalidade('ERECHIM - RS').uf === 'RS');
+  conferir('localidade só com UF não vira nome de município',
+    em.separarLocalidade('RS').municipio === null && em.separarLocalidade('RS').uf === 'RS');
+
+  conferir('a chave concilia pelo código e ano',
+    em.chaveDaLinha({ codigo: '202512340001', ano: 2025 }) === '2025-202512340001');
+  conferir('sem código, a proposta serve de chave',
+    em.chaveDaLinha({ proposta: '045678/2025' }) === 'prop-045678-2025');
+  conferir('linha sem nenhuma identificação não recebe chave',
+    em.chaveDaLinha({ beneficiario: 'Prefeitura' }) === null);
+
+  // Arquivo em ISO-8859-1, que é como boa parte das exportações ainda sai.
+  const latin = new Uint8Array([0x53, 0xc3, 0xa3, 0x6f]); // "São" em UTF-8
+  conferir('lê arquivo em UTF-8', pl.decodificar(latin.buffer) === 'São');
+  const iso = new Uint8Array([0x53, 0xe3, 0x6f]); // "São" em ISO-8859-1
+  conferir('lê arquivo em ISO-8859-1 sem estragar o acento',
+    pl.decodificar(iso.buffer) === 'São', pl.decodificar(iso.buffer));
+}
+
+// ── a mesma planilha, agora entrando pela tela ──
+{
+  const pagina = await abrir();
+  await pagina.goto(`${BASE}/#/orcamento/emendas`, { waitUntil: 'domcontentloaded' });
+  await pagina.waitForSelector('.modulo-topo');
+
+  // Duas linhas do parlamentar e uma de outro, como vem o arquivo do Portal da
+  // Transparência: ele traz as emendas de todo mundo.
+  const planilha = [
+    'Código da Emenda;Ano da Emenda;Tipo de Emenda;Autor da Emenda;Localidade do gasto;Valor Empenhado;Valor Liquidado;Valor Pago;Valor Restos A Pagar Inscritos',
+    '202512340001;2025;Individual;Deputada Teste;ERECHIM - RS;"1.000.000,00";"400.000,00";"250.000,00";"150.000,00"',
+    '202512340002;2025;Bancada;Deputada Teste;PASSO FUNDO - RS;"2.000.000,00";"0,00";"0,00";"0,00"',
+    '202512340003;2025;Individual;Outro Parlamentar;CANOAS - RS;"900.000,00";"0,00";"0,00";"0,00"',
+  ].join('\n');
+
+  await pagina.setInputFiles('.importador input[type=file]', {
+    name: '2025_Emendas.csv', mimeType: 'text/csv', buffer: Buffer.from(planilha, 'utf-8'),
+  });
+  await pagina.waitForTimeout(900);
+
+  const recado = await pagina.locator('.aviso').first().innerText().catch(() => '');
+  conferir('a planilha é reconhecida e importada',
+    /2 emendas novas/.test(recado) && /Portal da Transparência/.test(recado),
+    recado.replace(/\s+/g, ' '));
+  conferir('o funil diz quantas linhas eram de outro parlamentar',
+    /1 eram de outros parlamentares/.test(recado), recado.replace(/\s+/g, ' '));
+
+  const tabela = (await pagina.locator('.tabela tbody').innerText()).replace(/\s+/g, ' ');
+  conferir('a emenda de outro parlamentar não entra',
+    !tabela.includes('CANOAS'), tabela);
+  conferir('o valor à brasileira chega como dinheiro na tela',
+    tabela.includes('1,0 mi') || tabela.includes('1.000.000'), tabela);
+  conferir('emenda de bancada é reconhecida pelo tipo',
+    tabela.includes('Bancada'), tabela);
+
+  // Reimportar o mesmo arquivo não pode duplicar nada.
+  const antes = await pagina.locator('.tabela tbody tr').count();
+  await pagina.setInputFiles('.importador input[type=file]', {
+    name: '2025_Emendas.csv', mimeType: 'text/csv', buffer: Buffer.from(planilha, 'utf-8'),
+  });
+  await pagina.waitForTimeout(900);
+  const recado2 = await pagina.locator('.aviso').last().innerText().catch(() => '');
+  conferir('reimportar atualiza em vez de duplicar',
+    (await pagina.locator('.tabela tbody tr').count()) === antes && /2 atualizadas/.test(recado2),
+    `${antes} linhas · ${recado2.replace(/\s+/g, ' ')}`);
+
+  await pagina.close();
+}
+
+// Arquivo que não é de emendas precisa dizer isso, não gravar lixo. Numa página
+// à parte porque a recusa vai de propósito para o console.
+{
+  const pagina = await abrir({ ignorarConsole: true });
+  await pagina.goto(`${BASE}/#/orcamento/emendas`, { waitUntil: 'domcontentloaded' });
+  await pagina.waitForSelector('.modulo-topo');
+  await pagina.setInputFiles('.importador input[type=file]', {
+    name: 'lista.csv', mimeType: 'text/csv',
+    buffer: Buffer.from('Nome;Telefone\nFulano;5199999', 'utf-8'),
+  });
+  await pagina.waitForTimeout(700);
+  const recusa = await pagina.locator('.aviso--erro').first().innerText().catch(() => '');
+  conferir('planilha sem colunas de valor é recusada com explicação',
+    /colunas de valor/.test(recusa), recusa.replace(/\s+/g, ' '));
+  conferir('a recusa não grava nada',
+    !(await pagina.locator('.tabela tbody').innerText()).includes('Fulano'));
+  await pagina.close();
+}
+
+// ────────── suíte 7: leitura política do voto (sem navegador) ──────────
 //
 // É a parte mais fácil de errar do sistema inteiro: "Sim" numa retirada de
 // pauta é voto CONTRA a matéria. Um histórico que registre só Sim e Não
@@ -884,7 +1011,7 @@ console.log('\nLeitura política do voto\n');
     v.seguiuOrientacao('sim', 'Sim') === true && v.seguiuOrientacao('nao', 'Sim') === false);
 }
 
-// ───────────── suíte 7: as regras cobrem todas as coleções da tela ─────────────
+// ───────────── suíte 8: as regras cobrem todas as coleções da tela ─────────────
 //
 // Coleção que não está no mapa `areaDa` das regras é recusada em toda gravação,
 // e o sintoma é cruel: a tela funciona, o botão diz que importou, e nada
