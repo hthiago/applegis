@@ -309,10 +309,61 @@ export function doPortal(r) {
  * existe para que um comportamento inesperado da fonte não vire um laço infinito
  * consumindo a cota do gabinete.
  */
-export async function consultarPortal({ nomeAutor, ano = null, aoProgredir = () => {} }) {
+/** Primeiro ano de emenda impositiva individual. Antes disso não há o que buscar. */
+const ANO_INICIAL = 2019;
+
+/** Percorre as páginas de uma consulta até a fonte se esgotar. */
+async function paginarPortal({ consultarFonte, parametros, jaVistos, funil, aoProgredir, rotulo }) {
+  const achadas = [];
+
+  for (let pagina = 1; pagina <= PAGINAS_MAXIMAS; pagina += 1) {
+    const r = await consultarFonte('portal-emendas', { ...parametros, pagina });
+    const lote = Array.isArray(r.dados) ? r.dados : [];
+    funil.paginas += 1;
+
+    // Página vazia é o fim da lista. Página que só repete o que já veio
+    // significa que a fonte ignorou o número da página — sem essa guarda, a
+    // consulta giraria para sempre queimando a cota do gabinete.
+    if (!lote.length) break;
+
+    let novasNaPagina = 0;
+    for (const bruto of lote) {
+      const chave = String(bruto.codigoEmenda ?? bruto.id ?? JSON.stringify(bruto));
+      if (jaVistos.has(chave)) continue;
+      jaVistos.add(chave);
+      novasNaPagina += 1;
+      achadas.push(bruto);
+    }
+
+    funil.linhas += lote.length;
+    aoProgredir({ rotulo, paginas: funil.paginas, trazidas: jaVistos.size });
+    if (!novasNaPagina) break;
+  }
+
+  return achadas;
+}
+
+/**
+ * Consulta o Portal da Transparência pela ponte no servidor.
+ *
+ * A consulta é feita ano a ano, e não de uma vez. Sem o filtro de ano, a base
+ * devolveu cinquenta registros para um mandato que atravessa sete exercícios —
+ * comportamento que não está documentado e que eu não tenho como investigar
+ * daqui. Pedir cada ano explicitamente contorna qualquer recorte que a fonte
+ * aplique por conta própria, e custa poucas páginas a mais.
+ *
+ * A varredura sem filtro vem primeiro, de propósito: se o ano não for um filtro
+ * aceito, ela sozinha já traz o que houver, e as demais só repetem — o que a
+ * deduplicação absorve sem gravar nada em dobro.
+ */
+export async function consultarPortal({ nomeAutor, aoProgredir = () => {} }) {
   if (!nomeAutor) throw new Error('Informe o nome do parlamentar em Acessos → Dados do gabinete.');
 
   const { consultarFonte } = await import('./fontes.js');
+
+  // O Portal casa o nome pela forma exata em que o guarda: caixa alta, sem
+  // acento. Mandar como o gabinete escreve devolve zero sem erro nenhum.
+  const nomeNaBase = nomeParaBusca(nomeAutor);
 
   const funil = {
     origem: 'Portal da Transparência (consulta direta)',
@@ -322,55 +373,51 @@ export async function consultarPortal({ nomeAutor, ano = null, aoProgredir = () 
     novas: 0,
     atualizadas: 0,
     temColunaAutor: true,
-    nomeUsado: nomeAutor,
+    nomeUsado: nomeNaBase,
     paginas: 0,
     reconhecidos: 0,
+    porAno: {},
   };
 
-  // O Portal casa o nome pela forma exata em que o guarda: caixa alta, sem
-  // acento. Mandar como o gabinete escreve devolve zero sem erro nenhum.
-  const nomeNaBase = nomeParaBusca(nomeAutor);
-
-  const brutas = [];
-  let amostra = null;
   const jaVistos = new Set();
+  const bruteza = [];
+  let amostra = null;
 
-  for (let pagina = 1; pagina <= PAGINAS_MAXIMAS; pagina += 1) {
-    const r = await consultarFonte('portal-emendas', { nomeAutor: nomeNaBase, ano, pagina });
-    const lote = Array.isArray(r.dados) ? r.dados : [];
-    funil.paginas = pagina;
-    if (!amostra && lote.length) amostra = lote[0];
+  const anos = [null];
+  for (let a = ANO_INICIAL; a <= new Date().getFullYear(); a += 1) anos.push(a);
 
-    // Página vazia é o fim da lista. Página que só repete o que já veio
-    // significa que a fonte ignorou o número da página — sem essa guarda, a
-    // consulta giraria para sempre queimando a cota do gabinete.
-    if (!lote.length) break;
-    const antesDaPagina = jaVistos.size;
-    lote.forEach((x) => jaVistos.add(String(x.codigoEmenda ?? x.id ?? JSON.stringify(x))));
-    if (jaVistos.size === antesDaPagina) break;
-
-    funil.linhas += lote.length;
-
-    for (const bruto of lote) {
-      const normalizado = doPortal(bruto);
-
-      // Reconhecido é o registro do qual se conseguiu tirar o código da emenda.
-      // Nenhum reconhecido em toda a consulta não é "não achou nada": é a forma
-      // dos campos ter mudado, e as duas coisas exigem providências opostas.
-      if (normalizado.codigo) funil.reconhecidos += 1;
-
-      // A API filtra por nome, mas com casamento parcial: conferir de novo aqui
-      // evita trazer um homônimo por engano.
-      if (!mesmoNome(normalizado.autorNaFonte, nomeAutor)) { funil.deOutroAutor += 1; continue; }
-      brutas.push(normalizado);
-    }
-
-    aoProgredir({ pagina, trazidas: funil.linhas });
+  for (const ano of anos) {
+    const achadas = await paginarPortal({
+      consultarFonte,
+      parametros: { nomeAutor: nomeNaBase, ano },
+      jaVistos,
+      funil,
+      aoProgredir,
+      rotulo: ano ? String(ano) : 'todos os anos',
+    });
+    if (!amostra && achadas.length) [amostra] = achadas;
+    bruteza.push(...achadas);
   }
 
-  // Se a fonte respondeu mas nada foi reconhecido, o problema é de nome de
-  // campo — a API mudou, ou eu li a documentação errado. Dizer quais campos
-  // vieram transforma uma tarde de adivinhação num conserto de uma linha.
+  const brutas = [];
+  for (const bruto of bruteza) {
+    const normalizado = doPortal(bruto);
+
+    // Reconhecido é o registro do qual se conseguiu tirar o código da emenda.
+    // Nenhum reconhecido em toda a consulta não é "não achou nada": é a forma
+    // dos campos ter mudado, e as duas coisas exigem providências opostas.
+    if (normalizado.codigo) funil.reconhecidos += 1;
+
+    // A API filtra por nome, mas com casamento parcial: conferir de novo aqui
+    // evita trazer um homônimo por engano.
+    if (!mesmoNome(normalizado.autorNaFonte, nomeAutor)) { funil.deOutroAutor += 1; continue; }
+
+    // A distribuição por ano é o que denuncia um exercício faltando — que é
+    // exatamente o que um total sozinho esconde.
+    if (normalizado.ano) funil.porAno[normalizado.ano] = (funil.porAno[normalizado.ano] || 0) + 1;
+    brutas.push(normalizado);
+  }
+
   if (funil.linhas && !funil.reconhecidos) {
     funil.camposRecebidos = Object.keys(amostra || {});
   }
@@ -382,7 +429,7 @@ export async function consultarPortal({ nomeAutor, ano = null, aoProgredir = () 
   // que nomes de campo e como a base escreve os autores.
   if (!funil.linhas) {
     try {
-      const r = await consultarFonte('portal-emendas', { pagina: 1, ano });
+      const r = await consultarFonte('portal-emendas', { pagina: 1 });
       const lote = Array.isArray(r.dados) ? r.dados : [];
       funil.diagnostico = {
         enviamos: nomeNaBase,

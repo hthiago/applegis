@@ -1062,14 +1062,27 @@ console.log('\nPlanilhas de emenda\n');
     funcoes: {
       // Três páginas de 15 e uma vazia, como a API real se comporta.
       consultarFonte: {
-        __fn: `var p = Number((dados.parametros || {}).pagina || 1);
-        if (p > 3) return { dados: [] };
+        // Sem ano, a fonte devolve só uma página — o recorte silencioso que
+        // fazia um mandato inteiro caber em quinze linhas. Com ano, devolve o
+        // exercício pedido.
+        __fn: `var par = dados.parametros || {};
+        var p = Number(par.pagina || 1);
+        if (!par.ano) {
+          if (p > 1) return { dados: [] };
+          var soUma = [];
+          for (var k = 0; k < 15; k++) {
+            soUma.push({ codigoEmenda: '2026000' + (100 + k), ano: '2026',
+              tipoEmenda: 'Individual', nomeAutor: 'DEPUTADA TESTE',
+              localidadeDoGasto: 'ERECHIM - RS', valorEmpenhado: '1.000,00' });
+          }
+          return { dados: soUma };
+        }
+        if (p > 1) return { dados: [] };
         var linhas = [];
-        for (var i = 0; i < 15; i++) {
-          var n = (p - 1) * 15 + i;
+        for (var i = 0; i < 10; i++) {
           linhas.push({
-            codigoEmenda: '2025000' + (100 + n),
-            ano: String(2019 + (n % 7)),
+            codigoEmenda: par.ano + '000' + (200 + i),
+            ano: String(par.ano),
             tipoEmenda: 'Individual',
             nomeAutor: 'DEPUTADA TESTE',
             localidadeDoGasto: 'ERECHIM - RS',
@@ -1087,9 +1100,13 @@ console.log('\nPlanilhas de emenda\n');
   await pagina.waitForTimeout(1500);
 
   const recado = await pagina.locator('.aviso').last().innerText().catch(() => '');
-  conferir('a consulta atravessa todas as páginas, não só a primeira',
-    /45 emendas novas/.test(recado) && /45 registros em 4 páginas/.test(recado),
+  // Sem ano viriam 15. Varrendo 2019 até o ano corrente, vêm dez por exercício
+  // mais os quinze da varredura livre — e a tela mostra a distribuição.
+  conferir('a consulta varre ano a ano, não só o recorte que a fonte oferece',
+    /emendas novas/.test(recado) && /2019: 10/.test(recado) && /2020: 10/.test(recado),
     recado.replace(/\s+/g, ' '));
+  conferir('o aviso mostra a distribuição por ano, que denuncia exercício faltando',
+    (recado.match(/20\d\d: \d+/g) || []).length >= 7, recado.replace(/\s+/g, ' '));
   await pagina.close();
 }
 
@@ -1108,8 +1125,11 @@ console.log('\nPlanilhas de emenda\n');
   await pagina.getByRole('button', { name: 'Consultar Portal' }).click();
   await pagina.waitForTimeout(1500);
   const recado = await pagina.locator('.aviso').last().innerText().catch(() => '');
+  // A fonte devolve sempre o mesmo registro, em toda página e em todo ano. A
+  // consulta precisa terminar e guardar uma emenda só.
   conferir('página que só repete o que já veio encerra a consulta',
-    /em 2 páginas/.test(recado), recado.replace(/\s+/g, ' '));
+    /1 emendas novas/.test(recado) && /2025: 1/.test(recado),
+    recado.replace(/\s+/g, ' '));
   await pagina.close();
 }
 

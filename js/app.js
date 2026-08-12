@@ -538,8 +538,8 @@ function extrasDasEmendas() {
           try {
             const r = await nucleo.emendas.consultarPortal({
               nomeAutor,
-              aoProgredir: ({ pagina, trazidas }) => {
-                btn.textContent = `Página ${pagina} · ${trazidas} registros`;
+              aoProgredir: ({ rotulo, trazidas }) => {
+                btn.textContent = `${rotulo} · ${trazidas} emendas`;
               },
             });
             if (r.diagnostico) {
@@ -555,9 +555,16 @@ function extrasDasEmendas() {
               // mandou é o que permite corrigir sem uma rodada de suposição.
               aviso(`O Portal respondeu ${r.linhas} registros, mas nenhum campo foi reconhecido. Ele devolveu: ${r.camposRecebidos.join(', ')}`, 'erro');
             } else {
+              // A distribuição por ano é o que denuncia um exercício faltando —
+              // exatamente o que um total sozinho esconde.
+              const porAno = Object.entries(r.porAno || {})
+                .sort(([a], [b]) => Number(a) - Number(b))
+                .map(([ano, n]) => `${ano}: ${n}`)
+                .join(' · ');
+
               aviso([
                 `${r.novas} emendas novas, ${r.atualizadas} atualizadas.`,
-                `${r.linhas} registros em ${r.paginas} páginas`,
+                porAno || `${r.linhas} registros`,
                 r.deOutroAutor ? `${r.deOutroAutor} de nomes parecidos, descartados` : null,
                 r.semChave ? `${r.semChave} sem código de emenda` : null,
               ].filter(Boolean).join(' · '), (r.novas + r.atualizadas) ? 'ok' : 'erro');
