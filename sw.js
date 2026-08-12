@@ -2,7 +2,7 @@
 // uma queda de rede. Os dados do gabinete nunca são cacheados — eles vêm sempre
 // do Firestore, que já tem cache próprio e controle de permissão.
 
-const VERSAO = 'gabinete-v6';
+const VERSAO = 'gabinete-v7';
 const CASCA = [
   './',
   './index.html',
@@ -48,10 +48,23 @@ self.addEventListener('fetch', (e) => {
   e.respondWith(
     fetch(e.request)
       .then((resposta) => {
-        const copia = resposta.clone();
-        caches.open(VERSAO).then((c) => c.put(e.request, copia)).catch(() => {});
+        // Resposta de erro não entra no cache. `fetch` não rejeita em 404 — ele
+        // resolve com uma página de erro —, e guardar isso durante uma
+        // publicação pela metade deixa o navegador servindo HTML de erro no
+        // lugar de um módulo JavaScript. O sintoma é o sistema inteiro parar de
+        // carregar, culpando a rede por um arquivo que já voltou ao ar.
+        if (resposta.ok) {
+          const copia = resposta.clone();
+          caches.open(VERSAO).then((c) => c.put(e.request, copia)).catch(() => {});
+        }
         return resposta;
       })
-      .catch(() => caches.match(e.request).then((r) => r || caches.match('./index.html'))),
+      .catch(() => caches.match(e.request).then((r) => {
+        if (r) return r;
+        // A casca só substitui uma navegação. Devolvê-la no lugar de um módulo
+        // troca "está sem rede" por um erro de sintaxe indecifrável.
+        if (e.request.mode === 'navigate') return caches.match('./index.html');
+        return Response.error();
+      })),
   );
 });

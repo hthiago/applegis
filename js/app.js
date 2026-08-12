@@ -33,11 +33,44 @@ function telaConfiguracao() {
   ]);
 }
 
-function telaFalhaCarregamento() {
+/**
+ * Descarta a cópia guardada pelo navegador e recomeça do zero.
+ *
+ * É a saída para o estado em que o service worker guardou um arquivo antigo ou
+ * uma resposta de erro: a página fica quebrada de um jeito que recarregar não
+ * conserta, porque o próprio recarregamento é servido do cache.
+ */
+async function limparCacheERecarregar() {
+  try {
+    const registros = await navigator.serviceWorker?.getRegistrations?.() || [];
+    await Promise.all(registros.map((r) => r.unregister()));
+    const chaves = await caches?.keys?.() || [];
+    await Promise.all(chaves.map((k) => caches.delete(k)));
+  } catch (erro) {
+    console.error(erro);
+  }
+  location.reload();
+}
+
+/**
+ * A tela de falha precisa dizer o que falhou.
+ *
+ * A versão anterior culpava o gstatic sempre, porque era a causa que eu tinha
+ * em mente quando a escrevi. Qualquer outra — um módulo com erro, um arquivo
+ * que ainda não subiu, um cache envenenado — aparecia com a mesma frase, que
+ * mandava conferir a conexão de quem estava com a conexão perfeita.
+ */
+function telaFalhaCarregamento(erro) {
+  const detalhe = erro?.message ? `O navegador disse: ${erro.message}` : null;
+
   return cartao('Não foi possível carregar o sistema', [
-    'Os componentes do Firebase não puderam ser baixados. Isso costuma ser falta de conexão ou uma rede que bloqueia o endereço gstatic.com.',
-    'Verifique a conexão e recarregue a página.',
-  ], el('button', { class: 'btn btn--primario', texto: 'Recarregar', onclick: () => location.reload() }));
+    'Um dos componentes não pôde ser carregado.',
+    detalhe,
+    'Se uma atualização acabou de ser publicada, espere um minuto e recarregue. Se continuar, use "Limpar e recarregar": isso descarta a cópia guardada no navegador e busca tudo de novo.',
+  ].filter(Boolean), el('div', { class: 'acoes-falha' }, [
+    el('button', { class: 'btn btn--primario', texto: 'Recarregar', onclick: () => location.reload() }),
+    el('button', { class: 'btn btn--fantasma', texto: 'Limpar e recarregar', onclick: () => limparCacheERecarregar() }),
+  ]));
 }
 
 // Uma falha de login quase sempre é uma peça de configuração faltando, não um
@@ -678,7 +711,7 @@ async function iniciar() {
     nucleo = { fb, sessaoMod, crud, admin, paineis, camara, minuta, dados, emendas, fontes };
   } catch (erro) {
     console.error(erro);
-    limpar(raiz).appendChild(telaFalhaCarregamento());
+    limpar(raiz).appendChild(telaFalhaCarregamento(erro));
     return;
   }
 

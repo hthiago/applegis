@@ -562,6 +562,8 @@ input:focus, select:focus, textarea:focus { border-color: var(--verde); outline:
 
 .mostrar-mais { display: flex; justify-content: center; padding: 14px 0 4px; }
 
+.acoes-falha { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+
 /* Marcadores livres do gabinete — distintos da insígnia colorida
    `.etiqueta`, que traduz um campo de seleção. */
 .marcadores { display: flex; flex-wrap: wrap; gap: 4px; }
