@@ -644,23 +644,28 @@ export async function detalharEmendas({ aoProgredir = () => {} } = {}) {
  * palpite. A sondagem tenta todos de uma vez e diz qual responde.
  */
 export const CAMINHOS_CANDIDATOS = [
-  // A raiz de um serviço PostgREST devolve o catálogo das próprias tabelas. É
-  // por aqui que se descobre o nome certo em vez de continuar adivinhando:
-  // /transferenciasespeciais respondeu erro de banco, e não do servidor web,
-  // o que prova que o prefixo existe e que só a tabela estava errada.
-  { fonte: 'transferegov-livre', caminho: '/transferenciasespeciais', raiz: true },
-  { fonte: 'transferegov-livre', caminho: '/convenios', raiz: true },
-  { fonte: 'transferegov-livre', caminho: '/emendas', raiz: true },
-  { fonte: 'transferegov-livre', caminho: '/execucao', raiz: true },
-  { fonte: 'transferegov-livre', caminho: '/contratos', raiz: true },
-  { fonte: 'transferegov-livre', caminho: '/planoacao', raiz: true },
-  { fonte: 'transferegov-livre', caminho: '/transferenciasdiscricionarias', raiz: true },
-  { fonte: 'transferegov-livre', caminho: '/discricionarias', raiz: true },
-  { fonte: 'transferegov-livre', caminho: '/', raiz: true },
+  // As tabelas que o próprio serviço declarou existir. Os nomes já contam a
+  // estrutura: o programa é a emenda, o plano de ação é a repartição por
+  // beneficiário, e empenho, ordem bancária e histórico são a execução.
+  // Falta saber os nomes das colunas — e por qual delas se liga na emenda.
+  { fonte: 'transferegov-livre', caminho: '/transferenciasespeciais/plano_acao_especial' },
+  { fonte: 'transferegov-livre', caminho: '/transferenciasespeciais/programa_especial' },
+  { fonte: 'transferegov-livre', caminho: '/transferenciasespeciais/empenho_especial' },
+  { fonte: 'transferegov-livre', caminho: '/transferenciasespeciais/ordem_pagamento_ordem_bancaria_especial' },
+  { fonte: 'transferegov-livre', caminho: '/transferenciasespeciais/historico_pagamento_especial' },
+  { fonte: 'transferegov-livre', caminho: '/transferenciasespeciais/executor_especial' },
+  { fonte: 'transferegov-livre', caminho: '/transferenciasespeciais/finalidade_especial' },
+  { fonte: 'transferegov-livre', caminho: '/transferenciasespeciais/meta_especial' },
+  { fonte: 'transferegov-livre', caminho: '/transferenciasespeciais/documento_habil_especial' },
+  { fonte: 'transferegov-livre', caminho: '/transferenciasespeciais/plano_trabalho_especial' },
 
-  // O Portal: /emendas responde e é o consolidado que já usamos. Fica aqui
-  // como controle — se ele falhar, o problema é da ponte, não do caminho.
-  { fonte: 'portal-livre', caminho: '/emendas', usa: 'codigoEmenda' },
+  // Outros módulos da plataforma, para achar as emendas de finalidade definida
+  // — as que passam por convênio em vez de ir direto ao município.
+  { fonte: 'transferegov-livre', caminho: '/transferenciasvoluntarias', raiz: true },
+  { fonte: 'transferegov-livre', caminho: '/transferenciafinalidadedefinida', raiz: true },
+  { fonte: 'transferegov-livre', caminho: '/fundoafundo', raiz: true },
+  { fonte: 'transferegov-livre', caminho: '/siconv', raiz: true },
+  { fonte: 'transferegov-livre', caminho: '/parlamentar', raiz: true },
 ];
 
 /**

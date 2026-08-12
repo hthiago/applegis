@@ -668,7 +668,13 @@ function extrasDasTransferencias() {
  */
 function abrirSondagem(achados, codigo) {
   const resumo = achados.map((a) => {
-    if (!a.ok) return `FALHA ${a.caminho} — ${a.erro}`;
+    // Página HTML de erro é ruído: o que importa é que o caminho não existe.
+    if (!a.ok) {
+      const enxuto = /<html|<!doctype/i.test(a.erro)
+        ? a.erro.replace(/\s*<[\s\S]*$/, '') || 'resposta HTML do servidor — caminho inexistente'
+        : a.erro;
+      return `FALHA ${a.caminho} — ${enxuto}`;
+    }
     // Um catálogo de tabelas vale mais que uma amostra: é a lista dos nomes
     // que faltavam para parar de adivinhar.
     if (a.tabelas?.length) return `TABELAS ${a.caminho} — ${a.tabelas.join(', ')}`;
