@@ -1033,6 +1033,65 @@ console.log('\nPlanilhas de emenda\n');
   await pagina.close();
 }
 
+// O Portal pagina de quinze em quinze e não diz o total. Parar cedo demais
+// transforma um mandato inteiro em quinze emendas — foi o que aconteceu.
+{
+  const pagina = await abrir({
+    consultaAutomatica: true,
+    funcoes: {
+      // Três páginas de 15 e uma vazia, como a API real se comporta.
+      consultarFonte: {
+        __fn: `var p = Number((dados.parametros || {}).pagina || 1);
+        if (p > 3) return { dados: [] };
+        var linhas = [];
+        for (var i = 0; i < 15; i++) {
+          var n = (p - 1) * 15 + i;
+          linhas.push({
+            codigoEmenda: '2025000' + (100 + n),
+            ano: String(2019 + (n % 7)),
+            tipoEmenda: 'Individual',
+            nomeAutor: 'DEPUTADA TESTE',
+            localidadeDoGasto: 'ERECHIM - RS',
+            valorEmpenhado: '1.000,00',
+          });
+        }
+        return { dados: linhas };`,
+      },
+    },
+  });
+
+  await pagina.goto(`${BASE}/#/orcamento/emendas`, { waitUntil: 'domcontentloaded' });
+  await pagina.waitForSelector('.modulo-topo');
+  await pagina.getByRole('button', { name: 'Consultar Portal' }).click();
+  await pagina.waitForTimeout(1500);
+
+  const recado = await pagina.locator('.aviso').last().innerText().catch(() => '');
+  conferir('a consulta atravessa todas as páginas, não só a primeira',
+    /45 emendas novas/.test(recado) && /45 registros em 4 páginas/.test(recado),
+    recado.replace(/\s+/g, ' '));
+  await pagina.close();
+}
+
+// Fonte que ignora o número da página não pode virar laço infinito.
+{
+  const pagina = await abrir({
+    consultaAutomatica: true,
+    funcoes: {
+      consultarFonte: {
+        __fn: `return { dados: [{ codigoEmenda: 'X1', ano: '2025', nomeAutor: 'DEPUTADA TESTE', valorEmpenhado: '1,00' }] };`,
+      },
+    },
+  });
+  await pagina.goto(`${BASE}/#/orcamento/emendas`, { waitUntil: 'domcontentloaded' });
+  await pagina.waitForSelector('.modulo-topo');
+  await pagina.getByRole('button', { name: 'Consultar Portal' }).click();
+  await pagina.waitForTimeout(1500);
+  const recado = await pagina.locator('.aviso').last().innerText().catch(() => '');
+  conferir('página que só repete o que já veio encerra a consulta',
+    /em 2 páginas/.test(recado), recado.replace(/\s+/g, ' '));
+  await pagina.close();
+}
+
 // Zero registros é a resposta mais ambígua da consulta: pode ser ausência real,
 // nome errado ou filtro não aceito. Precisa virar pergunta respondida.
 {

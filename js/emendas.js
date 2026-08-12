@@ -248,6 +248,21 @@ export async function importarPlanilha(arquivo, { nomeAutor = null } = {}) {
 // ─────────────────────── consulta automática ───────────────────────
 
 /**
+ * Teto de páginas da consulta ao Portal.
+ *
+ * A API pagina de quinze em quinze e não informa o total — a única forma de
+ * saber que acabou é receber uma página vazia. Eu parava quando a página vinha
+ * com menos de cem itens, número que tirei de outra API; como a primeira já vem
+ * com quinze, a consulta terminava na primeira página e um mandato inteiro
+ * virava quinze emendas.
+ *
+ * O teto existe só para que um comportamento inesperado da fonte não vire um
+ * laço infinito. Quatrocentas páginas cobrem seis mil emendas, muito além do
+ * que um mandato produz.
+ */
+const PAGINAS_MAXIMAS = 400;
+
+/**
  * Traduz um registro do Portal da Transparência.
  *
  * Os nomes dos campos vêm da documentação da API, que eu não consigo alcançar
@@ -318,13 +333,23 @@ export async function consultarPortal({ nomeAutor, ano = null, aoProgredir = () 
 
   const brutas = [];
   let amostra = null;
+  const jaVistos = new Set();
 
-  for (let pagina = 1; pagina <= 50; pagina += 1) {
+  for (let pagina = 1; pagina <= PAGINAS_MAXIMAS; pagina += 1) {
     const r = await consultarFonte('portal-emendas', { nomeAutor: nomeNaBase, ano, pagina });
     const lote = Array.isArray(r.dados) ? r.dados : [];
     funil.paginas = pagina;
-    funil.linhas += lote.length;
     if (!amostra && lote.length) amostra = lote[0];
+
+    // Página vazia é o fim da lista. Página que só repete o que já veio
+    // significa que a fonte ignorou o número da página — sem essa guarda, a
+    // consulta giraria para sempre queimando a cota do gabinete.
+    if (!lote.length) break;
+    const antesDaPagina = jaVistos.size;
+    lote.forEach((x) => jaVistos.add(String(x.codigoEmenda ?? x.id ?? JSON.stringify(x))));
+    if (jaVistos.size === antesDaPagina) break;
+
+    funil.linhas += lote.length;
 
     for (const bruto of lote) {
       const normalizado = doPortal(bruto);
@@ -341,7 +366,6 @@ export async function consultarPortal({ nomeAutor, ano = null, aoProgredir = () 
     }
 
     aoProgredir({ pagina, trazidas: funil.linhas });
-    if (lote.length < 100) break;
   }
 
   // Se a fonte respondeu mas nada foi reconhecido, o problema é de nome de
