@@ -1,6 +1,6 @@
 import { el, aviso, limpar } from './ui.js';
 import { salvar, salvarEmLote, listar } from './dados.js';
-import { naturezaDe, votoDe, sentidoDo, resumoDo, seguiuOrientacao } from './votos.js';
+import { naturezaDe, ehMerito, votoDe, sentidoDo, resumoDo, seguiuOrientacao } from './votos.js';
 
 /**
  * Integração com os dados abertos da Câmara dos Deputados.
@@ -601,32 +601,43 @@ async function consultarVotacoes(base) {
 }
 
 /**
- * A Câmara não publica um extrato de votos por parlamentar. O caminho é
- * percorrer as votações do período e procurar o nome em cada uma — por isso a
- * lista é peneirada pelos colegiados dele antes de gastar uma consulta por
- * votação.
+ * Até onde a varredura já chegou, para trás.
+ *
+ * A maior parte das votações da Casa é simbólica e não gera registro nenhum —
+ * então elas não ficam guardadas e seriam reconsultadas inteiras a cada
+ * importação. Marcar a data mais antiga já varrida faz a segunda importação
+ * custar apenas o que aconteceu desde a primeira. A marca fica no navegador:
+ * perdê-la só custa tempo, nunca dado.
  */
-async function votacoesDoPeriodo(desde, ate, siglas, aoProgredir) {
+const chaveVarredura = (idDeputado) => `gab:votacoes:varridoAte:${idDeputado}`;
+
+function varridoAte(idDeputado) {
+  try {
+    return localStorage.getItem(chaveVarredura(idDeputado)) || null;
+  } catch { return null; }
+}
+
+function anotarVarredura(idDeputado, data) {
+  try {
+    const atual = varridoAte(idDeputado);
+    if (!atual || data < atual) localStorage.setItem(chaveVarredura(idDeputado), data);
+  } catch { /* modo anônimo: vale só nesta sessão */ }
+}
+
+/** As votações de uma janela de datas, já sem repetição. */
+async function votacoesDaJanela(janela) {
   const porId = new Map();
-
-  for (const janela of janelas(desde, ate)) {
-    for (let pagina = 1; pagina <= 20; pagina += 1) {
-      const lote = await consultarVotacoes({
-        dataInicio: janela.inicio,
-        dataFim: janela.fim,
-        itens: '100',
-        pagina: String(pagina),
-      });
-      // Janelas vizinhas podem devolver a mesma votação na borda.
-      lote.forEach((v) => porId.set(String(v.id), v));
-      aoProgredir({ fase: 'lista', total: porId.size });
-      if (lote.length < 100) break;
-    }
+  for (let pagina = 1; pagina <= 20; pagina += 1) {
+    const lote = await consultarVotacoes({
+      dataInicio: janela.inicio,
+      dataFim: janela.fim,
+      itens: '100',
+      pagina: String(pagina),
+    });
+    lote.forEach((v) => porId.set(String(v.id), v));
+    if (lote.length < 100) break;
   }
-
-  // Sem sigla identificável não dá para dizer se interessa; melhor manter do
-  // que descartar em silêncio.
-  return [...porId.values()].filter((v) => !v.siglaOrgao || siglas.has(v.siglaOrgao));
+  return [...porId.values()];
 }
 
 /** O identificador da proposição votada, quando a votação o traz. */
@@ -634,6 +645,22 @@ function proposicaoDaVotacao(votacao) {
   const uri = votacao.uriProposicaoObjeto || votacao.proposicaoObjeto_?.uri || '';
   const id = /\/proposicoes\/(\d+)/.exec(String(uri));
   return id ? Number(id[1]) : null;
+}
+
+/**
+ * Acha o parlamentar na lista de votos.
+ *
+ * O identificador ora vem em `deputado_.id`, ora só na URI. Procurar pelos dois
+ * custa nada e evita que uma mudança de forma do campo transforme todo mundo em
+ * ausente sem que nada acuse o erro.
+ */
+function acharDeputado(votos, idDeputado) {
+  const alvo = String(idDeputado);
+  return votos.find((x) => {
+    const d = x.deputado_ || x.deputado || {};
+    if (String(d.id ?? '') === alvo) return true;
+    return new RegExp(`/deputados/${alvo}(?:\\D|$)`).test(String(d.uri || x.uriDeputado || ''));
+  }) || null;
 }
 
 /** O nome da matéria votada, como a Câmara o escreve. */
@@ -658,16 +685,35 @@ function tituloDaVotacao(votacao) {
  *      revela a posição real: retirada de pauta, adiamento, urgência. O efeito
  *      de cada voto é traduzido em `js/votos.js`.
  */
+/**
+ * Monta o histórico de posições do parlamentar nas votações da Casa.
+ *
+ * Três decisões definem o que este histórico é, e todas vieram de tentativas
+ * que não funcionaram:
+ *
+ *   1. **Só mérito.** Requerimentos e questões de procedimento são a maioria
+ *      esmagadora do que a Casa vota, e cada um custaria uma consulta para
+ *      quase nunca dizer o que o mandato pensa de um assunto. A peneira é feita
+ *      na descrição, que já vem na listagem — de graça, antes de gastar rede.
+ *   2. **Grava a cada janela**, não no fim. A varredura de uma legislatura leva
+ *      minutos; guardar tudo para o último instante significa que fechar a aba,
+ *      perder a conexão ou esbarrar num erro joga fora o trabalho inteiro. Foi
+ *      o que aconteceu: a importação rodava longamente e não sobrava nada.
+ *   3. **Devolve o funil, não só o total.** Quando o resultado é zero, o número
+ *      sozinho não diz se o problema foi a listagem, a peneira, a ausência de
+ *      votação nominal ou o parlamentar não constar da lista. Cada degrau é
+ *      contado e mostrado.
+ *
+ * Vale lembrar o limite da fonte: só votação nominal registra nome. O voto
+ * simbólico, que é a maior parte, não produz lista de votos em lugar nenhum.
+ */
 export async function importarVotacoes(idDeputado, { desde = INICIO_LEGISLATURA } = {}, aoProgredir = () => {}) {
   const ate = new Date().toISOString().slice(0, 10);
   const siglas = await orgaosDoDeputado(idDeputado);
 
-  const candidatas = await votacoesDoPeriodo(desde, ate, siglas, aoProgredir);
-
   const jaTemos = new Set(
     (await listar('votacoes', { recarregar: true })).map((i) => String(i.idVotacao)),
   );
-  const novas = candidatas.filter((v) => !jaTemos.has(String(v.id)));
 
   // Os temas das proposições já importadas saem de graça: a produção do
   // gabinete guarda a classificação de tudo que ele assinou.
@@ -675,72 +721,120 @@ export async function importarVotacoes(idDeputado, { desde = INICIO_LEGISLATURA 
     (await listar('autorias')).filter((i) => i.idCamara).map((i) => [String(i.idCamara), i]),
   );
 
-  const registros = [];
-  let semRegistroNominal = 0;
-  let feitas = 0;
-
-  await emLotes(novas, CONSULTAS_EM_PARALELO, async (v) => {
-    try {
-      const [votos, orientacoes] = await Promise.all([
-        buscarJson(`/votacoes/${v.id}/votos`).catch(() => []),
-        buscarJson(`/votacoes/${v.id}/orientacoes`).catch(() => []),
-      ]);
-
-      // Lista vazia é voto simbólico: não há nome a registrar, de ninguém.
-      if (!votos.length) { semRegistroNominal += 1; return; }
-
-      const nosso = votos.find((x) => String(x.deputado_?.id) === String(idDeputado));
-      const voto = nosso ? (votoDe(nosso.tipoVoto) || 'outro') : 'ausente';
-
-      const idProposicao = proposicaoDaVotacao(v);
-      const conhecida = idProposicao ? temasConhecidos.get(String(idProposicao)) : null;
-      const temas = conhecida?.temas
-        || (idProposicao ? await temasDe(idProposicao).catch(() => []) : []);
-
-      const natureza = naturezaDe(v.descricao);
-      const proposicao = tituloDaVotacao(v) || conhecida?.identificacao || null;
-      // A orientação da própria bancada é a que interessa para medir
-      // alinhamento; as demais só fazem ruído numa lista de mil linhas.
-      const daBancada = orientacoes.find((o) => o.siglaOrgao === 'GOV' || o.siglaPartidoBloco);
-
-      registros.push({
-        id: String(v.id),
-        dados: {
-          idVotacao: v.id,
-          data: String(v.dataHoraRegistro || v.data || '').slice(0, 10),
-          ano: Number(String(v.dataHoraRegistro || v.data || '').slice(0, 4)) || null,
-          orgao: v.siglaOrgao || null,
-          descricao: v.descricao || null,
-          proposicao,
-          idProposicao,
-          natureza,
-          voto,
-          sentido: sentidoDo(voto, natureza),
-          resumo: resumoDo({ voto, natureza, proposicao }),
-          resultado: v.aprovacao === 1 ? 'aprovada' : (v.aprovacao === 0 ? 'rejeitada' : null),
-          orientacaoBancada: daBancada ? votoDe(daBancada.orientacaoVoto) : null,
-          seguiuBancada: daBancada ? seguiuOrientacao(voto, daBancada.orientacaoVoto) : null,
-          tema: temas[0] || 'Sem tema classificado',
-          temas,
-        },
-      });
-    } catch (erro) {
-      console.error(`Não leu a votação ${v.id}`, erro);
-    } finally {
-      feitas += 1;
-      aoProgredir({ fase: 'lendo', total: novas.length, feitas });
-    }
-  });
-
-  const gravacao = await salvarEmLote('votacoes', registros);
-  if (gravacao.falhas.length) throw gravacao.falhas[0];
-
-  return {
-    periodo: `${desde} a ${ate}`,
-    examinadas: candidatas.length,
-    registradas: registros.length,
-    simbolicas: semRegistroNominal,
+  const funil = {
+    listadas: 0,
+    semOrgao: 0,
+    foraDosOrgaos: 0,
+    deMerito: 0,
+    simbolicas: 0,
+    semVotoDele: 0,
+    registradas: 0,
+    jaVarridas: 0,
   };
+
+  // Da janela mais recente para a mais antiga: se a importação for interrompida,
+  // o que ficou salvo é o que o gabinete mais precisa.
+  const jaVarrido = varridoAte(idDeputado);
+  const todas = janelas(desde, ate).reverse();
+
+  for (const [posicao, janela] of todas.entries()) {
+    // A janela corrente é sempre revista — é nela que aparece o que é novo.
+    // As demais, só se ainda não tiverem sido varridas.
+    const revisitar = posicao === 0 || !jaVarrido || janela.inicio < jaVarrido;
+    if (!revisitar) { funil.jaVarridas += 1; continue; }
+
+    aoProgredir({ fase: 'listando', janela: janela.inicio, posicao: posicao + 1, janelas: todas.length, funil });
+
+    let daJanela;
+    try {
+      daJanela = await votacoesDaJanela(janela);
+    } catch (erro) {
+      console.error(`Não listou as votações de ${janela.inicio} a ${janela.fim}`, erro);
+      continue;
+    }
+    funil.listadas += daJanela.length;
+
+    const interessam = daJanela.filter((v) => {
+      if (jaTemos.has(String(v.id))) return false;
+      // Sem sigla não dá para dizer se é colegiado dele; segue adiante e a
+      // peneira de mérito resolve. O contador denuncia se a base parou de
+      // mandar o campo.
+      if (!v.siglaOrgao) funil.semOrgao += 1;
+      else if (!siglas.has(v.siglaOrgao)) { funil.foraDosOrgaos += 1; return false; }
+
+      if (!ehMerito(naturezaDe(v.descricao))) return false;
+      funil.deMerito += 1;
+      return true;
+    });
+
+    const registros = [];
+    let feitas = 0;
+
+    await emLotes(interessam, CONSULTAS_EM_PARALELO, async (v) => {
+      try {
+        const votos = await buscarJson(`/votacoes/${v.id}/votos`).catch(() => []);
+        // Lista vazia é voto simbólico: não há nome a registrar, de ninguém.
+        if (!votos.length) { funil.simbolicas += 1; return; }
+
+        const nosso = acharDeputado(votos, idDeputado);
+        if (!nosso) funil.semVotoDele += 1;
+        const voto = nosso ? (votoDe(nosso.tipoVoto) || 'outro') : 'ausente';
+
+        const idProposicao = proposicaoDaVotacao(v);
+        const conhecida = idProposicao ? temasConhecidos.get(String(idProposicao)) : null;
+        const temas = conhecida?.temas
+          || (idProposicao ? await temasDe(idProposicao).catch(() => []) : []);
+
+        // A orientação custa uma consulta e só interessa no que vai ficar
+        // guardado — por isso vem agora, e não junto da lista de votos.
+        const orientacoes = await buscarJson(`/votacoes/${v.id}/orientacoes`).catch(() => []);
+        const daBancada = orientacoes.find((o) => o.siglaPartidoBloco) || null;
+
+        const natureza = naturezaDe(v.descricao);
+        const proposicao = tituloDaVotacao(v) || conhecida?.identificacao || null;
+
+        registros.push({
+          id: String(v.id),
+          dados: {
+            idVotacao: v.id,
+            data: String(v.dataHoraRegistro || v.data || '').slice(0, 10),
+            ano: Number(String(v.dataHoraRegistro || v.data || '').slice(0, 4)) || null,
+            orgao: v.siglaOrgao || null,
+            descricao: v.descricao || null,
+            proposicao,
+            idProposicao,
+            natureza,
+            voto,
+            sentido: sentidoDo(voto, natureza),
+            resumo: resumoDo({ voto, natureza, proposicao }),
+            resultado: v.aprovacao === 1 ? 'aprovada' : (v.aprovacao === 0 ? 'rejeitada' : null),
+            orientacaoBancada: daBancada ? votoDe(daBancada.orientacaoVoto) : null,
+            seguiuBancada: daBancada ? seguiuOrientacao(voto, daBancada.orientacaoVoto) : null,
+            tema: temas[0] || 'Sem tema classificado',
+            temas,
+          },
+        });
+      } catch (erro) {
+        console.error(`Não leu a votação ${v.id}`, erro);
+      } finally {
+        feitas += 1;
+        aoProgredir({ fase: 'lendo', janela: janela.inicio, feitas, total: interessam.length, funil });
+      }
+    });
+
+    if (registros.length) {
+      const gravacao = await salvarEmLote('votacoes', registros);
+      if (gravacao.falhas.length) throw gravacao.falhas[0];
+      registros.forEach((r) => jaTemos.add(String(r.dados.idVotacao)));
+      funil.registradas += registros.length;
+    }
+
+    // Só depois de a janela terminar inteira, para que uma interrupção no meio
+    // não marque como varrido o que ficou pela metade.
+    anotarVarredura(idDeputado, janela.inicio);
+  }
+
+  return { periodo: `${desde} a ${ate}`, ...funil };
 }
 
 const TIPOS = ['PL', 'PEC', 'PLP', 'PDL', 'MPV', 'PRC', 'REQ'];

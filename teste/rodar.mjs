@@ -739,11 +739,22 @@ console.log('\nHistórico por tema\n');
 
 {
   const pagina = await abrir();
+
+  // Quais votações custaram uma consulta: o filtro de mérito só serve se ele
+  // acontecer ANTES de gastar rede, e é isso que se confere aqui.
+  const votosPedidos = [];
+  const listagensPedidas = [];
+  pagina.on('request', (r) => {
+    const m = /\/votacoes\/([\w-]+)\/votos/.exec(r.url());
+    if (m) votosPedidos.push(m[1]);
+    if (/\/votacoes\?/.test(r.url())) listagensPedidas.push(r.url());
+  });
+
   await pagina.goto(`${BASE}/#/legislativo/votacoes`, { waitUntil: 'domcontentloaded' });
   await pagina.waitForSelector('.modulo-topo');
   await pagina.getByRole('button', { name: /Importar votações/ }).click();
   await pagina.waitForSelector('.tabela tbody tr', { timeout: 15000 }).catch(() => {});
-  await pagina.waitForTimeout(400);
+  await pagina.waitForTimeout(500);
 
   const tabela = (await pagina.locator('.tabela tbody').innerText()).replace(/\s+/g, ' ');
 
@@ -753,26 +764,33 @@ console.log('\nHistórico por tema\n');
   conferir('a votação em colegiado alheio fica de fora', !tabela.includes('PL 999/2025'));
   conferir('a votação simbólica não vira linha', !tabela.includes('PL 888/2025'));
 
-  const recado = await pagina.locator('.aviso').first().innerText().catch(() => '');
-  conferir('o aviso admite quantas votações não têm registro individual',
-    /simb[óo]lica/i.test(recado), recado.replace(/\s+/g, ' '));
+  // O ponto da mudança: retirada de pauta e urgência são processuais e nem
+  // sequer chegam a custar uma consulta.
+  conferir('votação processual não entra no histórico',
+    !tabela.includes('PL 222/2024'), tabela);
+  conferir('a peneira de mérito acontece antes de gastar consulta',
+    !votosPedidos.includes('v2') && !votosPedidos.includes('v3') && votosPedidos.includes('v1'),
+    `consultadas: ${votosPedidos.join(', ') || 'nenhuma'}`);
 
-  // O ponto central: votou SIM na retirada de pauta do PL 222, ou seja, votou
-  // para travá-lo. A lista precisa dizer isso, não "Sim".
-  conferir('o SIM na retirada de pauta aparece como trava, não como apoio',
-    tabela.includes('travar o PL 222/2024'), tabela);
   conferir('o efeito do voto vira etiqueta na lista',
-    (await pagina.locator('.tabela tbody').innerText()).includes('Freou o andamento'));
+    tabela.includes('A favor da matéria'), tabela);
 
-  // Recorte por natureza — a pergunta do gabinete é "onde ele votou para tirar
-  // de pauta?", e ela precisa ser respondível num clique.
-  await pagina.locator('.chip', { hasText: /Retirada de pauta/ }).click();
-  await pagina.waitForTimeout(250);
-  const soRetiradas = (await pagina.locator('.tabela tbody').innerText()).replace(/\s+/g, ' ');
-  conferir('dá para isolar as votações de retirada de pauta',
-    soRetiradas.includes('PL 222/2024') && !soRetiradas.includes('PL 111/2025'), soRetiradas);
-  await pagina.getByRole('button', { name: /Limpar filtros/ }).click();
-  await pagina.waitForTimeout(250);
+  // Quando o resultado é pequeno ou zero, o funil precisa dizer onde parou.
+  const recado = await pagina.locator('.aviso').first().innerText().catch(() => '');
+  conferir('o aviso mostra o funil, não só o total',
+    /Examinadas/.test(recado) && /mérito/i.test(recado) && /simb[óo]lica/i.test(recado),
+    recado.replace(/\s+/g, ' '));
+
+  // A maioria das votações da Casa é simbólica e não gera registro; sem marca
+  // de varredura, cada reimportação as reconsultaria todas de novo.
+  const listagensPrimeira = listagensPedidas.length;
+  votosPedidos.length = 0;
+  listagensPedidas.length = 0;
+  await pagina.getByRole('button', { name: /Importar votações/ }).click();
+  await pagina.waitForTimeout(1500);
+  conferir('reimportar não varre de novo o período já examinado',
+    listagensPedidas.length < listagensPrimeira / 2 && votosPedidos.length < 3,
+    `1ª: ${listagensPrimeira} listagens · 2ª: ${listagensPedidas.length} listagens, ${votosPedidos.length} consultas de voto`);
 
   // Etiquetas do gabinete: o vocabulário da Câmara não conhece "pauta do agro".
   await pagina.locator('.col-inline .inline-abrir').first().click();

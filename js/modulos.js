@@ -514,7 +514,7 @@ export const MODULOS = [
     area: 'legislativo',
     nome: 'Histórico por tema',
     singular: 'votação',
-    descricao: 'Como o parlamentar votou em cada matéria, de mérito e de procedimento — a consulta que responde a imprensa em segundos.',
+    descricao: 'Como o parlamentar votou no mérito de cada matéria. Só votação nominal registra nome: o voto simbólico, que é a maior parte, não aparece aqui nem na fonte.',
     ordenar: { campo: 'data', dir: 'desc' },
     busca: ['proposicao', 'descricao', 'resumo', 'tema'],
     importaVotacoes: true,

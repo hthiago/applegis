@@ -359,17 +359,23 @@ function extrasDasVotacoes() {
         btn.textContent = 'Consultando…';
         try {
           const r = await nucleo.camara.importarVotacoes(idDeputado, {}, (p) => {
-            if (p.fase === 'lista') btn.textContent = `Listando ${p.total} votações…`;
-            if (p.fase === 'lendo') btn.textContent = `Lendo ${p.feitas} de ${p.total}…`;
+            const feito = `${p.funil.registradas} guardadas`;
+            if (p.fase === 'listando') btn.textContent = `Período ${p.posicao}/${p.janelas} · ${feito}`;
+            if (p.fase === 'lendo') btn.textContent = `Lendo ${p.feitas}/${p.total} · ${feito}`;
           });
-          // A contagem de simbólicas é obrigatória: sem ela a lista parece
-          // completa, e ela nunca é.
+
+          // O funil inteiro, e não só o total. Quando o resultado é zero, o
+          // número sozinho não diz se faltou listagem, se a peneira levou tudo,
+          // se as votações eram simbólicas ou se o parlamentar não constava —
+          // e são quatro problemas diferentes.
           aviso([
-            `${r.registradas} votações com voto registrado.`,
-            r.simbolicas
-              ? `${r.simbolicas} foram simbólicas e não têm registro individual em lugar nenhum.`
-              : null,
-          ].filter(Boolean).join(' '), 'ok');
+            `${r.registradas} votações de mérito guardadas.`,
+            `Examinadas ${r.listadas} no período`,
+            `${r.deMerito} eram de mérito nos colegiados dele`,
+            r.simbolicas ? `${r.simbolicas} simbólicas, sem registro individual na fonte` : null,
+            r.semVotoDele ? `${r.semVotoDele} sem voto dele registrado` : null,
+            r.semOrgao ? `${r.semOrgao} vieram sem órgão identificado` : null,
+          ].filter(Boolean).join(' · '), r.registradas ? 'ok' : 'erro');
           recarregar();
         } catch (erro) {
           console.error(erro);

@@ -75,6 +75,18 @@ const SIM_ACELERA = ['urgencia', 'encerramento', 'inversao-pauta'];
 /** Naturezas em que o voto é sobre a matéria em si. */
 const SOBRE_O_MERITO = ['merito', 'redacao-final', 'parecer'];
 
+/**
+ * A votação decide o conteúdo, e não o rito?
+ *
+ * Numa legislatura, requerimentos e questões de procedimento são a maioria
+ * esmagadora do que se vota, e quase nada disso diz o que o mandato pensa sobre
+ * um assunto. Peneirar por aqui — antes de gastar uma consulta por votação —
+ * é o que torna o histórico viável de montar e legível de ler.
+ */
+export function ehMerito(natureza) {
+  return SOBRE_O_MERITO.includes(natureza);
+}
+
 export const SENTIDOS = [
   { v: 'a-favor', l: 'A favor da matéria', cor: 'ok' },
   { v: 'contra', l: 'Contra a matéria', cor: 'critico' },
