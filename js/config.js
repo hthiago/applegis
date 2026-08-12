@@ -33,15 +33,18 @@ export const FIRESTORE_DATABASE_ID = 'appgab';
 export const REGIAO_FUNCOES = 'southamerica-east1';
 
 /**
- * A consulta automática às bases de execução orçamentária depende de uma
- * função no servidor, porque a chave do Portal da Transparência não pode ficar
- * em código público e nenhuma dessas bases aceita chamada vinda do navegador.
+ * A consulta automática às bases de execução orçamentária depende de uma função
+ * no servidor, porque a chave do Portal da Transparência não pode ficar em
+ * código público e nenhuma dessas bases aceita chamada vinda do navegador.
  *
- * Enquanto isto for falso, a área de emendas funciona apenas pela importação de
- * planilha — que traz exatamente os mesmos números. Ligue depois de implantar
- * as funções; o passo a passo está no README.
+ * Com isto ligado, o botão "Consultar Portal" aparece em Orçamento › Emendas.
+ * Se a função ainda não estiver implantada, o clique devolve um recado dizendo
+ * exatamente isso — que é informação útil, e melhor do que um botão ausente sem
+ * explicação. A importação por planilha continua ao lado, funcionando.
+ *
+ * Desligue apenas se for usar o sistema sem as Cloud Functions.
  */
-export const CONSULTA_AUTOMATICA = false;
+export const CONSULTA_AUTOMATICA = true;
 
 export const AREAS = [
   { id: 'chefia', sigla: 'CHF', nome: 'Chefia de gabinete', descricao: 'Painel, tarefas e agenda do deputado' },

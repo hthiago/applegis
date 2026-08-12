@@ -261,7 +261,7 @@ async function abrir({
       contentType: 'text/javascript',
       body: (await r.text())
         .replace("apiKey: 'COLE_AQUI'", "apiKey: 'chave-de-teste'")
-        .replace('export const CONSULTA_AUTOMATICA = false;',
+        .replace(/export const CONSULTA_AUTOMATICA = \w+;/,
           `export const CONSULTA_AUTOMATICA = ${consultaAutomatica};`),
     });
   });
