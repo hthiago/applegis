@@ -123,21 +123,88 @@ Duas exceções deliberadas à regra geral, ambas registradas em `firestore.rule
 **Dados abertos da Câmara** (ativa, sem cadastro). Em *Legislativo › Proposições
 acompanhadas*, o botão **Buscar na Câmara** importa uma proposição pelo tipo, número e
 ano; **Atualizar situações** relê a situação e o órgão de tudo que está na lista.
+Em *Produção do gabinete*, **Importar da Câmara** traz tudo que o parlamentar assinou.
 
-**Ainda por ligar**, nesta ordem:
+**Emendas por planilha** (ativa, sem cadastro). Em *Orçamento › Emendas*, o botão
+**Importar planilha** lê as exportações do Portal da Transparência, do Transferegov, do
+SIOP e do Fundo Nacional de Saúde. Reconhece o formato pelo cabeçalho, concilia por
+código e ano — reimportar atualiza em vez de duplicar — e filtra pelo nome do
+parlamentar, dizendo quantas linhas descartou e com qual nome.
 
-1. **Transferegov** (`api-publica.transferegov.gestao.gov.br`) e **Portal da
-   Transparência** para preencher empenho, instrumento e pagamento das emendas. O Portal
-   exige cadastro para obter uma chave de acesso.
-2. **Despesas da Câmara** (`/deputados/{id}/despesas`) para conferir os lançamentos da
-   cota contra o reembolso oficial. A base publica com atraso, então serve de conferência
-   — nunca de saldo ao vivo.
-3. **Google Agenda** — leitura para todo o gabinete, escrita apenas para a chefia.
-4. **Google Drive** — documentos, ofícios e banco de mídia guardam o link, não o arquivo.
+**Emendas por consulta direta** (precisa das Cloud Functions; veja abaixo).
 
-As três primeiras devem rodar no servidor (Cloud Functions), e não no navegador: assim a
-chave do Portal da Transparência não é exposta e a atualização acontece sozinha, sem
-depender de alguém abrir a tela.
+**Ainda por ligar:** Google Agenda (leitura para o gabinete, escrita para a chefia),
+Google Drive (documentos guardam o link, não o arquivo) e as despesas da cota
+(`/deputados/{id}/despesas`), que a Câmara publica com atraso e por isso servem de
+conferência, nunca de saldo ao vivo.
+
+---
+
+## Consulta automática (Cloud Functions)
+
+O navegador não alcança as bases de execução orçamentária, e não é limitação
+contornável: o **Portal da Transparência exige chave de API** — que em código de
+navegador ficaria visível para qualquer visitante, com a cota correndo por conta do
+gabinete — e **nenhuma dessas bases autoriza chamada vinda de outra origem**, o que o
+navegador recusa antes mesmo de a resposta chegar.
+
+A pasta `functions/` resolve os dois: a chave vive como segredo do projeto e a chamada
+parte do servidor, onde a regra de origem não se aplica. Quem pode usá-la são as contas
+que já constam em `autorizados` — a mesma lista que abre o sistema.
+
+Enquanto isto não estiver no ar, a importação por planilha continua funcionando e traz
+exatamente os mesmos números.
+
+### Passo a passo
+
+1. **Mude o projeto para o plano Blaze.** Cloud Functions exige cartão cadastrado. O
+   plano é por uso e tem cota gratuita generosa; o volume de um gabinete — algumas
+   dezenas de consultas por mês — fica dentro dela.
+
+2. **Obtenha a chave do Portal da Transparência**, gratuita, em
+   `portaldatransparencia.gov.br/api-de-dados/cadastrar-email`. Ela chega por e-mail.
+
+3. **Guarde a chave como segredo** (ela nunca entra no repositório):
+
+   ```
+   firebase functions:secrets:set CHAVE_PORTAL_TRANSPARENCIA
+   ```
+
+4. **Informe o banco**, se o seu não for o `(default)` — o deste projeto é `appgab`:
+
+   ```
+   firebase functions:config:unset 2>/dev/null; \
+   firebase deploy --only functions --set-env-vars FIRESTORE_DATABASE_ID=appgab
+   ```
+
+   Se a sua versão do CLI não aceitar `--set-env-vars`, crie um arquivo
+   `functions/.env` com a linha `FIRESTORE_DATABASE_ID=appgab`.
+
+5. **Implante:**
+
+   ```
+   cd functions && npm install && cd ..
+   firebase deploy --only functions
+   ```
+
+6. **Ligue no cliente.** Em `js/config.js`, mude `CONSULTA_AUTOMATICA` para `true` e
+   confira que `REGIAO_FUNCOES` é a mesma região declarada em `functions/index.js`
+   (`southamerica-east1`). Região divergente não dá erro de configuração: dá
+   "função não encontrada", que parece falta de implantação e não é.
+
+7. Publique o site. O botão **Consultar Portal** passa a aparecer em *Orçamento ›
+   Emendas*.
+
+### O que a função faz e o que ela não faz
+
+Ela **repassa** — não interpreta. Devolve o que a fonte respondeu, com o status e o
+corpo do erro quando há erro, e toda a leitura acontece no cliente, onde há teste. Um
+proxy que também interpretasse esconderia de qual dos dois lados veio o problema.
+
+Só aceita as fontes declaradas em `FONTES`, dentro de `functions/index.js`, e descarta
+parâmetro fora da lista de cada uma. Sem isso ela seria um proxy aberto: qualquer conta
+autenticada poderia usá-la para buscar qualquer endereço da internet com o projeto do
+gabinete no meio.
 
 ---
 

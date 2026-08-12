@@ -486,6 +486,46 @@ function extrasDasEmendas() {
 
       return el('span', { class: 'importador' }, [btn, escolher]);
     },
+
+    // A consulta direta só aparece quando a ponte no servidor está no ar. Um
+    // botão que só sabe explicar por que não funciona é pior do que botão
+    // nenhum — a importação por planilha continua ali, ao lado, funcionando.
+    (recarregar) => {
+      if (!nucleo.fontes.disponivel()) return null;
+
+      return el('button', {
+        class: 'btn btn--fantasma',
+        texto: 'Consultar Portal',
+        title: 'Busca a execução direto no Portal da Transparência',
+        onclick: async (e) => {
+          const btn = e.currentTarget;
+          const nomeAutor = nucleo.sessaoMod.sessao.gabinete?.deputado || null;
+          btn.disabled = true;
+          btn.textContent = 'Consultando…';
+          try {
+            const r = await nucleo.emendas.consultarPortal({
+              nomeAutor,
+              aoProgredir: ({ pagina, trazidas }) => {
+                btn.textContent = `Página ${pagina} · ${trazidas} registros`;
+              },
+            });
+            aviso([
+              `${r.novas} emendas novas, ${r.atualizadas} atualizadas.`,
+              `${r.linhas} registros em ${r.paginas} páginas`,
+              r.deOutroAutor ? `${r.deOutroAutor} de nomes parecidos, descartados` : null,
+              r.semChave ? `${r.semChave} sem código de emenda` : null,
+            ].filter(Boolean).join(' · '), (r.novas + r.atualizadas) ? 'ok' : 'erro');
+            recarregar();
+          } catch (erro) {
+            console.error(erro);
+            aviso(erro.message || 'Não foi possível consultar o Portal.', 'erro');
+          } finally {
+            btn.disabled = false;
+            btn.textContent = 'Consultar Portal';
+          }
+        },
+      });
+    },
   ];
 }
 
@@ -609,7 +649,7 @@ async function iniciar() {
   }
 
   try {
-    const [fb, sessaoMod, crud, admin, paineis, camara, minuta, dados, emendas] = await Promise.all([
+    const [fb, sessaoMod, crud, admin, paineis, camara, minuta, dados, emendas, fontes] = await Promise.all([
       import('./firebase.js'),
       import('./sessao.js'),
       import('./crud.js'),
@@ -619,8 +659,9 @@ async function iniciar() {
       import('./minuta.js'),
       import('./dados.js'),
       import('./emendas.js'),
+      import('./fontes.js'),
     ]);
-    nucleo = { fb, sessaoMod, crud, admin, paineis, camara, minuta, dados, emendas };
+    nucleo = { fb, sessaoMod, crud, admin, paineis, camara, minuta, dados, emendas, fontes };
   } catch (erro) {
     console.error(erro);
     limpar(raiz).appendChild(telaFalhaCarregamento());

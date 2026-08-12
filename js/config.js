@@ -25,6 +25,24 @@ export const CONFIGURADO = !FIREBASE_CONFIG.apiKey.startsWith('COLE_AQUI');
  */
 export const FIRESTORE_DATABASE_ID = 'appgab';
 
+/**
+ * Região das Cloud Functions. Precisa ser a mesma declarada em
+ * functions/index.js — divergência aqui vira erro de "função não encontrada",
+ * que parece falta de implantação e não é.
+ */
+export const REGIAO_FUNCOES = 'southamerica-east1';
+
+/**
+ * A consulta automática às bases de execução orçamentária depende de uma
+ * função no servidor, porque a chave do Portal da Transparência não pode ficar
+ * em código público e nenhuma dessas bases aceita chamada vinda do navegador.
+ *
+ * Enquanto isto for falso, a área de emendas funciona apenas pela importação de
+ * planilha — que traz exatamente os mesmos números. Ligue depois de implantar
+ * as funções; o passo a passo está no README.
+ */
+export const CONSULTA_AUTOMATICA = false;
+
 export const AREAS = [
   { id: 'chefia', sigla: 'CHF', nome: 'Chefia de gabinete', descricao: 'Painel, tarefas e agenda do deputado' },
   { id: 'administrativo', sigla: 'ADM', nome: 'Administrativo', descricao: 'Equipe, viagens, ofícios, cota e atendimento' },

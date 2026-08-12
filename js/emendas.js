@@ -127,94 +127,35 @@ export function chaveDaLinha({ codigo, ano, proposta, instrumento }) {
 }
 
 /**
- * Lê a planilha e concilia com o que já está guardado.
+ * Grava uma leva de emendas já normalizadas, conciliando com o que existe.
  *
- * Os arquivos do Portal da Transparência trazem as emendas de todos os
- * parlamentares — meio milhão de linhas. Filtrar pelo nome do autor é o que
- * torna a importação possível, e é também o passo que mais falha em silêncio,
- * porque o nome parlamentar nem sempre é o nome do gabinete. Por isso ele é
- * contado e relatado.
+ * É o mesmo caminho para a planilha e para a consulta automática. Duas entradas
+ * com duas conciliações seriam duas chances de duplicar o mesmo registro por
+ * caminhos diferentes — e a divergência só apareceria meses depois, num número
+ * somado em dobro no painel.
  */
-export async function importarPlanilha(arquivo, { nomeAutor = null } = {}) {
-  // A camada de dados entra só aqui dentro: sem isso, este arquivo arrastaria o
-  // SDK do Firebase junto e as funções de leitura acima deixariam de ser
-  // conferíveis fora do navegador — que é justamente onde elas mais precisam
-  // ser conferidas.
+async function conciliar(brutas, funil) {
   const { salvarEmLote, listar } = await import('./dados.js');
 
-  const texto = decodificar(await arquivo.arrayBuffer());
-  const { cabecalho, linhas } = lerCsv(texto);
-
-  if (!cabecalho.length) throw new Error('O arquivo está vazio ou não é uma planilha de texto.');
-
-  const mapa = mapearColunas(cabecalho);
-  const origem = origemDaPlanilha(cabecalho);
-
-  if (mapa.valorEmpenhado === undefined && mapa.valorIndicado === undefined) {
-    throw new Error(`Não encontrei colunas de valor em "${cabecalho.slice(0, 6).join(', ')}…". Confira se é a exportação de emendas.`);
-  }
-
-  const existentes = new Map(
-    (await listar('emendas', { recarregar: true })).map((e) => [e.id, e]),
+  const existentes = new Set(
+    (await listar('emendas', { recarregar: true })).map((e) => e.id),
   );
-
-  const funil = {
-    origem,
-    linhas: linhas.length,
-    deOutroAutor: 0,
-    semChave: 0,
-    novas: 0,
-    atualizadas: 0,
-    temColunaAutor: mapa.autor !== undefined,
-    nomeUsado: nomeAutor || null,
-  };
 
   const registros = [];
   const vistos = new Set();
-  const campo = (linha, nome) => (mapa[nome] === undefined ? null : String(linha[mapa[nome]] ?? '').trim());
 
-  for (const linha of linhas) {
-    if (mapa.autor !== undefined && nomeAutor && !mesmoNome(campo(linha, 'autor'), nomeAutor)) {
-      funil.deOutroAutor += 1;
-      continue;
-    }
-
-    const codigo = campo(linha, 'codigo');
-    const ano = numeroBr(campo(linha, 'ano'));
-    const proposta = campo(linha, 'proposta');
-    const instrumento = campo(linha, 'instrumento');
-
-    const id = chaveDaLinha({ codigo, ano, proposta, instrumento });
-    if (!id || vistos.has(id)) { if (!id) funil.semChave += 1; continue; }
+  for (const bruta of brutas) {
+    const id = chaveDaLinha(bruta);
+    if (!id) { funil.semChave += 1; continue; }
+    if (vistos.has(id)) continue;
     vistos.add(id);
 
-    const local = separarLocalidade(campo(linha, 'municipio'));
     const dados = {};
-
-    comValor(dados, 'codigo', codigo);
-    comValor(dados, 'ano', ano);
-    comValor(dados, 'tipo', tipoDe(campo(linha, 'tipoOrigem')));
-    comValor(dados, 'autorNaFonte', campo(linha, 'autor'));
-    comValor(dados, 'beneficiario', campo(linha, 'beneficiario'));
-    comValor(dados, 'municipio', local.municipio || campo(linha, 'municipio'));
-    comValor(dados, 'uf', local.uf || campo(linha, 'uf'));
-    comValor(dados, 'funcao', campo(linha, 'funcao'));
-    comValor(dados, 'objeto', campo(linha, 'objeto'));
-    comValor(dados, 'proposta', proposta);
-    comValor(dados, 'instrumento', instrumento);
-    comValor(dados, 'situacaoNaFonte', campo(linha, 'situacaoOrigem'));
-    comValor(dados, 'valorIndicado', numeroBr(campo(linha, 'valorIndicado')));
-    comValor(dados, 'valorEmpenhado', numeroBr(campo(linha, 'valorEmpenhado')));
-    comValor(dados, 'valorLiquidado', numeroBr(campo(linha, 'valorLiquidado')));
-    comValor(dados, 'valorPago', numeroBr(campo(linha, 'valorPago')));
-    comValor(dados, 'restosInscritos', numeroBr(campo(linha, 'restosInscritos')));
-    comValor(dados, 'restosPagos', numeroBr(campo(linha, 'restosPagos')));
-    comValor(dados, 'atualizadoNaFonte', dataBr(campo(linha, 'atualizadoNaFonte')));
-    dados.fonte = origem;
+    for (const [campo, valor] of Object.entries(bruta)) comValor(dados, campo, valor);
     dados.importadoEm = new Date().toISOString().slice(0, 10);
 
-    // A fase é juízo do gabinete e não vem de planilha nenhuma; só se dá um
-    // ponto de partida ao registro que está nascendo agora.
+    // A fase é juízo do gabinete e nenhuma fonte a conhece; só se dá um ponto
+    // de partida ao registro que está nascendo agora.
     if (!existentes.has(id)) {
       dados.fase = dados.valorPago > 0 ? 'execucao' : (dados.valorEmpenhado > 0 ? 'empenhada' : 'indicada');
       funil.novas += 1;
@@ -229,6 +170,160 @@ export async function importarPlanilha(arquivo, { nomeAutor = null } = {}) {
     const gravacao = await salvarEmLote('emendas', registros);
     if (gravacao.falhas.length) throw gravacao.falhas[0];
   }
-
   return funil;
+}
+
+/**
+ * Lê a planilha e concilia com o que já está guardado.
+ *
+ * Os arquivos do Portal da Transparência trazem as emendas de todos os
+ * parlamentares — meio milhão de linhas. Filtrar pelo nome do autor é o que
+ * torna a importação possível, e é também o passo que mais falha em silêncio,
+ * porque o nome parlamentar nem sempre é o nome do gabinete. Por isso ele é
+ * contado e relatado.
+ */
+export async function importarPlanilha(arquivo, { nomeAutor = null } = {}) {
+  const texto = decodificar(await arquivo.arrayBuffer());
+  const { cabecalho, linhas } = lerCsv(texto);
+
+  if (!cabecalho.length) throw new Error('O arquivo está vazio ou não é uma planilha de texto.');
+
+  const mapa = mapearColunas(cabecalho);
+  const origem = origemDaPlanilha(cabecalho);
+
+  if (mapa.valorEmpenhado === undefined && mapa.valorIndicado === undefined) {
+    throw new Error(`Não encontrei colunas de valor em "${cabecalho.slice(0, 6).join(', ')}…". Confira se é a exportação de emendas.`);
+  }
+
+  const funil = {
+    origem,
+    linhas: linhas.length,
+    deOutroAutor: 0,
+    semChave: 0,
+    novas: 0,
+    atualizadas: 0,
+    temColunaAutor: mapa.autor !== undefined,
+    nomeUsado: nomeAutor || null,
+  };
+
+  const campo = (linha, nome) => (mapa[nome] === undefined ? null : String(linha[mapa[nome]] ?? '').trim());
+  const brutas = [];
+
+  for (const linha of linhas) {
+    if (mapa.autor !== undefined && nomeAutor && !mesmoNome(campo(linha, 'autor'), nomeAutor)) {
+      funil.deOutroAutor += 1;
+      continue;
+    }
+
+    const local = separarLocalidade(campo(linha, 'municipio'));
+    brutas.push({
+      codigo: campo(linha, 'codigo'),
+      ano: numeroBr(campo(linha, 'ano')),
+      tipo: tipoDe(campo(linha, 'tipoOrigem')),
+      autorNaFonte: campo(linha, 'autor'),
+      beneficiario: campo(linha, 'beneficiario'),
+      municipio: local.municipio || campo(linha, 'municipio'),
+      uf: local.uf || campo(linha, 'uf'),
+      funcao: campo(linha, 'funcao'),
+      objeto: campo(linha, 'objeto'),
+      proposta: campo(linha, 'proposta'),
+      instrumento: campo(linha, 'instrumento'),
+      situacaoNaFonte: campo(linha, 'situacaoOrigem'),
+      valorIndicado: numeroBr(campo(linha, 'valorIndicado')),
+      valorEmpenhado: numeroBr(campo(linha, 'valorEmpenhado')),
+      valorLiquidado: numeroBr(campo(linha, 'valorLiquidado')),
+      valorPago: numeroBr(campo(linha, 'valorPago')),
+      restosInscritos: numeroBr(campo(linha, 'restosInscritos')),
+      restosPagos: numeroBr(campo(linha, 'restosPagos')),
+      atualizadoNaFonte: dataBr(campo(linha, 'atualizadoNaFonte')),
+      fonte: origem,
+    });
+  }
+
+  return conciliar(brutas, funil);
+}
+
+// ─────────────────────── consulta automática ───────────────────────
+
+/**
+ * Traduz um registro do Portal da Transparência.
+ *
+ * Os nomes dos campos vêm da documentação da API, que eu não consigo alcançar
+ * do meu ambiente para conferir. Por isso cada campo é lido por mais de um
+ * nome possível e o registro cru fica guardado quando algo não casa: um campo
+ * renomeado do outro lado precisa aparecer como pergunta, não como zero.
+ */
+export function doPortal(r) {
+  const pegar = (...nomes) => {
+    for (const n of nomes) {
+      if (r[n] !== undefined && r[n] !== null && r[n] !== '') return r[n];
+    }
+    return null;
+  };
+
+  const local = separarLocalidade(pegar('localidadeDoGasto', 'localidade', 'municipio'));
+  const funcaoBruta = pegar('funcao', 'nomeFuncao');
+
+  return {
+    codigo: pegar('codigoEmenda', 'codigo'),
+    ano: numeroBr(pegar('ano', 'anoEmenda')),
+    tipo: tipoDe(pegar('tipoEmenda', 'tipo')),
+    autorNaFonte: pegar('nomeAutor', 'autor'),
+    municipio: local.municipio,
+    uf: local.uf,
+    funcao: typeof funcaoBruta === 'object' ? funcaoBruta?.descricao : funcaoBruta,
+    valorEmpenhado: numeroBr(pegar('valorEmpenhado')),
+    valorLiquidado: numeroBr(pegar('valorLiquidado')),
+    valorPago: numeroBr(pegar('valorPago')),
+    restosInscritos: numeroBr(pegar('valorRestoInscrito', 'valorRestosInscritos')),
+    restosPagos: numeroBr(pegar('valorRestoPago', 'valorRestosPagos')),
+    fonte: 'Portal da Transparência',
+  };
+}
+
+/**
+ * Consulta o Portal da Transparência pela ponte no servidor.
+ *
+ * A API pagina de cem em cem e não informa o total, então a única forma de
+ * saber que acabou é receber uma página menor que a anterior. O teto de páginas
+ * existe para que um comportamento inesperado da fonte não vire um laço infinito
+ * consumindo a cota do gabinete.
+ */
+export async function consultarPortal({ nomeAutor, ano = null, aoProgredir = () => {} }) {
+  if (!nomeAutor) throw new Error('Informe o nome do parlamentar em Acessos → Dados do gabinete.');
+
+  const { consultarFonte } = await import('./fontes.js');
+
+  const funil = {
+    origem: 'Portal da Transparência (consulta direta)',
+    linhas: 0,
+    deOutroAutor: 0,
+    semChave: 0,
+    novas: 0,
+    atualizadas: 0,
+    temColunaAutor: true,
+    nomeUsado: nomeAutor,
+    paginas: 0,
+  };
+
+  const brutas = [];
+  for (let pagina = 1; pagina <= 50; pagina += 1) {
+    const r = await consultarFonte('portal-emendas', { nomeAutor, ano, pagina });
+    const lote = Array.isArray(r.dados) ? r.dados : [];
+    funil.paginas = pagina;
+    funil.linhas += lote.length;
+
+    for (const bruto of lote) {
+      const normalizado = doPortal(bruto);
+      // A API filtra por nome, mas com casamento parcial: conferir de novo aqui
+      // evita trazer um homônimo por engano.
+      if (!mesmoNome(normalizado.autorNaFonte, nomeAutor)) { funil.deOutroAutor += 1; continue; }
+      brutas.push(normalizado);
+    }
+
+    aoProgredir({ pagina, trazidas: funil.linhas });
+    if (lote.length < 100) break;
+  }
+
+  return conciliar(brutas, funil);
 }

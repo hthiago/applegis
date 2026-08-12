@@ -1,0 +1,136 @@
+const { onCall, HttpsError } = require('firebase-functions/v2/https');
+const { defineSecret } = require('firebase-functions/params');
+const { initializeApp } = require('firebase-admin/app');
+const { getFirestore } = require('firebase-admin/firestore');
+
+/**
+ * Ponte entre o gabinete e as bases de execução orçamentária.
+ *
+ * Ela existe por duas razões, e nenhuma delas se resolve no navegador:
+ *
+ *   1. O Portal da Transparência exige uma chave de API. Chave em código de
+ *      navegador fica visível para qualquer visitante da página — e a cota é do
+ *      gabinete. Aqui ela vive como segredo do projeto, nunca sai do servidor e
+ *      não aparece em log nenhum.
+ *   2. Nenhuma dessas bases autoriza chamada vinda de outra origem. O navegador
+ *      recusa antes mesmo de a resposta chegar. Do servidor, essa regra não se
+ *      aplica.
+ *
+ * O que esta função NÃO faz: interpretar dados. Ela repassa o que a fonte
+ * devolveu, com o status e o corpo do erro quando há erro. Toda a leitura
+ * acontece no cliente, onde dá para conferir com teste. Um proxy que também
+ * interpreta esconde de qual dos dois lados veio o problema.
+ */
+
+initializeApp();
+
+const CHAVE_PORTAL = defineSecret('CHAVE_PORTAL_TRANSPARENCIA');
+
+/**
+ * As fontes que esta ponte aceita, e só elas.
+ *
+ * Sem esta lista, a função viraria um proxy aberto: qualquer pessoa autenticada
+ * poderia mandá-la buscar qualquer endereço da internet, usando o projeto do
+ * gabinete como intermediário. Cada fonte declara o que aceita receber, e
+ * parâmetro fora da lista é descartado em vez de repassado.
+ */
+const FONTES = {
+  'portal-emendas': {
+    base: 'https://api.portaldatransparencia.gov.br/api-de-dados/emendas',
+    parametros: ['codigoEmenda', 'numeroEmenda', 'nomeAutor', 'ano', 'tipoEmenda',
+      'codigoFuncao', 'codigoSubfuncao', 'pagina'],
+    cabecalhos: () => ({ 'chave-api-dados': CHAVE_PORTAL.value() }),
+    exigeChave: true,
+  },
+  'transferegov-especiais': {
+    base: 'https://api.transferegov.gestao.gov.br/transferenciasespeciais/programa_transferencia_especial',
+    parametros: ['limit', 'offset', 'order', 'ano_programa_transferencia_especial',
+      'ni_beneficiario_transferencia_especial'],
+    cabecalhos: () => ({}),
+    exigeChave: false,
+  },
+  'transferegov-convenios': {
+    base: 'https://api.transferegov.gestao.gov.br/convenios/convenio',
+    parametros: ['limit', 'offset', 'order', 'ano_conv', 'id_proposta', 'nr_convenio'],
+    cabecalhos: () => ({}),
+    exigeChave: false,
+  },
+};
+
+/** Quem pode usar a ponte: a mesma lista que abre o sistema, e mais ninguém. */
+async function conferirAcesso(auth) {
+  if (!auth?.token?.email) {
+    throw new HttpsError('unauthenticated', 'Entre no sistema para consultar.');
+  }
+  const email = String(auth.token.email).toLowerCase();
+  const bd = getFirestore(process.env.FIRESTORE_DATABASE_ID || '(default)');
+  const doc = await bd.collection('autorizados').doc(email).get();
+
+  if (!doc.exists || doc.data().ativo === false) {
+    throw new HttpsError('permission-denied', 'Esta conta não tem acesso ao sistema.');
+  }
+  return doc.data();
+}
+
+exports.consultarFonte = onCall(
+  {
+    region: 'southamerica-east1',
+    secrets: [CHAVE_PORTAL],
+    timeoutSeconds: 120,
+    memory: '256MiB',
+    // A consulta é sob demanda e rara; manter instância acesa custaria mais do
+    // que a espera de alguns segundos ao clicar.
+    maxInstances: 3,
+  },
+  async (request) => {
+    await conferirAcesso(request.auth);
+
+    const { fonte, parametros = {} } = request.data || {};
+    const config = FONTES[fonte];
+    if (!config) {
+      throw new HttpsError('invalid-argument', `Fonte desconhecida: ${fonte}.`);
+    }
+    if (config.exigeChave && !CHAVE_PORTAL.value()) {
+      throw new HttpsError('failed-precondition',
+        'A chave do Portal da Transparência não foi cadastrada no projeto.');
+    }
+
+    const busca = new URLSearchParams();
+    for (const [chave, valor] of Object.entries(parametros)) {
+      if (config.parametros.includes(chave) && valor !== null && valor !== '') {
+        busca.set(chave, String(valor));
+      }
+    }
+
+    const url = `${config.base}?${busca}`;
+    let resposta;
+    try {
+      resposta = await fetch(url, {
+        headers: { Accept: 'application/json', ...config.cabecalhos() },
+      });
+    } catch (erro) {
+      throw new HttpsError('unavailable', `A fonte não respondeu: ${erro.message}`);
+    }
+
+    const corpo = await resposta.text();
+
+    if (!resposta.ok) {
+      // O motivo vem da fonte, recortado. Devolver só o número transforma um
+      // erro que se conserta em minutos num enigma — já custou caro uma vez.
+      throw new HttpsError('unavailable',
+        `${fonte} respondeu ${resposta.status}: ${corpo.slice(0, 300)}`);
+    }
+
+    let dados;
+    try {
+      dados = JSON.parse(corpo);
+    } catch {
+      throw new HttpsError('internal',
+        `${fonte} devolveu algo que não é JSON: ${corpo.slice(0, 200)}`);
+    }
+
+    // A URL volta sem a chave — ela nunca entra na query, mas o hábito de
+    // conferir o que se devolve vale mais do que a certeza.
+    return { fonte, quantidade: Array.isArray(dados) ? dados.length : 1, dados };
+  },
+);

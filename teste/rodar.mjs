@@ -64,6 +64,7 @@ const navegador = await chromium.launch();
 
 async function abrir({
   papel = 'chefe', areas = [], bancoVazio = false, loteRecusado = false, ignorarConsole = false,
+  consultaAutomatica = false, funcoes = null,
 } = {}) {
   const pagina = await navegador.newPage();
   pagina.on('pageerror', (e) => conferir(`erro de página inesperado (${papel})`, false, e.message));
@@ -85,6 +86,14 @@ async function abrir({
     globalThis.__BANCO_VAZIO_TESTE = v;
     globalThis.__LOTE_RECUSADO_TESTE = r;
   }, [papel, areas, bancoVazio, loteRecusado]);
+
+  // As respostas das Cloud Functions chegam por aqui: o duplo do SDK devolve o
+  // que estiver declarado, inclusive erro.
+  if (funcoes) {
+    await pagina.addInitScript((f) => {
+      globalThis.__FUNCOES_TESTE = JSON.parse(f);
+    }, JSON.stringify(funcoes));
+  }
 
   await pagina.route(/gstatic\.com/, (rota) => rota.fulfill({
     status: 200,
@@ -250,7 +259,10 @@ async function abrir({
     rota.fulfill({
       status: 200,
       contentType: 'text/javascript',
-      body: (await r.text()).replace("apiKey: 'COLE_AQUI'", "apiKey: 'chave-de-teste'"),
+      body: (await r.text())
+        .replace("apiKey: 'COLE_AQUI'", "apiKey: 'chave-de-teste'")
+        .replace('export const CONSULTA_AUTOMATICA = false;',
+          `export const CONSULTA_AUTOMATICA = ${consultaAutomatica};`),
     });
   });
 
@@ -937,6 +949,77 @@ console.log('\nPlanilhas de emenda\n');
     /colunas de valor/.test(recusa), recusa.replace(/\s+/g, ' '));
   conferir('a recusa não grava nada',
     !(await pagina.locator('.tabela tbody').innerText()).includes('Fulano'));
+  await pagina.close();
+}
+
+// ── consulta automática, pela ponte no servidor ──
+{
+  const pagina = await abrir({
+    consultaAutomatica: true,
+    funcoes: {
+      consultarFonte: {
+        fonte: 'portal-emendas',
+        dados: [
+          { codigoEmenda: '202598760001', ano: '2025', tipoEmenda: 'Individual',
+            nomeAutor: 'Deputada Teste', localidadeDoGasto: 'GRAMADO - RS', funcao: 'Saúde',
+            valorEmpenhado: '3.000.000,00', valorLiquidado: '1.500.000,00',
+            valorPago: '1.200.000,00', valorRestoInscrito: '300.000,00' },
+          { codigoEmenda: '202598760002', ano: '2025', tipoEmenda: 'Bancada',
+            nomeAutor: 'Homônimo Qualquer', localidadeDoGasto: 'BENTO - RS',
+            valorEmpenhado: '100,00' },
+        ],
+      },
+    },
+  });
+
+  await pagina.goto(`${BASE}/#/orcamento/emendas`, { waitUntil: 'domcontentloaded' });
+  await pagina.waitForSelector('.modulo-topo');
+  conferir('o botão de consulta aparece quando a ponte está ligada',
+    (await pagina.getByRole('button', { name: 'Consultar Portal' }).count()) === 1);
+
+  await pagina.getByRole('button', { name: 'Consultar Portal' }).click();
+  await pagina.waitForTimeout(900);
+
+  const recado = await pagina.locator('.aviso').last().innerText().catch(() => '');
+  conferir('a consulta traz as emendas do Portal',
+    /1 emendas novas/.test(recado), recado.replace(/\s+/g, ' '));
+  conferir('homônimo é descartado, e isso é dito',
+    /1 de nomes parecidos/.test(recado), recado.replace(/\s+/g, ' '));
+
+  const tabela = (await pagina.locator('.tabela tbody').innerText()).replace(/\s+/g, ' ');
+  conferir('o valor do Portal chega convertido',
+    tabela.includes('GRAMADO') && /3\.000\.000/.test(tabela), tabela);
+  conferir('a emenda do homônimo não entra', !tabela.includes('BENTO'), tabela);
+
+  await pagina.close();
+}
+
+// A ponte desligada não pode oferecer um botão que só sabe se lamentar.
+{
+  const pagina = await abrir({ consultaAutomatica: false });
+  await pagina.goto(`${BASE}/#/orcamento/emendas`, { waitUntil: 'domcontentloaded' });
+  await pagina.waitForSelector('.modulo-topo');
+  conferir('sem a ponte, o botão de consulta não aparece',
+    (await pagina.getByRole('button', { name: 'Consultar Portal' }).count()) === 0);
+  conferir('mas a importação por planilha continua disponível',
+    (await pagina.getByRole('button', { name: /Importar planilha/ }).count()) === 1);
+  await pagina.close();
+}
+
+// Falha da ponte precisa dizer o que fazer, não repetir um código.
+{
+  const pagina = await abrir({
+    consultaAutomatica: true,
+    ignorarConsole: true,
+    funcoes: { consultarFonte: { __erro: 'functions/failed-precondition' } },
+  });
+  await pagina.goto(`${BASE}/#/orcamento/emendas`, { waitUntil: 'domcontentloaded' });
+  await pagina.waitForSelector('.modulo-topo');
+  await pagina.getByRole('button', { name: 'Consultar Portal' }).click();
+  await pagina.waitForTimeout(700);
+  const erro = await pagina.locator('.aviso--erro').first().innerText().catch(() => '');
+  conferir('chave ausente vira instrução, não código de erro',
+    /chave do Portal/i.test(erro) && /README/.test(erro), erro.replace(/\s+/g, ' '));
   await pagina.close();
 }
 

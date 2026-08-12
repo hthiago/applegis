@@ -8,7 +8,11 @@ import {
   Timestamp,
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-import { FIREBASE_CONFIG, FIRESTORE_DATABASE_ID } from './config.js';
+import {
+  getFunctions, httpsCallable,
+} from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-functions.js';
+
+import { FIREBASE_CONFIG, FIRESTORE_DATABASE_ID, REGIAO_FUNCOES } from './config.js';
 
 export const app = initializeApp(FIREBASE_CONFIG);
 export const auth = getAuth(app);
@@ -27,6 +31,12 @@ export const db = initializeFirestore(app, {
   experimentalForceLongPolling: true,
 }, FIRESTORE_DATABASE_ID);
 
+/**
+ * As funções ficam na mesma região do banco. Região errada não dá erro de
+ * configuração: dá "not-found" na chamada, que parece função inexistente.
+ */
+export const funcoes = getFunctions(app, REGIAO_FUNCOES);
+
 const provider = new GoogleAuthProvider();
 provider.setCustomParameters({ prompt: 'select_account' });
 
@@ -41,5 +51,5 @@ export function sair() {
 export {
   onAuthStateChanged, collection, doc, getDoc, getDocs, setDoc, addDoc,
   updateDoc, deleteDoc, query, where, orderBy, limit, serverTimestamp, onSnapshot,
-  writeBatch, Timestamp,
+  writeBatch, Timestamp, httpsCallable,
 };

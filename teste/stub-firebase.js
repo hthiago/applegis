@@ -138,6 +138,31 @@ export function updateDoc(ref, dados) {
   return Promise.resolve();
 }
 
+/**
+ * Duplo das Cloud Functions. A resposta de cada função vem de
+ * __FUNCOES_TESTE, para que o teste possa devolver dados, erro ou silêncio.
+ */
+export function getFunctions() { return { stub: true }; }
+
+export function httpsCallable(_funcoes, nome) {
+  return async (dados) => {
+    const respostas = globalThis.__FUNCOES_TESTE || {};
+    const resposta = respostas[nome];
+    if (!resposta) {
+      const erro = new Error('not found');
+      erro.code = 'functions/not-found';
+      throw erro;
+    }
+    const r = typeof resposta === 'function' ? resposta(dados) : resposta;
+    if (r && r.__erro) {
+      const erro = new Error(r.mensagem || 'falhou');
+      erro.code = r.__erro;
+      throw erro;
+    }
+    return { data: r };
+  };
+}
+
 export function writeBatch() {
   const pendentes = [];
   return {
