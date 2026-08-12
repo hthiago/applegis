@@ -1143,13 +1143,15 @@ console.log('\nPlanilhas de emenda\n');
       consultarFonte: {
         // A raiz de um serviço PostgREST devolve o catálogo das tabelas: é o
         // que substitui o palpite pelo nome certo.
-        __fn: `if (dados.caminho === '/transferenciasespeciais') {
-          return { dados: { paths: { '/': {}, '/plano_acao': {}, '/beneficiario': {} } } };
+        __fn: `if (dados.caminho === '/transferenciasvoluntarias') {
+          return { dados: { paths: { '/': {}, '/proposta': {}, '/convenio': {} } } };
         }
-        if (dados.caminho === '/emendas' && dados.fonte === 'portal-livre') {
-          return { dados: [{ codigoEmenda: '1', valorEmpenhado: '10,00' }] };
+        if (dados.caminho === '/transferenciasespeciais/plano_acao_especial') {
+          return { dados: [{ id_plano_acao: 7, nr_emenda: '202041160001',
+            nome_beneficiario: 'MUNICIPIO DE ERECHIM', uf_beneficiario: 'RS',
+            vl_total_plano_acao: 4000000 }] };
         }
-        var e = new Error('respondeu 404: relation does not exist');
+        var e = new Error('respondeu 404: <html><head><title>404</title></head><body>nginx</body></html>');
         e.code = 'functions/unavailable';
         throw e;`,
       },
@@ -1163,13 +1165,15 @@ console.log('\nPlanilhas de emenda\n');
 
   const texto = await pagina.locator('.sondagem-texto').inputValue();
   conferir('a sondagem lê o catálogo de tabelas na raiz do serviço',
-    /TABELAS\s+\/transferenciasespeciais — plano_acao, beneficiario/.test(texto),
+    /TABELAS\s+\/transferenciasvoluntarias — proposta, convenio/.test(texto),
     texto.split('\n').find((l) => l.includes('TABELAS')) || texto.slice(0, 120));
-  conferir('o caminho que devolve dados aparece com seus campos',
-    /OK\s+\/emendas — 1 registro/.test(texto) && /codigoEmenda/.test(texto),
+  conferir('a tabela que responde aparece com suas colunas',
+    /OK\s+\/transferenciasespeciais\/plano_acao_especial/.test(texto)
+    && /nome_beneficiario/.test(texto) && /nr_emenda/.test(texto),
     texto.split('\n').find((l) => l.startsWith('OK')) || '');
-  conferir('os que falharam aparecem com o motivo',
-    /FALHA/.test(texto) && /does not exist/.test(texto), '');
+  conferir('página HTML de erro não é despejada inteira no relatório',
+    /FALHA/.test(texto) && !/<head>/.test(texto),
+    texto.split('\n').find((l) => l.startsWith('FALHA')) || '');
 
   await pagina.close();
 }
