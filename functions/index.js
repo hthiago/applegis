@@ -117,8 +117,18 @@ exports.consultarFonte = onCall(
     if (!resposta.ok) {
       // O motivo vem da fonte, recortado. Devolver só o número transforma um
       // erro que se conserta em minutos num enigma — já custou caro uma vez.
+      //
+      // Chave recusada tem uma armadilha própria: trocar o segredo não basta,
+      // porque a função fica presa à versão do segredo que existia quando ela
+      // foi implantada. Quem troca e não reimplanta vê o mesmo 401 e conclui
+      // que a chave nova também está errada.
+      const dica = config.exigeChave && [401, 403].includes(resposta.status)
+        ? ' — confira o valor guardado com `firebase functions:secrets:access CHAVE_PORTAL_TRANSPARENCIA`;'
+          + ' se precisar trocá-lo, reimplante a função depois, senão ela continua usando o valor antigo.'
+        : '';
+
       throw new HttpsError('unavailable',
-        `${fonte} respondeu ${resposta.status}: ${corpo.slice(0, 300)}`);
+        `${fonte} respondeu ${resposta.status}: ${corpo.slice(0, 300)}${dica}`);
     }
 
     let dados;
