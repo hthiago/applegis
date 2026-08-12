@@ -304,17 +304,27 @@ export async function consultarPortal({ nomeAutor, ano = null, aoProgredir = () 
     temColunaAutor: true,
     nomeUsado: nomeAutor,
     paginas: 0,
+    reconhecidos: 0,
   };
 
   const brutas = [];
+  let amostra = null;
+
   for (let pagina = 1; pagina <= 50; pagina += 1) {
     const r = await consultarFonte('portal-emendas', { nomeAutor, ano, pagina });
     const lote = Array.isArray(r.dados) ? r.dados : [];
     funil.paginas = pagina;
     funil.linhas += lote.length;
+    if (!amostra && lote.length) amostra = lote[0];
 
     for (const bruto of lote) {
       const normalizado = doPortal(bruto);
+
+      // Reconhecido é o registro do qual se conseguiu tirar o código da emenda.
+      // Nenhum reconhecido em toda a consulta não é "não achou nada": é a forma
+      // dos campos ter mudado, e as duas coisas exigem providências opostas.
+      if (normalizado.codigo) funil.reconhecidos += 1;
+
       // A API filtra por nome, mas com casamento parcial: conferir de novo aqui
       // evita trazer um homônimo por engano.
       if (!mesmoNome(normalizado.autorNaFonte, nomeAutor)) { funil.deOutroAutor += 1; continue; }
@@ -323,6 +333,13 @@ export async function consultarPortal({ nomeAutor, ano = null, aoProgredir = () 
 
     aoProgredir({ pagina, trazidas: funil.linhas });
     if (lote.length < 100) break;
+  }
+
+  // Se a fonte respondeu mas nada foi reconhecido, o problema é de nome de
+  // campo — a API mudou, ou eu li a documentação errado. Dizer quais campos
+  // vieram transforma uma tarde de adivinhação num conserto de uma linha.
+  if (funil.linhas && !funil.reconhecidos) {
+    funil.camposRecebidos = Object.keys(amostra || {});
   }
 
   return conciliar(brutas, funil);

@@ -509,12 +509,19 @@ function extrasDasEmendas() {
                 btn.textContent = `Página ${pagina} · ${trazidas} registros`;
               },
             });
-            aviso([
-              `${r.novas} emendas novas, ${r.atualizadas} atualizadas.`,
-              `${r.linhas} registros em ${r.paginas} páginas`,
-              r.deOutroAutor ? `${r.deOutroAutor} de nomes parecidos, descartados` : null,
-              r.semChave ? `${r.semChave} sem código de emenda` : null,
-            ].filter(Boolean).join(' · '), (r.novas + r.atualizadas) ? 'ok' : 'erro');
+            if (r.camposRecebidos) {
+              // Nome de campo divergente é o erro mais provável desta ponte, e
+              // o único que não dá para prever daqui. Mostrar o que a fonte
+              // mandou é o que permite corrigir sem uma rodada de suposição.
+              aviso(`O Portal respondeu ${r.linhas} registros, mas nenhum campo foi reconhecido. Ele devolveu: ${r.camposRecebidos.join(', ')}`, 'erro');
+            } else {
+              aviso([
+                `${r.novas} emendas novas, ${r.atualizadas} atualizadas.`,
+                `${r.linhas} registros em ${r.paginas} páginas`,
+                r.deOutroAutor ? `${r.deOutroAutor} de nomes parecidos, descartados` : null,
+                r.semChave ? `${r.semChave} sem código de emenda` : null,
+              ].filter(Boolean).join(' · '), (r.novas + r.atualizadas) ? 'ok' : 'erro');
+            }
             recarregar();
           } catch (erro) {
             console.error(erro);

@@ -170,29 +170,22 @@ exatamente os mesmos números.
    firebase functions:secrets:set CHAVE_PORTAL_TRANSPARENCIA
    ```
 
-4. **Informe o banco**, se o seu não for o `(default)` — o deste projeto é `appgab`:
-
-   ```
-   firebase functions:config:unset 2>/dev/null; \
-   firebase deploy --only functions --set-env-vars FIRESTORE_DATABASE_ID=appgab
-   ```
-
-   Se a sua versão do CLI não aceitar `--set-env-vars`, crie um arquivo
-   `functions/.env` com a linha `FIRESTORE_DATABASE_ID=appgab`.
-
-5. **Implante:**
+4. **Implante:**
 
    ```
    cd functions && npm install && cd ..
    firebase deploy --only functions
    ```
 
-6. **Ligue no cliente.** Em `js/config.js`, mude `CONSULTA_AUTOMATICA` para `true` e
+   O nome do banco (`appgab`) já vai em `functions/.env`, que não é segredo —
+   só a chave é.
+
+5. **Ligue no cliente.** Em `js/config.js`, mude `CONSULTA_AUTOMATICA` para `true` e
    confira que `REGIAO_FUNCOES` é a mesma região declarada em `functions/index.js`
    (`southamerica-east1`). Região divergente não dá erro de configuração: dá
    "função não encontrada", que parece falta de implantação e não é.
 
-7. Publique o site. O botão **Consultar Portal** passa a aparecer em *Orçamento ›
+6. Publique o site. O botão **Consultar Portal** passa a aparecer em *Orçamento ›
    Emendas*.
 
 ### O que a função faz e o que ela não faz

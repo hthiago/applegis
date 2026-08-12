@@ -994,6 +994,30 @@ console.log('\nPlanilhas de emenda\n');
   await pagina.close();
 }
 
+// Nome de campo divergente é o erro mais provável desta ponte e o único que não
+// dá para prever de fora. Precisa virar diagnóstico, não zeros gravados.
+{
+  const pagina = await abrir({
+    consultaAutomatica: true,
+    funcoes: {
+      consultarFonte: {
+        dados: [{ idEmenda: '99', anoEmenda: '2025', autorDaEmenda: 'Deputada Teste', empenho: '10,00' }],
+      },
+    },
+  });
+  await pagina.goto(`${BASE}/#/orcamento/emendas`, { waitUntil: 'domcontentloaded' });
+  await pagina.waitForSelector('.modulo-topo');
+  await pagina.getByRole('button', { name: 'Consultar Portal' }).click();
+  await pagina.waitForTimeout(800);
+  const diag = await pagina.locator('.aviso--erro').first().innerText().catch(() => '');
+  conferir('campo irreconhecível vira diagnóstico com os nomes recebidos',
+    /nenhum campo foi reconhecido/.test(diag) && /idEmenda/.test(diag), diag.replace(/\s+/g, ' '));
+  conferir('e nada é gravado com valores vazios',
+    !(await pagina.locator('.tabela tbody').innerText()).includes('2025'),
+    await pagina.locator('.tabela tbody').innerText());
+  await pagina.close();
+}
+
 // A ponte desligada não pode oferecer um botão que só sabe se lamentar.
 {
   const pagina = await abrir({ consultaAutomatica: false });
