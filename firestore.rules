@@ -74,7 +74,8 @@ service cloud.firestore {
         'clipping': 'comunicacao',
         'imprensa': 'comunicacao',
         'midia': 'comunicacao',
-        'emendas': 'orcamento'
+        'emendas': 'orcamento',
+        'transferencias': 'orcamento'
       }.get(colecao, 'desconhecida');
     }
 

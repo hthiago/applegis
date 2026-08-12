@@ -42,6 +42,50 @@ const FONTES = {
     cabecalhos: () => ({ 'chave-api-dados': CHAVE_PORTAL.value() }),
     exigeChave: true,
   },
+  /**
+   * A emenda discriminada, no Portal: os documentos de execução — empenho,
+   * liquidação, pagamento — com o favorecido de cada um. É o nível abaixo do
+   * consolidado que /emendas devolve.
+   */
+  'portal-emenda-documentos': {
+    base: 'https://api.portaldatransparencia.gov.br/api-de-dados/emendas/documentos',
+    parametros: ['codigoEmenda', 'pagina'],
+    cabecalhos: () => ({ 'chave-api-dados': CHAVE_PORTAL.value() }),
+    exigeChave: true,
+  },
+  'portal-emenda-impedimentos': {
+    base: 'https://api.portaldatransparencia.gov.br/api-de-dados/emendas/documentos-impedimentos',
+    parametros: ['codigoEmenda', 'pagina'],
+    cabecalhos: () => ({ 'chave-api-dados': CHAVE_PORTAL.value() }),
+    exigeChave: true,
+  },
+  'portal-convenios': {
+    base: 'https://api.portaldatransparencia.gov.br/api-de-dados/convenios',
+    parametros: ['codigoIBGE', 'dataInicial', 'dataFinal', 'ufSigla', 'pagina',
+      'codigoOrgao', 'numeroConvenio'],
+    cabecalhos: () => ({ 'chave-api-dados': CHAVE_PORTAL.value() }),
+    exigeChave: true,
+  },
+
+  /**
+   * O Transferegov serve por PostgREST: o filtro vai no próprio nome do campo,
+   * na forma `campo=eq.valor`. Por isso a lista de parâmetros aqui é de nomes
+   * de coluna, e não de parâmetros de consulta no sentido usual.
+   */
+  'transferegov-emendas': {
+    base: 'https://api.transferegov.gestao.gov.br/emendas/emenda',
+    parametros: ['limit', 'offset', 'order', 'nr_emenda', 'ano_emenda',
+      'nome_parlamentar', 'select'],
+    cabecalhos: () => ({}),
+    exigeChave: false,
+  },
+  'transferegov-propostas': {
+    base: 'https://api.transferegov.gestao.gov.br/convenios/proposta',
+    parametros: ['limit', 'offset', 'order', 'id_proposta', 'ano_proposta',
+      'uf_proponente', 'identif_proponente', 'select'],
+    cabecalhos: () => ({}),
+    exigeChave: false,
+  },
   'transferegov-especiais': {
     base: 'https://api.transferegov.gestao.gov.br/transferenciasespeciais/programa_transferencia_especial',
     parametros: ['limit', 'offset', 'order', 'ano_programa_transferencia_especial',

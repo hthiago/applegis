@@ -576,6 +576,52 @@ function extrasDasEmendas() {
   ];
 }
 
+/**
+ * A emenda discriminada: uma consulta por emenda já importada, buscando os
+ * documentos que a executaram. É onde aparece quem recebeu e para quê.
+ */
+function extrasDasTransferencias() {
+  return [
+    (recarregar) => {
+      if (!nucleo.fontes.disponivel()) return null;
+
+      return el('button', {
+        class: 'btn btn--fantasma',
+        texto: 'Detalhar emendas',
+        title: 'Busca no Portal quem recebeu cada emenda, e em que fase',
+        onclick: async (e) => {
+          const btn = e.currentTarget;
+          btn.disabled = true;
+          try {
+            const r = await nucleo.emendas.detalharEmendas({
+              aoProgredir: (p) => {
+                btn.textContent = `Emenda ${p.consultadas}/${p.emendas} · ${p.linhas} linhas`;
+              },
+            });
+            if (r.camposRecebidos) {
+              aviso(`O Portal devolveu ${r.linhas} documentos, mas nenhum campo foi reconhecido.`
+                + ` Ele mandou: ${r.camposRecebidos.join(', ')}`, 'erro');
+            } else {
+              aviso([
+                `${r.gravadas} transferências guardadas.`,
+                `${r.emendas} emendas consultadas`,
+                r.semChave ? `${r.semChave} sem identificação de documento` : null,
+              ].filter(Boolean).join(' · '), r.gravadas ? 'ok' : 'erro');
+            }
+            recarregar();
+          } catch (erro) {
+            console.error(erro);
+            aviso(erro.message || 'Não foi possível detalhar as emendas.', 'erro');
+          } finally {
+            btn.disabled = false;
+            btn.textContent = 'Detalhar emendas';
+          }
+        },
+      });
+    },
+  ];
+}
+
 function acoesDaMinuta() {
   return [
     (peca, aoConcluir) => el('button', {
@@ -620,6 +666,7 @@ async function desenharConteudo(alvo, areaId, abaId) {
   else if (modulo.importaPauta) extras = extrasDaPauta();
   else if (modulo.importaVotacoes) extras = extrasDasVotacoes();
   else if (modulo.importaEmendas) extras = extrasDasEmendas();
+  else if (modulo.importaTransferencias) extras = extrasDasTransferencias();
 
   const acoesItem = modulo.geraMinuta ? acoesDaMinuta() : [];
   const acoesLinha = modulo.enviaParaAcompanhamento ? [acaoAcompanhar] : [];

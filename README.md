@@ -131,7 +131,10 @@ SIOP e do Fundo Nacional de Saúde. Reconhece o formato pelo cabeçalho, concili
 código e ano — reimportar atualiza em vez de duplicar — e filtra pelo nome do
 parlamentar, dizendo quantas linhas descartou e com qual nome.
 
-**Emendas por consulta direta** (precisa das Cloud Functions; veja abaixo).
+**Emendas por consulta direta** (precisa das Cloud Functions; veja abaixo). Duas
+camadas: *Emendas* traz o consolidado por emenda — empenhado, liquidado, pago e
+restos —, e *Transferências* traz a emenda discriminada, uma linha por documento
+de execução, com quem recebeu, para quê e em que fase.
 
 **Ainda por ligar:** Google Agenda (leitura para o gabinete, escrita para a chefia),
 Google Drive (documentos guardam o link, não o arquivo) e as despesas da cota

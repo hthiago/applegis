@@ -28,7 +28,7 @@ colecaoDe('gabinetes/g1/tarefas').set('t1', {
   prazo: '2020-01-01', prioridade: 'alta', status: 'aberta',
 });
 colecaoDe('gabinetes/g1/emendas').set('em1', {
-  ano: 2026, tipo: 'individual', beneficiario: 'Prefeitura de Erechim', municipio: 'Erechim',
+  codigo: '202612340000', ano: 2026, tipo: 'individual', beneficiario: 'Prefeitura de Erechim', municipio: 'Erechim',
   uf: 'RS', areaDestino: 'saude', valorIndicado: 500000, valorEmpenhado: 300000,
   valorPago: 100000, fase: 'execucao',
 });

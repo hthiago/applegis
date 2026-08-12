@@ -767,6 +767,52 @@ export const MODULOS = [
       { k: 'importadoEm', l: 'Importado em', t: 'data' },
     ],
   },
+  {
+    id: 'transferencias',
+    area: 'orcamento',
+    nome: 'Transferências',
+    singular: 'transferência',
+    descricao: 'A emenda discriminada: quem recebeu, para quê, quanto e em que fase. Uma linha por proposta, convênio ou documento de execução.',
+    ordenar: { campo: 'data', dir: 'desc' },
+    busca: ['favorecido', 'municipio', 'objeto', 'documento', 'codigoEmenda'],
+    importaTransferencias: true,
+    // Cada linha vem de uma base pública; cadastrar à mão criaria divergência.
+    semCriacao: true,
+    facetas: [
+      { campo: 'tipo', l: 'Tipo' },
+      { campo: 'ano', l: 'Ano', ordem: 'valor-desc' },
+      { campo: 'situacao', l: 'Situação' },
+      { campo: 'uf', l: 'UF' },
+    ],
+    // Por município, que é como o gabinete pensa a distribuição da emenda.
+    agruparPor: { campo: 'municipio' },
+    campos: [
+      { k: 'data', l: 'Data', t: 'data', lista: true },
+      { k: 'favorecido', l: 'Quem recebeu', t: 'texto', lista: true,
+        subLinha: { campo: 'favorecidoDoc', prefixo: 'CNPJ ' } },
+      { k: 'objeto', l: 'Objeto', t: 'area', lista: true },
+      { k: 'valor', l: 'Valor', t: 'dinheiro', lista: true },
+      { k: 'tipo', l: 'Tipo', t: 'select', lista: true, op: [
+        { v: 'empenho', l: 'Empenho', cor: 'info' },
+        { v: 'liquidacao', l: 'Liquidação', cor: 'info' },
+        { v: 'pagamento', l: 'Pagamento', cor: 'ok' },
+        { v: 'proposta', l: 'Proposta', cor: 'neutro' },
+        { v: 'convenio', l: 'Convênio', cor: 'atencao' },
+        { v: 'especial', l: 'Transferência especial', cor: 'atencao' },
+      ] },
+      { k: 'situacao', l: 'Situação', t: 'texto', lista: true },
+      { k: 'notaInterna', l: 'Nota do gabinete', t: 'area', lista: true, inline: true },
+      { k: 'codigoEmenda', l: 'Emenda de origem', t: 'texto' },
+      { k: 'documento', l: 'Nº do documento', t: 'texto' },
+      { k: 'municipio', l: 'Município', t: 'texto' },
+      { k: 'uf', l: 'UF', t: 'texto' },
+      { k: 'orgao', l: 'Órgão concedente', t: 'texto' },
+      { k: 'favorecidoDoc', l: 'CNPJ/CPF de quem recebeu', t: 'texto' },
+      { k: 'ano', l: 'Ano', t: 'numero' },
+      { k: 'fonte', l: 'Origem do dado', t: 'texto' },
+      { k: 'importadoEm', l: 'Importado em', t: 'data' },
+    ],
+  },
 ];
 
 export const porId = Object.fromEntries(MODULOS.map((m) => [m.id, m]));

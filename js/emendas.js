@@ -398,3 +398,147 @@ export async function consultarPortal({ nomeAutor, ano = null, aoProgredir = () 
 
   return conciliar(brutas, funil);
 }
+
+// ───────────────────── a emenda discriminada ─────────────────────
+
+/**
+ * Traduz um documento de execução do Portal.
+ *
+ * Cada emenda vira várias linhas aqui: um empenho, uma liquidação, um
+ * pagamento — cada um com o favorecido, que é a informação que o consolidado
+ * esconde. "Quanto foi para Gramado, para quê" só se responde neste nível.
+ *
+ * Como em `doPortal`, cada campo é lido por mais de um nome possível: não
+ * consigo alcançar essa API do meu ambiente, e é melhor tentar três nomes do
+ * que gravar vazio quando a fonte usa o segundo.
+ */
+export function doDocumento(r, codigoEmenda) {
+  const pegar = (...nomes) => {
+    for (const n of nomes) {
+      const v = n.split('.').reduce((o, k) => (o == null ? o : o[k]), r);
+      if (v !== undefined && v !== null && v !== '') return v;
+    }
+    return null;
+  };
+
+  const local = separarLocalidade(pegar('municipio', 'localidade', 'localidadeDoGasto'));
+  const data = dataBr(pegar('data', 'dataEmissao', 'dataDocumento'));
+
+  return {
+    codigoEmenda: pegar('codigoEmenda') || codigoEmenda || null,
+    documento: pegar('documentoResumido', 'documento', 'numeroDocumento', 'codigoDocumento'),
+    tipo: tipoDoDocumento(pegar('fase', 'tipoDocumento', 'especieDocumento')),
+    data,
+    ano: data ? Number(data.slice(0, 4)) : numeroBr(pegar('ano')),
+    favorecido: pegar('nomeFavorecido', 'favorecido.nome', 'favorecido', 'nomeBeneficiario'),
+    favorecidoDoc: pegar('codigoFavorecido', 'favorecido.cnpjFormatado', 'cnpjFavorecido', 'cpfCnpjFavorecido'),
+    municipio: local.municipio,
+    uf: local.uf || pegar('uf', 'siglaUf'),
+    orgao: pegar('nomeOrgao', 'orgao.nome', 'orgaoSuperior', 'unidadeGestora'),
+    objeto: pegar('observacao', 'objeto', 'descricao', 'historico'),
+    valor: numeroBr(pegar('valor', 'valorDocumento', 'valorEmpenhado', 'valorPago')),
+    situacao: pegar('situacao', 'status'),
+    fonte: 'Portal da Transparência',
+  };
+}
+
+/** A fase da execução, como o Portal a escreve, reduzida ao que a lista mostra. */
+function tipoDoDocumento(texto) {
+  const t = String(texto || '').toLowerCase();
+  if (t.includes('pagamento') || t.startsWith('ob')) return 'pagamento';
+  if (t.includes('liquida')) return 'liquidacao';
+  if (t.includes('empenho') || t.startsWith('ne')) return 'empenho';
+  if (t.includes('conv')) return 'convenio';
+  if (t.includes('proposta')) return 'proposta';
+  if (t.includes('especial')) return 'especial';
+  return 'empenho';
+}
+
+/** A chave de uma transferência: a emenda mais o documento que a executou. */
+export function chaveDaTransferencia({ codigoEmenda, documento, favorecido, data }) {
+  const limpo = (v) => String(v || '').trim().replace(/[^\w.-]+/g, '-').replace(/^-|-$/g, '');
+  if (codigoEmenda && documento) return `${limpo(codigoEmenda)}-${limpo(documento)}`;
+  if (documento) return `doc-${limpo(documento)}`;
+  if (codigoEmenda && favorecido && data) {
+    return `${limpo(codigoEmenda)}-${limpo(data)}-${limpo(favorecido).slice(0, 40)}`;
+  }
+  return null;
+}
+
+/**
+ * Busca, para cada emenda já importada, as transferências que a executaram.
+ *
+ * É uma consulta por emenda — não há como pedir todas de uma vez —, então o
+ * trabalho é gravado a cada punhado em vez de no fim: uma varredura longa que
+ * só grava no último instante perde tudo se a aba fechar, erro que já cometi
+ * uma vez neste projeto.
+ */
+export async function detalharEmendas({ aoProgredir = () => {} } = {}) {
+  const { salvarEmLote, listar } = await import('./dados.js');
+  const { consultarFonte } = await import('./fontes.js');
+
+  const emendas = (await listar('emendas', { recarregar: true })).filter((e) => e.codigo);
+  if (!emendas.length) {
+    throw new Error('Importe as emendas primeiro — é delas que sai a lista a detalhar.');
+  }
+
+  const funil = {
+    emendas: emendas.length,
+    consultadas: 0,
+    linhas: 0,
+    reconhecidas: 0,
+    semChave: 0,
+    gravadas: 0,
+  };
+  let amostra = null;
+  let acumulado = [];
+
+  const descarregar = async () => {
+    if (!acumulado.length) return;
+    const gravacao = await salvarEmLote('transferencias', acumulado);
+    if (gravacao.falhas.length) throw gravacao.falhas[0];
+    funil.gravadas += acumulado.length;
+    acumulado = [];
+  };
+
+  for (const emenda of emendas) {
+    try {
+      for (let pagina = 1; pagina <= 30; pagina += 1) {
+        const r = await consultarFonte('portal-emenda-documentos', {
+          codigoEmenda: emenda.codigo, pagina,
+        });
+        const lote = Array.isArray(r.dados) ? r.dados : [];
+        if (!lote.length) break;
+        if (!amostra) [amostra] = lote;
+        funil.linhas += lote.length;
+
+        for (const bruto of lote) {
+          const t = doDocumento(bruto, emenda.codigo);
+          const id = chaveDaTransferencia(t);
+          if (!id) { funil.semChave += 1; continue; }
+          if (t.favorecido || t.valor !== null) funil.reconhecidas += 1;
+
+          const dados = {};
+          for (const [campo, valor] of Object.entries(t)) comValor(dados, campo, valor);
+          dados.importadoEm = new Date().toISOString().slice(0, 10);
+          acumulado.push({ id, dados });
+        }
+      }
+    } catch (erro) {
+      console.error(`Não detalhou a emenda ${emenda.codigo}`, erro);
+    } finally {
+      funil.consultadas += 1;
+      if (acumulado.length >= 200) await descarregar();
+      aoProgredir({ ...funil });
+    }
+  }
+
+  await descarregar();
+
+  // Mesmo raciocínio da consulta principal: linhas que chegam e não são
+  // reconhecidas apontam nomes de campo diferentes, não ausência de dados.
+  if (funil.linhas && !funil.reconhecidas) {
+    funil.camposRecebidos = Object.keys(amostra || {});
+  }
+  return funil;
+}

@@ -883,6 +883,27 @@ console.log('\nPlanilhas de emenda\n');
     && pl.nomeParaBusca('Vinícius Gurgel') === 'VINICIUS GURGEL'
     && pl.nomeParaBusca('  José  Medeiros ') === 'JOSE MEDEIROS');
 
+  // A emenda discriminada: uma linha por documento de execução, com favorecido.
+  const doc = em.doDocumento({
+    codigoEmenda: '202512340001', documentoResumido: '2025NE000123', fase: 'Empenho',
+    data: '12/03/2025', nomeFavorecido: 'MUNICIPIO DE GRAMADO',
+    codigoFavorecido: '88.111.222/0001-00', municipio: 'GRAMADO - RS',
+    nomeOrgao: 'MINISTERIO DA SAUDE', observacao: 'Custeio da atenção básica',
+    valor: '500.000,00',
+  }, null);
+  conferir('o documento traz quem recebeu, quanto e em que fase',
+    doc.favorecido === 'MUNICIPIO DE GRAMADO' && doc.valor === 500000
+    && doc.tipo === 'empenho' && doc.municipio === 'GRAMADO' && doc.uf === 'RS',
+    JSON.stringify(doc));
+  conferir('a fase vem da palavra que a fonte usa',
+    em.doDocumento({ fase: 'Pagamento' }).tipo === 'pagamento'
+    && em.doDocumento({ fase: 'Liquidação' }).tipo === 'liquidacao');
+  conferir('a transferência é identificada pela emenda mais o documento',
+    em.chaveDaTransferencia({ codigoEmenda: '202512340001', documento: '2025NE000123' })
+      === '202512340001-2025NE000123');
+  conferir('sem documento nem emenda não há chave possível',
+    em.chaveDaTransferencia({ favorecido: 'Prefeitura' }) === null);
+
   conferir('a chave concilia pelo código e ano',
     em.chaveDaLinha({ codigo: '202512340001', ano: 2025 }) === '2025-202512340001');
   conferir('sem código, a proposta serve de chave',
@@ -1089,6 +1110,60 @@ console.log('\nPlanilhas de emenda\n');
   const recado = await pagina.locator('.aviso').last().innerText().catch(() => '');
   conferir('página que só repete o que já veio encerra a consulta',
     /em 2 páginas/.test(recado), recado.replace(/\s+/g, ' '));
+  await pagina.close();
+}
+
+// A emenda discriminada, pela ponte: quem recebeu cada parte do dinheiro.
+{
+  const pagina = await abrir({
+    consultaAutomatica: true,
+    funcoes: {
+      consultarFonte: {
+        __fn: `if (dados.fonte !== 'portal-emenda-documentos') return { dados: [] };
+        if (Number((dados.parametros || {}).pagina || 1) > 1) return { dados: [] };
+        return { dados: [
+          { codigoEmenda: '202612340000', documentoResumido: '2026NE000001', fase: 'Empenho',
+            data: '10/02/2026', nomeFavorecido: 'MUNICIPIO DE ERECHIM',
+            codigoFavorecido: '87.612.917/0001-00', municipio: 'ERECHIM - RS',
+            nomeOrgao: 'MINISTERIO DA SAUDE', observacao: 'Custeio da atencao basica',
+            valor: '300.000,00' },
+          { codigoEmenda: '202612340000', documentoResumido: '2026OB000045', fase: 'Pagamento',
+            data: '05/06/2026', nomeFavorecido: 'MUNICIPIO DE ERECHIM',
+            municipio: 'ERECHIM - RS', valor: '100.000,00' },
+        ] };`,
+      },
+    },
+  });
+
+  await pagina.goto(`${BASE}/#/orcamento/transferencias`, { waitUntil: 'domcontentloaded' });
+  await pagina.waitForSelector('.modulo-topo');
+  conferir('a aba de transferências existe e oferece o detalhamento',
+    (await pagina.getByRole('button', { name: 'Detalhar emendas' }).count()) === 1);
+
+  await pagina.getByRole('button', { name: 'Detalhar emendas' }).click();
+  await pagina.waitForTimeout(1200);
+
+  const recado = await pagina.locator('.aviso').last().innerText().catch(() => '');
+  conferir('o detalhamento guarda as transferências',
+    /2 transferências guardadas/.test(recado), recado.replace(/\s+/g, ' '));
+
+  const tabela = (await pagina.locator('.tabela tbody').innerText()).replace(/\s+/g, ' ');
+  conferir('a linha mostra quem recebeu e o valor',
+    tabela.includes('MUNICIPIO DE ERECHIM') && /300\.000/.test(tabela), tabela);
+  conferir('empenho e pagamento aparecem como fases distintas',
+    tabela.includes('Empenho') && tabela.includes('Pagamento'), tabela);
+  conferir('as transferências agrupam por município',
+    (await pagina.locator('.grupo-nome').first().innerText()).includes('ERECHIM'),
+    await pagina.locator('.grupo-nome').first().innerText());
+
+  // Rodar de novo não pode duplicar: a chave é a emenda mais o documento.
+  const antes = await pagina.locator('.tabela tbody tr').count();
+  await pagina.getByRole('button', { name: 'Detalhar emendas' }).click();
+  await pagina.waitForTimeout(1200);
+  conferir('detalhar de novo atualiza em vez de duplicar',
+    (await pagina.locator('.tabela tbody tr').count()) === antes,
+    `${antes} linhas`);
+
   await pagina.close();
 }
 
