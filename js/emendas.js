@@ -644,17 +644,23 @@ export async function detalharEmendas({ aoProgredir = () => {} } = {}) {
  * palpite. A sondagem tenta todos de uma vez e diz qual responde.
  */
 export const CAMINHOS_CANDIDATOS = [
-  { fonte: 'portal-livre', caminho: '/emendas/documentos', usa: 'codigoEmenda' },
-  { fonte: 'portal-livre', caminho: '/emendas/documentos-impedimentos', usa: 'codigoEmenda' },
-  { fonte: 'portal-livre', caminho: '/emendas/documentos-impedidos', usa: 'codigoEmenda' },
-  { fonte: 'portal-livre', caminho: '/despesas/documentos', usa: 'codigoEmenda' },
+  // A raiz de um serviço PostgREST devolve o catálogo das próprias tabelas. É
+  // por aqui que se descobre o nome certo em vez de continuar adivinhando:
+  // /transferenciasespeciais respondeu erro de banco, e não do servidor web,
+  // o que prova que o prefixo existe e que só a tabela estava errada.
+  { fonte: 'transferegov-livre', caminho: '/transferenciasespeciais', raiz: true },
+  { fonte: 'transferegov-livre', caminho: '/convenios', raiz: true },
+  { fonte: 'transferegov-livre', caminho: '/emendas', raiz: true },
+  { fonte: 'transferegov-livre', caminho: '/execucao', raiz: true },
+  { fonte: 'transferegov-livre', caminho: '/contratos', raiz: true },
+  { fonte: 'transferegov-livre', caminho: '/planoacao', raiz: true },
+  { fonte: 'transferegov-livre', caminho: '/transferenciasdiscricionarias', raiz: true },
+  { fonte: 'transferegov-livre', caminho: '/discricionarias', raiz: true },
+  { fonte: 'transferegov-livre', caminho: '/', raiz: true },
+
+  // O Portal: /emendas responde e é o consolidado que já usamos. Fica aqui
+  // como controle — se ele falhar, o problema é da ponte, não do caminho.
   { fonte: 'portal-livre', caminho: '/emendas', usa: 'codigoEmenda' },
-  { fonte: 'transferegov-livre', caminho: '/emendas/emenda', usa: 'nr_emenda' },
-  { fonte: 'transferegov-livre', caminho: '/emendas/emenda_parlamentar', usa: 'nr_emenda' },
-  { fonte: 'transferegov-livre', caminho: '/convenios/proposta', usa: null },
-  { fonte: 'transferegov-livre', caminho: '/convenios/convenio', usa: null },
-  { fonte: 'transferegov-livre', caminho: '/transferenciasespeciais/plano_acao', usa: null },
-  { fonte: 'transferegov-livre', caminho: '/transferenciasespeciais/programa_transferencia_especial', usa: null },
 ];
 
 /**
@@ -663,6 +669,20 @@ export const CAMINHOS_CANDIDATOS = [
  * Devolve, para os que responderam, quantos registros vieram e quais campos —
  * que é exatamente o que falta para escrever o leitor certo de primeira.
  */
+/**
+ * O catálogo de tabelas que um serviço PostgREST publica na própria raiz.
+ *
+ * É o que transforma "erramos o nome da tabela" em "aqui está a lista dos
+ * nomes". Um serviço assim descreve a si mesmo em OpenAPI, e as chaves de
+ * `paths` são exatamente as tabelas consultáveis.
+ */
+export function tabelasDe(dados) {
+  if (!dados || typeof dados !== 'object' || Array.isArray(dados)) return null;
+  const nomes = dados.paths ? Object.keys(dados.paths) : (dados.definitions && Object.keys(dados.definitions));
+  if (!nomes) return null;
+  return nomes.map((n) => String(n).replace(/^\//, '')).filter(Boolean);
+}
+
 export async function sondarFontes(codigoEmenda) {
   const { consultarFonte } = await import('./fontes.js');
   const achados = [];
@@ -672,20 +692,23 @@ export async function sondarFontes(codigoEmenda) {
     if (candidato.usa === 'codigoEmenda' && codigoEmenda) parametros.codigoEmenda = codigoEmenda;
     // O Transferegov é PostgREST: o filtro vai como `campo=eq.valor`.
     if (candidato.usa === 'nr_emenda' && codigoEmenda) parametros.nr_emenda = `eq.${codigoEmenda}`;
-    if (candidato.fonte === 'transferegov-livre') parametros.limit = 3;
+    if (candidato.raiz) { /* a raiz não leva parâmetro nenhum */ }
+    else if (candidato.fonte === 'transferegov-livre') parametros.limit = 3;
     else parametros.pagina = 1;
 
     try {
       const r = await consultarFonte(candidato.fonte, parametros, candidato.caminho);
+      const tabelas = tabelasDe(r.dados);
       const lote = Array.isArray(r.dados) ? r.dados : [r.dados].filter(Boolean);
       achados.push({
         caminho: candidato.caminho,
         ok: true,
+        tabelas,
         quantidade: lote.length,
-        campos: Object.keys(lote[0] || {}),
+        campos: tabelas ? [] : Object.keys(lote[0] || {}),
       });
     } catch (erro) {
-      achados.push({ caminho: candidato.caminho, ok: false, erro: String(erro.message || erro).slice(0, 160) });
+      achados.push({ caminho: candidato.caminho, ok: false, erro: String(erro.message || erro).slice(0, 320) });
     }
   }
 

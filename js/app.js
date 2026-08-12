@@ -667,9 +667,13 @@ function extrasDasTransferencias() {
  * modo levaria várias.
  */
 function abrirSondagem(achados, codigo) {
-  const resumo = achados.map((a) => (a.ok
-    ? `OK   ${a.caminho} — ${a.quantidade} registro(s): ${a.campos.join(', ') || '(sem campos)'}`
-    : `FALHA ${a.caminho} — ${a.erro}`)).join('\n');
+  const resumo = achados.map((a) => {
+    if (!a.ok) return `FALHA ${a.caminho} — ${a.erro}`;
+    // Um catálogo de tabelas vale mais que uma amostra: é a lista dos nomes
+    // que faltavam para parar de adivinhar.
+    if (a.tabelas?.length) return `TABELAS ${a.caminho} — ${a.tabelas.join(', ')}`;
+    return `OK   ${a.caminho} — ${a.quantidade} registro(s): ${a.campos.join(', ') || '(sem campos)'}`;
+  }).join('\n');
 
   const texto = `Sondagem com a emenda ${codigo || '(nenhuma)'}\n\n${resumo}`;
   const area = el('textarea', { class: 'sondagem-texto', rows: '16', readonly: true });

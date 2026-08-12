@@ -1141,10 +1141,15 @@ console.log('\nPlanilhas de emenda\n');
     ignorarConsole: true,
     funcoes: {
       consultarFonte: {
-        __fn: `if (dados.caminho === '/convenios/proposta') {
-          return { dados: [{ id_proposta: 1, objeto_proposta: 'Reforma da UBS', vl_global: 500000 }] };
+        // A raiz de um serviço PostgREST devolve o catálogo das tabelas: é o
+        // que substitui o palpite pelo nome certo.
+        __fn: `if (dados.caminho === '/transferenciasespeciais') {
+          return { dados: { paths: { '/': {}, '/plano_acao': {}, '/beneficiario': {} } } };
         }
-        var e = new Error('portal-emenda respondeu 403: — 403 sem explicação costuma ser caminho inexistente');
+        if (dados.caminho === '/emendas' && dados.fonte === 'portal-livre') {
+          return { dados: [{ codigoEmenda: '1', valorEmpenhado: '10,00' }] };
+        }
+        var e = new Error('respondeu 404: relation does not exist');
         e.code = 'functions/unavailable';
         throw e;`,
       },
@@ -1157,12 +1162,14 @@ console.log('\nPlanilhas de emenda\n');
   await pagina.waitForSelector('.sondagem-texto', { timeout: 15000 });
 
   const texto = await pagina.locator('.sondagem-texto').inputValue();
-  conferir('a sondagem aponta o caminho que respondeu',
-    /OK\s+\/convenios\/proposta/.test(texto), texto.split('\n').slice(0, 4).join(' | '));
-  conferir('e mostra os campos que ele devolve, que é o que falta para ler',
-    /objeto_proposta/.test(texto), texto.split('\n').find((l) => l.includes('proposta')) || '');
+  conferir('a sondagem lê o catálogo de tabelas na raiz do serviço',
+    /TABELAS\s+\/transferenciasespeciais — plano_acao, beneficiario/.test(texto),
+    texto.split('\n').find((l) => l.includes('TABELAS')) || texto.slice(0, 120));
+  conferir('o caminho que devolve dados aparece com seus campos',
+    /OK\s+\/emendas — 1 registro/.test(texto) && /codigoEmenda/.test(texto),
+    texto.split('\n').find((l) => l.startsWith('OK')) || '');
   conferir('os que falharam aparecem com o motivo',
-    /FALHA\s+\/emendas\/documentos/.test(texto) && /403/.test(texto), '');
+    /FALHA/.test(texto) && /does not exist/.test(texto), '');
 
   await pagina.close();
 }
