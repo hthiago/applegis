@@ -158,6 +158,22 @@ export function dataBr(valor) {
   return null;
 }
 
+/**
+ * O nome como as bases federais o gravam: caixa alta, sem acento.
+ *
+ * O Portal da Transparência guarda "VINICIUS GURGEL" e casa o filtro pela forma
+ * exata — mandar "Vinícius Gurgel" devolve zero registros, sem erro nenhum, o
+ * que parece ausência de emendas e não é.
+ */
+export function nomeParaBusca(nome) {
+  return String(nome || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 /** Compara nomes ignorando acento, caixa e pontuação. */
 export function mesmoNome(a, b) {
   const x = chaveDoRotulo(a);

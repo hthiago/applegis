@@ -737,6 +737,9 @@ export const MODULOS = [
       { k: 'valorPago', l: 'Pago', t: 'dinheiro', lista: true },
       { k: 'restosInscritos', l: 'Restos a pagar inscritos', t: 'dinheiro' },
       { k: 'restosPagos', l: 'Restos a pagar pagos', t: 'dinheiro' },
+      // Resto cancelado é dinheiro que voltou ao caixa da União sem ser gasto:
+      // a diferença entre uma emenda atrasada e uma emenda perdida.
+      { k: 'restosCancelados', l: 'Restos a pagar cancelados', t: 'dinheiro' },
       { k: 'fase', l: 'Fase', t: 'select', padrao: 'indicada', lista: true, inline: true, op: [
         { v: 'indicada', l: 'Indicada', cor: 'neutro' },
         { v: 'empenhada', l: 'Empenhada', cor: 'info' },
@@ -755,6 +758,8 @@ export const MODULOS = [
       { k: 'proposta', l: 'Nº da proposta', t: 'texto' },
       { k: 'instrumento', l: 'Nº do convênio ou instrumento', t: 'texto' },
       { k: 'funcao', l: 'Função orçamentária', t: 'texto' },
+      { k: 'subfuncao', l: 'Subfunção', t: 'texto' },
+      { k: 'numeroNaFonte', l: 'Número da emenda na fonte', t: 'texto' },
       { k: 'situacaoNaFonte', l: 'Situação na fonte', t: 'texto' },
       { k: 'autorNaFonte', l: 'Autor como consta na fonte', t: 'texto' },
       { k: 'fonte', l: 'Planilha de origem', t: 'texto' },

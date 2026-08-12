@@ -1,5 +1,5 @@
 import {
-  decodificar, lerCsv, chaveDoRotulo, numeroBr, dataBr, mesmoNome,
+  decodificar, lerCsv, chaveDoRotulo, numeroBr, dataBr, mesmoNome, nomeParaBusca,
 } from './planilha.js';
 
 /**
@@ -50,6 +50,7 @@ const COLUNAS = {
   valorPago: ['valor pago', 'pago'],
   restosInscritos: ['valor restos a pagar inscritos', 'restos a pagar inscritos'],
   restosPagos: ['valor restos a pagar pagos', 'restos a pagar pagos'],
+  restosCancelados: ['valor restos a pagar cancelados', 'restos a pagar cancelados'],
   atualizadoNaFonte: ['data da ultima atualizacao', 'data atualizacao', 'data'],
 };
 
@@ -235,6 +236,7 @@ export async function importarPlanilha(arquivo, { nomeAutor = null } = {}) {
       valorPago: numeroBr(campo(linha, 'valorPago')),
       restosInscritos: numeroBr(campo(linha, 'restosInscritos')),
       restosPagos: numeroBr(campo(linha, 'restosPagos')),
+      restosCancelados: numeroBr(campo(linha, 'restosCancelados')),
       atualizadoNaFonte: dataBr(campo(linha, 'atualizadoNaFonte')),
       fonte: origem,
     });
@@ -277,6 +279,9 @@ export function doPortal(r) {
     valorPago: numeroBr(pegar('valorPago')),
     restosInscritos: numeroBr(pegar('valorRestoInscrito', 'valorRestosInscritos')),
     restosPagos: numeroBr(pegar('valorRestoPago', 'valorRestosPagos')),
+    restosCancelados: numeroBr(pegar('valorRestoCancelado', 'valorRestosCancelados')),
+    subfuncao: pegar('subfuncao'),
+    numeroNaFonte: pegar('numeroEmenda'),
     fonte: 'Portal da Transparência',
   };
 }
@@ -307,11 +312,15 @@ export async function consultarPortal({ nomeAutor, ano = null, aoProgredir = () 
     reconhecidos: 0,
   };
 
+  // O Portal casa o nome pela forma exata em que o guarda: caixa alta, sem
+  // acento. Mandar como o gabinete escreve devolve zero sem erro nenhum.
+  const nomeNaBase = nomeParaBusca(nomeAutor);
+
   const brutas = [];
   let amostra = null;
 
   for (let pagina = 1; pagina <= 50; pagina += 1) {
-    const r = await consultarFonte('portal-emendas', { nomeAutor, ano, pagina });
+    const r = await consultarFonte('portal-emendas', { nomeAutor: nomeNaBase, ano, pagina });
     const lote = Array.isArray(r.dados) ? r.dados : [];
     funil.paginas = pagina;
     funil.linhas += lote.length;
@@ -352,14 +361,14 @@ export async function consultarPortal({ nomeAutor, ano = null, aoProgredir = () 
       const r = await consultarFonte('portal-emendas', { pagina: 1, ano });
       const lote = Array.isArray(r.dados) ? r.dados : [];
       funil.diagnostico = {
-        enviamos: nomeAutor,
+        enviamos: nomeNaBase,
         semFiltro: lote.length,
         campos: Object.keys(lote[0] || {}),
         autores: [...new Set(lote.map((x) => x.nomeAutor ?? x.autor ?? '(sem campo de autor)'))]
           .filter(Boolean).slice(0, 6),
       };
     } catch (erro) {
-      funil.diagnostico = { enviamos: nomeAutor, falhou: erro.message };
+      funil.diagnostico = { enviamos: nomeNaBase, falhou: erro.message };
     }
   }
 

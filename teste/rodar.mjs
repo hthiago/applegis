@@ -878,6 +878,11 @@ console.log('\nPlanilhas de emenda\n');
   conferir('localidade só com UF não vira nome de município',
     em.separarLocalidade('RS').municipio === null && em.separarLocalidade('RS').uf === 'RS');
 
+  conferir('nome vai para a base como ela o guarda: caixa alta, sem acento',
+    pl.nomeParaBusca('Marcel van Hattem') === 'MARCEL VAN HATTEM'
+    && pl.nomeParaBusca('Vinícius Gurgel') === 'VINICIUS GURGEL'
+    && pl.nomeParaBusca('  José  Medeiros ') === 'JOSE MEDEIROS');
+
   conferir('a chave concilia pelo código e ano',
     em.chaveDaLinha({ codigo: '202512340001', ano: 2025 }) === '2025-202512340001');
   conferir('sem código, a proposta serve de chave',
@@ -966,9 +971,10 @@ console.log('\nPlanilhas de emenda\n');
   const pagina = await abrir({
     consultaAutomatica: true,
     funcoes: {
+      // O Portal só devolve quando o nome chega na forma dele: caixa alta.
       consultarFonte: {
-        fonte: 'portal-emendas',
-        dados: [
+        __fn: `if (!dados.parametros || dados.parametros.nomeAutor !== 'DEPUTADA TESTE') return { dados: [] };
+        return { dados: [
           { codigoEmenda: '202598760001', ano: '2025', tipoEmenda: 'Individual',
             nomeAutor: 'Deputada Teste', localidadeDoGasto: 'GRAMADO - RS', funcao: 'Saúde',
             valorEmpenhado: '3.000.000,00', valorLiquidado: '1.500.000,00',
@@ -976,7 +982,7 @@ console.log('\nPlanilhas de emenda\n');
           { codigoEmenda: '202598760002', ano: '2025', tipoEmenda: 'Bancada',
             nomeAutor: 'Homônimo Qualquer', localidadeDoGasto: 'BENTO - RS',
             valorEmpenhado: '100,00' },
-        ],
+        ] };`,
       },
     },
   });
@@ -1033,7 +1039,8 @@ console.log('\nPlanilhas de emenda\n');
   const pagina = await abrir({
     consultaAutomatica: true,
     funcoes: {
-      // Com filtro por nome: nada. Sem filtro: registros de outros autores.
+      // Só responde ao nome na forma em que a base o guarda — caixa alta e sem
+      // acento —, que é exatamente o que o Portal real faz.
       consultarFonte: {
         __fn: `return dados.parametros && dados.parametros.nomeAutor
           ? { dados: [] }
@@ -1050,7 +1057,9 @@ console.log('\nPlanilhas de emenda\n');
   await pagina.waitForTimeout(900);
   const d = await pagina.locator('.aviso--erro').first().innerText().catch(() => '');
   conferir('resultado vazio vira diagnóstico com o nome enviado e os da base',
-    /Nada encontrado para "Deputada Teste"/.test(d)
+    // Mostra o nome como foi enviado — normalizado —, não como está cadastrado:
+    // é esse que a base recusou.
+    /Nada encontrado para "DEPUTADA TESTE"/.test(d)
     && /MARCEL VAN HATTEM/.test(d)
     && /codigoEmenda/.test(d), d.replace(/\s+/g, ' '));
   await pagina.close();
