@@ -1,6 +1,6 @@
 import { CONFIGURADO, AREAS, PAPEIS, podeEditar, podeEditarAgenda, podeEditarTarefas, ehAdmin } from './config.js';
 import { modulosDaArea } from './modulos.js';
-import { el, limpar, aviso, carregando, vazio } from './ui.js';
+import { el, limpar, aviso, carregando, vazio, fmtDinheiro } from './ui.js';
 
 /**
  * Montagem da aplicação.
@@ -629,6 +629,84 @@ function extrasDasTransferencias() {
   ];
 }
 
+/**
+ * O detalhamento de uma emenda, aberto na própria linha.
+ *
+ * Uma emenda de sete milhões aparece com município "MÚLTIPLO" porque se reparte
+ * entre vários — e é justamente essa repartição que o gabinete precisa ver. A
+ * sanfona mostra para onde cada parte foi, sem tirar ninguém da lista.
+ */
+async function sanfonaDaEmenda(emenda, alvo, recarregar) {
+  const desenhar = (linhas, aviso_ = null) => {
+    limpar(alvo);
+    if (aviso_) alvo.appendChild(el('p', { class: 'sanfona-recado', texto: aviso_ }));
+    if (!linhas.length) return;
+
+    // Por município, somando as parcelas: é a leitura que responde "quanto foi
+    // para cada cidade", que é a pergunta de quem abre esta linha.
+    const porMunicipio = new Map();
+    linhas.forEach((t) => {
+      const chave = t.municipio || t.favorecido || 'Sem município identificado';
+      if (!porMunicipio.has(chave)) porMunicipio.set(chave, []);
+      porMunicipio.get(chave).push(t);
+    });
+
+    alvo.appendChild(el('table', { class: 'sanfona-tabela' }, [
+      el('thead', {}, [el('tr', {}, [
+        el('th', { texto: 'Município' }),
+        el('th', { texto: 'Quem recebeu' }),
+        el('th', { texto: 'Fase' }),
+        el('th', { texto: 'Data' }),
+        el('th', { class: 'num', texto: 'Valor' }),
+      ])]),
+      el('tbody', {}, [...porMunicipio.entries()]
+        .sort((a, b) => a[0].localeCompare(b[0], 'pt-BR'))
+        .flatMap(([municipio, doLugar]) => doLugar.map((t, i) => el('tr', {}, [
+          el('td', { texto: i === 0 ? municipio : '' }),
+          el('td', { texto: t.favorecido || '—' }),
+          el('td', { texto: ROTULO_FASE[t.tipo] || t.tipo || '—' }),
+          el('td', { texto: t.data ? t.data.split('-').reverse().join('/') : '—' }),
+          el('td', { class: 'num', texto: t.valor != null ? fmtDinheiro(t.valor) : '—' }),
+        ])))),
+    ]));
+  };
+
+  alvo.appendChild(el('p', { class: 'sanfona-recado', texto: 'Carregando…' }));
+
+  try {
+    const guardadas = (await nucleo.dados.listar('transferencias'))
+      .filter((t) => String(t.codigoEmenda) === String(emenda.codigo));
+
+    if (guardadas.length) { desenhar(guardadas); return; }
+
+    if (!nucleo.fontes.disponivel()) {
+      desenhar([], 'Nada detalhado ainda. A consulta automática está desligada — use "Importar planilha" ou ligue as Cloud Functions.');
+      return;
+    }
+
+    const r = await nucleo.emendas.detalharEmenda(emenda.codigo);
+    if (r.camposRecebidos) {
+      desenhar([], `O Portal respondeu, mas nenhum campo foi reconhecido. Ele mandou: ${r.camposRecebidos.join(', ')}`);
+      return;
+    }
+    desenhar(r.transferencias, r.transferencias.length
+      ? null
+      : 'O Portal não tem documentos de execução para esta emenda.');
+  } catch (erro) {
+    console.error(erro);
+    desenhar([], `Não foi possível detalhar: ${erro.message || erro}`);
+  }
+}
+
+const ROTULO_FASE = {
+  empenho: 'Empenho',
+  liquidacao: 'Liquidação',
+  pagamento: 'Pagamento',
+  convenio: 'Convênio',
+  proposta: 'Proposta',
+  especial: 'Transferência especial',
+};
+
 function acoesDaMinuta() {
   return [
     (peca, aoConcluir) => el('button', {
@@ -677,8 +755,9 @@ async function desenharConteudo(alvo, areaId, abaId) {
 
   const acoesItem = modulo.geraMinuta ? acoesDaMinuta() : [];
   const acoesLinha = modulo.enviaParaAcompanhamento ? [acaoAcompanhar] : [];
+  const sanfona = modulo.temSanfona ? sanfonaDaEmenda : null;
 
-  await nucleo.crud.renderModulo(alvo, modulo, { editavel, extras, acoesItem, acoesLinha });
+  await nucleo.crud.renderModulo(alvo, modulo, { editavel, extras, acoesItem, acoesLinha, sanfona });
 
   // Consulta a Câmara sozinha ao abrir a lista, se a última já estiver velha.
   // Roda em segundo plano: a tela já está montada e só é redesenhada se algo

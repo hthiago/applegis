@@ -520,6 +520,49 @@ export function chaveDaTransferencia({ codigoEmenda, documento, favorecido, data
  * só grava no último instante perde tudo se a aba fechar, erro que já cometi
  * uma vez neste projeto.
  */
+/**
+ * Busca no Portal os documentos de uma emenda e os guarda.
+ *
+ * É a unidade da sanfona: abrir uma linha custa uma consulta, não uma
+ * varredura. Devolve as transferências já normalizadas, para a tela poder
+ * mostrá-las sem esperar uma releitura do banco.
+ */
+export async function detalharEmenda(codigo) {
+  const { salvarEmLote } = await import('./dados.js');
+  const { consultarFonte } = await import('./fontes.js');
+
+  const encontradas = [];
+  let amostra = null;
+
+  for (let pagina = 1; pagina <= 30; pagina += 1) {
+    const r = await consultarFonte('portal-emenda-documentos', { codigoEmenda: codigo, pagina });
+    const lote = Array.isArray(r.dados) ? r.dados : [];
+    if (!lote.length) break;
+    if (!amostra) [amostra] = lote;
+
+    for (const bruto of lote) {
+      const t = doDocumento(bruto, codigo);
+      const id = chaveDaTransferencia(t);
+      if (!id) continue;
+      const dados = {};
+      for (const [campo, valor] of Object.entries(t)) comValor(dados, campo, valor);
+      dados.importadoEm = new Date().toISOString().slice(0, 10);
+      encontradas.push({ id, dados });
+    }
+    if (lote.length < 15) break;
+  }
+
+  if (encontradas.length) {
+    const gravacao = await salvarEmLote('transferencias', encontradas);
+    if (gravacao.falhas.length) throw gravacao.falhas[0];
+  }
+
+  return {
+    transferencias: encontradas.map((e) => ({ id: e.id, ...e.dados })),
+    camposRecebidos: (amostra && !encontradas.length) ? Object.keys(amostra) : null,
+  };
+}
+
 export async function detalharEmendas({ aoProgredir = () => {} } = {}) {
   const { salvarEmLote, listar } = await import('./dados.js');
   const { consultarFonte } = await import('./fontes.js');

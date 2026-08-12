@@ -384,7 +384,9 @@ export async function abrirFormulario(modulo, item, aoSalvar, acoesItem = []) {
 
 // ──────────────────────────────── listagem ────────────────────────────────
 
-export async function renderModulo(container, modulo, { editavel, extras = [], acoesItem = [], acoesLinha = [] }) {
+export async function renderModulo(container, modulo, {
+  editavel, extras = [], acoesItem = [], acoesLinha = [], sanfona = null,
+}) {
   limpar(container).appendChild(carregando());
 
   let itens;
@@ -422,7 +424,7 @@ export async function renderModulo(container, modulo, { editavel, extras = [], a
     return (tratamento ? tratamento.unico(bruto) : bruto) || 'Sem classificação';
   };
 
-  const recarregar = () => renderModulo(container, modulo, { editavel, extras, acoesItem, acoesLinha });
+  const recarregar = () => renderModulo(container, modulo, { editavel, extras, acoesItem, acoesLinha, sanfona });
 
   const busca = el('input', {
     type: 'search',
@@ -622,6 +624,33 @@ export async function renderModulo(container, modulo, { editavel, extras = [], a
           if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); abrirFormulario(modulo, item, recarregar, acoesItem); }
         },
       });
+      // A sanfona abre o nível de baixo sem tirar a pessoa da lista. Numa
+      // emenda que se reparte entre municípios, o consolidado sozinho esconde
+      // justamente o que o gabinete precisa — para onde o dinheiro foi.
+      let detalhe = null;
+      if (sanfona) {
+        const abrir = el('button', {
+          class: 'btn-sanfona',
+          type: 'button',
+          'aria-expanded': 'false',
+          'aria-label': 'Abrir detalhamento',
+          texto: '▸',
+          onclick: (e) => {
+            e.stopPropagation();
+            const aberto = detalhe.hidden === false;
+            detalhe.hidden = aberto;
+            abrir.textContent = aberto ? '▸' : '▾';
+            abrir.setAttribute('aria-expanded', aberto ? 'false' : 'true');
+            if (!aberto && !detalhe.dataset.carregado) {
+              detalhe.dataset.carregado = '1';
+              const alvo = detalhe.querySelector('.sanfona-conteudo');
+              sanfona(item, alvo, recarregar);
+            }
+          },
+        });
+        tr.appendChild(el('td', { class: 'col-sanfona' }, [abrir]));
+      }
+
       colunas.forEach((c) => {
         const td = el('td', { 'data-rotulo': c.l, class: c.inline ? 'col-inline' : null });
         td.appendChild(celula(c, item, refs, { modulo, editavel }));
@@ -660,7 +689,18 @@ export async function renderModulo(container, modulo, { editavel, extras = [], a
         }));
       }
       tr.appendChild(acoes);
-      return tr;
+      if (!sanfona) return tr;
+
+      detalhe = el('tr', { class: 'linha-detalhe', hidden: true }, [
+        el('td', { colspan: String(colunas.length + 2) }, [
+          el('div', { class: 'sanfona-conteudo' }),
+        ]),
+      ]);
+
+      const par = document.createDocumentFragment();
+      par.appendChild(tr);
+      par.appendChild(detalhe);
+      return par;
     };
 
     // Duas mil linhas na tela travam o navegador e ninguém as percorre. Mostra-se
@@ -741,6 +781,7 @@ export async function renderModulo(container, modulo, { editavel, extras = [], a
       el('table', { class: 'tabela' }, [
         el('thead', {}, [
           el('tr', {}, [
+            sanfona ? el('th', { scope: 'col', class: 'col-sanfona' }) : null,
             ...colunas.map((c) => el('th', { scope: 'col', texto: c.l })),
             el('th', { scope: 'col', class: 'col-acoes' }),
           ]),

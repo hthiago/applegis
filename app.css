@@ -564,6 +564,57 @@ input:focus, select:focus, textarea:focus { border-color: var(--verde); outline:
 
 .acoes-falha { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
 
+/* ─────────────── sanfona: o nível de baixo, na própria linha ─────────────── */
+.col-sanfona { width: 1%; padding-right: 0 !important; }
+
+.btn-sanfona {
+  font: inherit;
+  font-size: 12px;
+  line-height: 1;
+  width: 22px;
+  height: 22px;
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--ink-3);
+  cursor: pointer;
+}
+
+.btn-sanfona:hover { color: var(--verde); border-color: var(--verde); }
+
+.linha-detalhe { background: var(--surface-2); cursor: default !important; }
+.linha-detalhe:hover { background: var(--surface-2) !important; }
+.linha-detalhe td { padding: 0 !important; }
+
+.sanfona-conteudo { padding: 10px 14px 14px 40px; }
+
+.sanfona-recado { font-size: 13px; color: var(--ink-3); margin: 4px 0; }
+
+.sanfona-tabela {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.sanfona-tabela th {
+  text-align: left;
+  font-size: 10.5px;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  font-weight: 700;
+  padding: 4px 10px 4px 0;
+  border-bottom: 1px solid var(--rule);
+}
+
+.sanfona-tabela td {
+  padding: 5px 10px 5px 0;
+  border-bottom: 1px solid var(--rule);
+  vertical-align: top;
+}
+
+.sanfona-tabela .num { text-align: right; font-variant-numeric: tabular-nums; }
+
 /* Marcadores livres do gabinete — distintos da insígnia colorida
    `.etiqueta`, que traduz um campo de seleção. */
 .marcadores { display: flex; flex-wrap: wrap; gap: 4px; }

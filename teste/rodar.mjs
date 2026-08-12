@@ -1133,6 +1133,66 @@ console.log('\nPlanilhas de emenda\n');
   await pagina.close();
 }
 
+// A sanfona: a emenda de sete milhões que aparece como "MÚLTIPLO" precisa
+// abrir na própria linha e mostrar para onde cada parte foi.
+{
+  const pagina = await abrir({
+    consultaAutomatica: true,
+    funcoes: {
+      consultarFonte: {
+        __fn: `if (dados.fonte !== 'portal-emenda-documentos') return { dados: [] };
+        if (Number((dados.parametros || {}).pagina || 1) > 1) return { dados: [] };
+        return { dados: [
+          { codigoEmenda: '202612340000', documentoResumido: '2026NE000001', fase: 'Empenho',
+            data: '10/02/2026', nomeFavorecido: 'MUNICIPIO DE ERECHIM',
+            municipio: 'ERECHIM - RS', valor: '4.000.000,00' },
+          { codigoEmenda: '202612340000', documentoResumido: '2026NE000002', fase: 'Empenho',
+            data: '11/02/2026', nomeFavorecido: 'MUNICIPIO DE GRAMADO',
+            municipio: 'GRAMADO - RS', valor: '3.000.000,00' },
+        ] };`,
+      },
+    },
+  });
+
+  await pagina.goto(`${BASE}/#/orcamento/emendas`, { waitUntil: 'domcontentloaded' });
+  await pagina.waitForSelector('.tabela');
+  await pagina.waitForTimeout(200);
+
+  conferir('cada emenda ganha o botão de abrir',
+    (await pagina.locator('.btn-sanfona').count()) > 0);
+  conferir('o detalhe começa fechado',
+    (await pagina.locator('.linha-detalhe:visible').count()) === 0);
+
+  await pagina.locator('.btn-sanfona').first().click();
+  await pagina.waitForTimeout(900);
+
+  const dentro = (await pagina.locator('.linha-detalhe').first().innerText()).replace(/\s+/g, ' ');
+  conferir('a sanfona mostra os municípios que a emenda contemplou',
+    dentro.includes('ERECHIM') && dentro.includes('GRAMADO'), dentro);
+  conferir('e o valor de cada parcela',
+    /4\.000\.000/.test(dentro) && /3\.000\.000/.test(dentro), dentro);
+
+  await pagina.locator('.btn-sanfona').first().click();
+  await pagina.waitForTimeout(250);
+  conferir('clicar de novo fecha a sanfona',
+    (await pagina.locator('.linha-detalhe:visible').count()) === 0);
+
+  await pagina.close();
+}
+
+// Sem a ponte, a sanfona precisa dizer o que fazer em vez de girar para sempre.
+{
+  const pagina = await abrir({ consultaAutomatica: false });
+  await pagina.goto(`${BASE}/#/orcamento/emendas`, { waitUntil: 'domcontentloaded' });
+  await pagina.waitForSelector('.tabela');
+  await pagina.locator('.btn-sanfona').first().click();
+  await pagina.waitForTimeout(600);
+  const recado = await pagina.locator('.sanfona-recado').first().innerText().catch(() => '');
+  conferir('sem consulta automática, a sanfona explica em vez de carregar sem fim',
+    /consulta autom/i.test(recado), recado.replace(/\s+/g, ' '));
+  await pagina.close();
+}
+
 // A emenda discriminada, pela ponte: quem recebeu cada parte do dinheiro.
 {
   const pagina = await abrir({

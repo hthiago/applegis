@@ -702,6 +702,9 @@ export const MODULOS = [
     ordenar: { campo: 'ano', dir: 'desc' },
     busca: ['codigo', 'beneficiario', 'municipio', 'objeto', 'proposta'],
     importaEmendas: true,
+    // Uma emenda que se reparte entre municípios aparece como "MÚLTIPLO" na
+    // fonte. A sanfona abre a repartição sem tirar ninguém da lista.
+    temSanfona: true,
     facetas: [
       { campo: 'tipo', l: 'Tipo' },
       { campo: 'ano', l: 'Ano', ordem: 'valor-desc' },
@@ -718,10 +721,10 @@ export const MODULOS = [
         { v: 'comissao', l: 'Comissão' },
         { v: 'relator', l: 'Relator-geral' },
       ] },
-      { k: 'beneficiario', l: 'Beneficiário', t: 'texto', req: true, lista: true },
+      { k: 'beneficiario', l: 'Beneficiário', t: 'texto' },
       { k: 'municipio', l: 'Município', t: 'texto', lista: true },
       { k: 'uf', l: 'UF', t: 'select', op: UFS.map((v) => ({ v, l: v })), padrao: 'RS' },
-      { k: 'areaDestino', l: 'Área de destino', t: 'select', lista: true, op: [
+      { k: 'areaDestino', l: 'Área de destino', t: 'select', op: [
         { v: 'saude', l: 'Saúde' }, { v: 'educacao', l: 'Educação' },
         { v: 'infraestrutura', l: 'Infraestrutura' }, { v: 'seguranca', l: 'Segurança' },
         { v: 'assistencia', l: 'Assistência social' }, { v: 'esporte', l: 'Esporte e cultura' },
@@ -757,7 +760,7 @@ export const MODULOS = [
       // é por aqui que se descobre se o erro é de leitura ou da fonte.
       { k: 'proposta', l: 'Nº da proposta', t: 'texto' },
       { k: 'instrumento', l: 'Nº do convênio ou instrumento', t: 'texto' },
-      { k: 'funcao', l: 'Função orçamentária', t: 'texto' },
+      { k: 'funcao', l: 'Função', t: 'texto', lista: true },
       { k: 'subfuncao', l: 'Subfunção', t: 'texto' },
       { k: 'numeroNaFonte', l: 'Número da emenda na fonte', t: 'texto' },
       { k: 'situacaoNaFonte', l: 'Situação na fonte', t: 'texto' },
