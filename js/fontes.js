@@ -21,6 +21,11 @@ const RECADOS = {
   'not-found':
     'A função de consulta não foi encontrada. Confira se ela foi implantada e se a região em js/config.js é a mesma de functions/index.js.',
   'deadline-exceeded': 'A fonte demorou demais para responder. Tente de novo em instantes.',
+  // "internal" é o que o SDK devolve quando a chamada nem chega à função —
+  // tipicamente porque ela ainda não foi implantada. O código sozinho não diz
+  // nada a quem está do outro lado da tela.
+  internal:
+    'A ponte no servidor não respondeu. Se as Cloud Functions ainda não foram implantadas, é isso — veja o README, seção "Consulta automática". Se já foram, o log mostra a causa: firebase functions:log',
 };
 
 export async function consultarFonte(fonte, parametros = {}) {

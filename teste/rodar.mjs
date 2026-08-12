@@ -1047,6 +1047,24 @@ console.log('\nPlanilhas de emenda\n');
   await pagina.close();
 }
 
+// Função não implantada chega como "internal", que não diz nada sozinho.
+{
+  const pagina = await abrir({
+    consultaAutomatica: true,
+    ignorarConsole: true,
+    funcoes: { consultarFonte: { __erro: 'functions/internal' } },
+  });
+  await pagina.goto(`${BASE}/#/orcamento/emendas`, { waitUntil: 'domcontentloaded' });
+  await pagina.waitForSelector('.modulo-topo');
+  await pagina.getByRole('button', { name: 'Consultar Portal' }).click();
+  await pagina.waitForTimeout(700);
+  const erroInterno = await pagina.locator('.aviso--erro').first().innerText().catch(() => '');
+  conferir('"internal" vira a explicação provável, não o código cru',
+    /implantad/i.test(erroInterno) && /functions:log/.test(erroInterno),
+    erroInterno.replace(/\s+/g, ' '));
+  await pagina.close();
+}
+
 // ────────── suíte 7: leitura política do voto (sem navegador) ──────────
 //
 // É a parte mais fácil de errar do sistema inteiro: "Sim" numa retirada de
