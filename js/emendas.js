@@ -342,5 +342,26 @@ export async function consultarPortal({ nomeAutor, ano = null, aoProgredir = () 
     funil.camposRecebidos = Object.keys(amostra || {});
   }
 
+  // Nenhum registro é a resposta mais ambígua que essa consulta pode dar: pode
+  // ser que o parlamentar não tenha emendas no período, que o nome enviado não
+  // seja o que a base usa, ou que o filtro por nome nem seja aceito. Uma única
+  // consulta sem filtro separa as três — mostra quantos registros existem, com
+  // que nomes de campo e como a base escreve os autores.
+  if (!funil.linhas) {
+    try {
+      const r = await consultarFonte('portal-emendas', { pagina: 1, ano });
+      const lote = Array.isArray(r.dados) ? r.dados : [];
+      funil.diagnostico = {
+        enviamos: nomeAutor,
+        semFiltro: lote.length,
+        campos: Object.keys(lote[0] || {}),
+        autores: [...new Set(lote.map((x) => x.nomeAutor ?? x.autor ?? '(sem campo de autor)'))]
+          .filter(Boolean).slice(0, 6),
+      };
+    } catch (erro) {
+      funil.diagnostico = { enviamos: nomeAutor, falhou: erro.message };
+    }
+  }
+
   return conciliar(brutas, funil);
 }

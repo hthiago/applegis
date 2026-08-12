@@ -509,7 +509,14 @@ function extrasDasEmendas() {
                 btn.textContent = `Página ${pagina} · ${trazidas} registros`;
               },
             });
-            if (r.camposRecebidos) {
+            if (r.diagnostico) {
+              const d = r.diagnostico;
+              aviso(d.falhou
+                ? `Nada encontrado para "${d.enviamos}", e a consulta de diagnóstico falhou: ${d.falhou}`
+                : `Nada encontrado para "${d.enviamos}". Sem filtro o Portal devolveu ${d.semFiltro} registros.`
+                  + ` Campos: ${d.campos.join(', ') || '(nenhum)'}.`
+                  + ` Autores de exemplo: ${d.autores.join(' | ') || '(nenhum)'}`, 'erro');
+            } else if (r.camposRecebidos) {
               // Nome de campo divergente é o erro mais provável desta ponte, e
               // o único que não dá para prever daqui. Mostrar o que a fonte
               // mandou é o que permite corrigir sem uma rodada de suposição.

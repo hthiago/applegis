@@ -88,10 +88,19 @@ async function abrir({
   }, [papel, areas, bancoVazio, loteRecusado]);
 
   // As respostas das Cloud Functions chegam por aqui: o duplo do SDK devolve o
-  // que estiver declarado, inclusive erro.
+  // que estiver declarado, inclusive erro. Uma resposta que dependa do que foi
+  // pedido vem como `{ __fn: 'corpo da função' }`, porque função não atravessa
+  // a serialização que leva os dados para dentro da página.
   if (funcoes) {
     await pagina.addInitScript((f) => {
-      globalThis.__FUNCOES_TESTE = JSON.parse(f);
+      const declaradas = JSON.parse(f);
+      globalThis.__FUNCOES_TESTE = {};
+      for (const [nome, resposta] of Object.entries(declaradas)) {
+        globalThis.__FUNCOES_TESTE[nome] = resposta && resposta.__fn
+          // eslint-disable-next-line no-new-func
+          ? new Function('dados', resposta.__fn)
+          : resposta;
+      }
     }, JSON.stringify(funcoes));
   }
 
@@ -1015,6 +1024,35 @@ console.log('\nPlanilhas de emenda\n');
   conferir('e nada é gravado com valores vazios',
     !(await pagina.locator('.tabela tbody').innerText()).includes('2025'),
     await pagina.locator('.tabela tbody').innerText());
+  await pagina.close();
+}
+
+// Zero registros é a resposta mais ambígua da consulta: pode ser ausência real,
+// nome errado ou filtro não aceito. Precisa virar pergunta respondida.
+{
+  const pagina = await abrir({
+    consultaAutomatica: true,
+    funcoes: {
+      // Com filtro por nome: nada. Sem filtro: registros de outros autores.
+      consultarFonte: {
+        __fn: `return dados.parametros && dados.parametros.nomeAutor
+          ? { dados: [] }
+          : { dados: [
+            { codigoEmenda: '1', nomeAutor: 'MARCEL VAN HATTEM', valorEmpenhado: '1,00' },
+            { codigoEmenda: '2', nomeAutor: 'OUTRO DEPUTADO', valorEmpenhado: '2,00' },
+          ] };`,
+      },
+    },
+  });
+  await pagina.goto(`${BASE}/#/orcamento/emendas`, { waitUntil: 'domcontentloaded' });
+  await pagina.waitForSelector('.modulo-topo');
+  await pagina.getByRole('button', { name: 'Consultar Portal' }).click();
+  await pagina.waitForTimeout(900);
+  const d = await pagina.locator('.aviso--erro').first().innerText().catch(() => '');
+  conferir('resultado vazio vira diagnóstico com o nome enviado e os da base',
+    /Nada encontrado para "Deputada Teste"/.test(d)
+    && /MARCEL VAN HATTEM/.test(d)
+    && /codigoEmenda/.test(d), d.replace(/\s+/g, ' '));
   await pagina.close();
 }
 
