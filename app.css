@@ -583,28 +583,65 @@ input:focus, select:focus, textarea:focus { border-color: var(--verde); outline:
 .linha-grupo:hover { background: var(--surface-2) !important; }
 
 .linha-grupo td {
-  padding: 7px 14px;
+  padding: 0;
   border-bottom: 1px solid var(--rule);
-  display: flex;
-  align-items: baseline;
-  gap: 9px;
+  display: block;
 }
 
+/* O cabeçalho é o controle de ordenação, então ocupa a faixa inteira e tem
+   alvo de clique de linha cheia. Nome à esquerda, contagem e ordem à direita:
+   com trinta grupos, o olho desce pela borda e não pelo meio do texto. */
+.grupo-botao {
+  font: inherit;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  border: none;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+}
+
+.grupo-botao:hover { background: var(--rule); }
+
 .grupo-nome {
-  font-family: var(--mono);
-  font-size: 10.5px;
-  letter-spacing: .09em;
-  text-transform: uppercase;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .02em;
   color: var(--verde);
-  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .grupo-conta {
   font-family: var(--mono);
-  font-size: 10.5px;
+  font-size: 11px;
+  font-weight: 500;
   color: var(--ink-3);
   font-variant-numeric: tabular-nums;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--surface);
+  border: 1px solid var(--rule);
 }
+
+/* Empurra a marca de ordenação para a borda e some até o ponteiro chegar:
+   ela responde a uma pergunta que só se faz na hora de reordenar. */
+.grupo-ordem {
+  margin-left: auto;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: .04em;
+  color: var(--ink-3);
+  opacity: 0;
+  transition: opacity .12s;
+}
+
+.grupo-botao:hover .grupo-ordem,
+.grupo-botao:focus-visible .grupo-ordem { opacity: 1; }
 
 .celula-dupla { display: flex; flex-direction: column; gap: 1px; }
 

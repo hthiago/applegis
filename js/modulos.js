@@ -392,10 +392,12 @@ export const MODULOS = [
     // que o gabinete de fato acompanha. Ficam a um clique de distância.
     facetas: [
       { campo: 'tipo', l: 'Tipo', padrao: ['PL', 'PEC', 'PLP', 'PDL', 'PDC'] },
-      { campo: 'temas', l: 'Tema', multivalor: true, alternativo: 'tema', ateChips: 0 },
+      { campo: 'temas', l: 'Tema', normalizar: 'tema', alternativo: 'tema', ateChips: 0 },
       { campo: 'ano', l: 'Ano', ordem: 'valor-desc' },
     ],
-    agruparPor: 'tema',
+    // O tema gravado pode vir como lista ou, nos registros antigos, como um
+    // texto com vários temas juntos. O tratamento resolve os dois.
+    agruparPor: { campo: 'temas', alternativo: 'tema', normalizar: 'tema' },
     campos: [
       { k: 'identificacao', l: 'Proposição', t: 'texto', req: true, lista: true },
       { k: 'ementa', l: 'Ementa', t: 'area', lista: true },
@@ -523,10 +525,12 @@ export const MODULOS = [
       { campo: 'natureza', l: 'Natureza' },
       { campo: 'sentido', l: 'Efeito' },
       { campo: 'etiquetas', l: 'Etiqueta', multivalor: true, ateChips: 14 },
-      { campo: 'temas', l: 'Tema', multivalor: true, alternativo: 'tema', ateChips: 0 },
+      { campo: 'temas', l: 'Tema', normalizar: 'tema', alternativo: 'tema', ateChips: 0 },
       { campo: 'ano', l: 'Ano', ordem: 'valor-desc' },
     ],
-    agruparPor: 'tema',
+    // O tema gravado pode vir como lista ou, nos registros antigos, como um
+    // texto com vários temas juntos. O tratamento resolve os dois.
+    agruparPor: { campo: 'temas', alternativo: 'tema', normalizar: 'tema' },
     campos: [
       { k: 'data', l: 'Data', t: 'data', lista: true },
       { k: 'proposicao', l: 'Matéria', t: 'texto', lista: true, subLinha: { campo: 'orgao', prefixo: 'em ' } },
@@ -583,34 +587,6 @@ export const MODULOS = [
       { k: 'idProposicao', l: 'ID da proposição na Câmara', t: 'numero' },
     ],
   },
-  {
-    id: 'posicionamentos',
-    area: 'legislativo',
-    nome: 'Posições públicas',
-    singular: 'posicionamento',
-    descricao: 'O que o mandato disse fora das votações — discursos, notas e entrevistas, para quando o histórico de voto não conta a história toda.',
-    ordenar: { campo: 'data', dir: 'desc' },
-    busca: ['tema', 'resumo'],
-    campos: [
-      { k: 'tema', l: 'Tema', t: 'texto', req: true, lista: true },
-      { k: 'posicao', l: 'Posição', t: 'select', req: true, lista: true, op: [
-        { v: 'favoravel', l: 'Favorável', cor: 'ok' },
-        { v: 'contrario', l: 'Contrário', cor: 'critico' },
-        { v: 'ressalvas', l: 'Favorável com ressalvas', cor: 'atencao' },
-        { v: 'neutro', l: 'Sem posição fechada', cor: 'neutro' },
-      ] },
-      { k: 'origem', l: 'Onde foi dito', t: 'select', lista: true, op: [
-        { v: 'voto', l: 'Voto' }, { v: 'discurso', l: 'Discurso' },
-        { v: 'nota', l: 'Nota oficial' }, { v: 'entrevista', l: 'Entrevista' },
-        { v: 'projeto', l: 'Projeto apresentado' },
-      ] },
-      { k: 'data', l: 'Data', t: 'data', lista: true },
-      { k: 'resumo', l: 'Resumo', t: 'area', req: true },
-      { k: 'referencia', l: 'Link ou referência', t: 'url' },
-    ],
-  },
-
-  // ───────────────────────────── COMUNICAÇÃO ─────────────────────────────
   {
     id: 'editorial',
     area: 'comunicacao',

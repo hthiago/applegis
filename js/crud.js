@@ -2,6 +2,7 @@ import {
   el, limpar, etiqueta, fmtData, fmtDataHora, fmtDinheiro, aviso, confirmar, vazio, carregando, hoje,
 } from './ui.js';
 import { listar, salvar, remover, opcoesDe, proximoNumero } from './dados.js';
+import { temasCurtos, temaPrincipal } from './temas.js';
 
 /**
  * Motor genérico de listagem e formulário.
@@ -404,6 +405,21 @@ export async function renderModulo(container, modulo, { editavel, extras = [], a
     filtro: '',
     segmento: modulo.segmentos ? modulo.segmentos.op[0].v : null,
     facetas: facetasIniciais(modulo, itens),
+    ordemGrupos: ordemGruposGuardada(modulo),
+  };
+
+  // O agrupamento pode declarar um tratamento — o tema precisa de um, porque o
+  // valor gravado não é o que se lê na tela.
+  const agrupamento = typeof modulo.agruparPor === 'string'
+    ? { campo: modulo.agruparPor }
+    : modulo.agruparPor || null;
+
+  const valorDoGrupo = (item) => {
+    if (!agrupamento) return 'Sem classificação';
+    const tratamento = NORMALIZADORES[agrupamento.normalizar];
+    const bruto = item[agrupamento.campo]
+      ?? (agrupamento.alternativo ? item[agrupamento.alternativo] : undefined);
+    return (tratamento ? tratamento.unico(bruto) : bruto) || 'Sem classificação';
   };
 
   const recarregar = () => renderModulo(container, modulo, { editavel, extras, acoesItem, acoesLinha });
@@ -651,24 +667,47 @@ export async function renderModulo(container, modulo, { editavel, extras = [], a
     // um teto e oferece-se o resto, para quem realmente quiser rolar tudo.
     const visiveis = estado.verTudo ? lista : lista.slice(0, LIMITE_LINHAS);
 
-    if (modulo.agruparPor) {
+    if (agrupamento) {
       const grupos = new Map();
       visiveis.forEach((i) => {
-        const chave = i[modulo.agruparPor] || 'Sem classificação';
+        const chave = valorDoGrupo(i);
         if (!grupos.has(chave)) grupos.set(chave, []);
         grupos.get(chave).push(i);
       });
-      [...grupos.entries()]
-        .sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0], 'pt-BR'))
-        .forEach(([nome, doGrupo]) => {
-          tbody.appendChild(el('tr', { class: 'linha-grupo' }, [
-            el('td', { colspan: String(colunas.length + 1) }, [
+
+      const porQuantidade = estado.ordemGrupos !== 'alfabetica';
+      const ordenados = [...grupos.entries()].sort((a, b) => (
+        porQuantidade
+          ? b[1].length - a[1].length || a[0].localeCompare(b[0], 'pt-BR')
+          : a[0].localeCompare(b[0], 'pt-BR')
+      ));
+
+      ordenados.forEach(([nome, doGrupo]) => {
+        // O cabeçalho do grupo é o próprio controle de ordenação: é nele que se
+        // clica, e é ali que a pergunta "em que ordem isto está?" aparece.
+        tbody.appendChild(el('tr', { class: 'linha-grupo' }, [
+          el('td', { colspan: String(colunas.length + 1) }, [
+            el('button', {
+              type: 'button',
+              class: 'grupo-botao',
+              title: porQuantidade
+                ? 'Ordenado por quantidade — clique para ordenar de A a Z'
+                : 'Ordenado de A a Z — clique para ordenar por quantidade',
+              onclick: (e) => {
+                e.stopPropagation();
+                estado.ordemGrupos = porQuantidade ? 'alfabetica' : 'quantidade';
+                guardarOrdemGrupos(modulo, estado.ordemGrupos);
+                desenhar();
+              },
+            }, [
               el('span', { class: 'grupo-nome', texto: nome }),
               el('span', { class: 'grupo-conta', texto: String(doGrupo.length) }),
+              el('span', { class: 'grupo-ordem', texto: porQuantidade ? '↓ nº' : 'A → Z' }),
             ]),
-          ]));
-          doGrupo.forEach((i) => tbody.appendChild(criarLinha(i)));
-        });
+          ]),
+        ]));
+        doGrupo.forEach((i) => tbody.appendChild(criarLinha(i)));
+      });
     } else {
       visiveis.forEach((i) => tbody.appendChild(criarLinha(i)));
     }
@@ -743,8 +782,19 @@ export async function renderModulo(container, modulo, { editavel, extras = [], a
 // são os cortes que o próprio dado oferece — tipo, tema, ano —, cada opção com
 // a contagem do que resta ao escolhê-la.
 
+/**
+ * Tratamentos que um campo pode receber antes de virar recorte ou grupo.
+ *
+ * O tema da Câmara precisa de um: o que está gravado pode ser uma lista ou o
+ * texto antigo com vários temas juntos, e em nenhum dos dois casos coincide com
+ * o que se quer ler na tela.
+ */
+const NORMALIZADORES = {
+  tema: { lista: temasCurtos, unico: temaPrincipal },
+};
+
 /** Marca dos registros sem valor na faceta, para que não fiquem inalcançáveis. */
-const SEM_VALOR = ' sem';
+const SEM_VALOR = '\u0000sem';
 
 /**
  * O rótulo de um valor de faceta. Quando a faceta recai sobre um campo de
@@ -765,6 +815,8 @@ function rotuloDaFaceta(valor, campo = null) {
  */
 function valoresDaFaceta(item, faceta) {
   const bruto = item[faceta.campo] ?? (faceta.alternativo ? item[faceta.alternativo] : undefined);
+  const tratamento = NORMALIZADORES[faceta.normalizar];
+  if (tratamento) return tratamento.lista(bruto);
   if (Array.isArray(bruto)) return bruto.filter((v) => v != null && v !== '').map(String);
   if (bruto === null || bruto === undefined || bruto === '') return [];
   if (faceta.multivalor && typeof bruto === 'string') {
@@ -836,6 +888,20 @@ function guardarFacetas(modulo, facetas) {
   try {
     localStorage.setItem(chaveFacetas(modulo), JSON.stringify(simples));
   } catch { /* modo anônimo, ou armazenamento cheio: filtra só nesta sessão */ }
+}
+
+const chaveOrdemGrupos = (modulo) => `gab:grupos:${modulo.id}`;
+
+function ordemGruposGuardada(modulo) {
+  try {
+    return localStorage.getItem(chaveOrdemGrupos(modulo)) || 'quantidade';
+  } catch { return 'quantidade'; }
+}
+
+function guardarOrdemGrupos(modulo, ordem) {
+  try {
+    localStorage.setItem(chaveOrdemGrupos(modulo), ordem);
+  } catch { /* modo anônimo: vale só nesta sessão */ }
 }
 
 function algumFiltroAtivo(estado) {

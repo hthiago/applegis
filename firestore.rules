@@ -70,7 +70,6 @@ service cloud.firestore {
         'valores': 'legislativo',
         'producao': 'legislativo',
         'pauta': 'legislativo',
-        'posicionamentos': 'legislativo',
         'editorial': 'comunicacao',
         'clipping': 'comunicacao',
         'imprensa': 'comunicacao',

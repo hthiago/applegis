@@ -178,9 +178,16 @@ async function abrir({
         { id: 901, dataHoraInicio: '2026-08-13T10:00', orgaos: [{ sigla: 'CVT' }] },
       ];
     } else if (/\/temas/.test(url)) {
-      // A 111 tem dois temas: o primeiro agrupa, os dois filtram.
-      if (idProposicao === '111') dados = [{ tema: 'Saúde' }, { tema: 'Orçamento público' }];
-      else dados = [{ tema: 'Segurança pública' }];
+      // Nomes oficiais, com vírgula dentro e tudo: é o que a base devolve, e é
+      // o que a repartição e a forma curta precisam encarar.
+      if (idProposicao === '111') {
+        // Dois temas: o primeiro agrupa, os dois filtram.
+        dados = [{ tema: 'Saúde' }, { tema: 'Finanças Públicas e Orçamento' }];
+      } else if (idProposicao === '444') {
+        dados = [{ tema: 'Administração Pública' }];
+      } else {
+        dados = [{ tema: 'Segurança Pública' }];
+      }
     } else if (/\/autores/.test(url)) {
       // O parlamentar do gabinete é o 999: apresenta a 111 e a 555, subscreve
       // o resto — a distinção sai da ordem de assinatura.
@@ -406,7 +413,7 @@ console.log('\nUso normal, como chefe de gabinete\n');
   conferir('subaba de autoria mostra só a proposição apresentada',
     (await pagina.locator('.tabela tbody').innerText()).includes('PL 111/2025'));
   conferir('agrupa por tema',
-    (await pagina.locator('.grupo-nome').first().innerText()) === 'SAÚDE',
+    (await pagina.locator('.grupo-nome').first().innerText()) === 'Saúde',
     await pagina.locator('.grupo-nome').first().innerText());
 
   await pagina.getByRole('tab', { name: /Subscrição/ }).click();
@@ -415,7 +422,7 @@ console.log('\nUso normal, como chefe de gabinete\n');
   conferir('subaba de subscrição troca o conteúdo',
     naSubscricao.includes('PL 222/2024') && !naSubscricao.includes('PL 111/2025'));
   conferir('cada subaba agrupa pelo próprio tema',
-    (await pagina.locator('.grupo-nome').first().innerText()).includes('SEGURANÇA'));
+    (await pagina.locator('.grupo-nome').first().innerText()).includes('Segurança'));
 
   // ── facetas: o recorte que torna 1879 registros utilizáveis ──
   // Na subscrição há 4 registros: 1 PL, 2 REQ e 1 EMC. O padrão mostra o PL.
@@ -439,7 +446,7 @@ console.log('\nUso normal, como chefe de gabinete\n');
   // ser encontrável pelos dois.
   await pagina.getByRole('tab', { name: /Autoria/ }).click();
   await pagina.waitForTimeout(250);
-  await pagina.locator('.faceta-select').selectOption('Orçamento público');
+  await pagina.locator('.faceta-select').selectOption('Orçamento');
   await pagina.waitForTimeout(250);
   const porTemaSecundario = await pagina.locator('.tabela tbody').innerText();
   conferir('o filtro de tema alcança o tema secundário',
@@ -466,6 +473,50 @@ console.log('\nUso normal, como chefe de gabinete\n');
     await pagina.locator('.facetas').innerText());
   await pagina.getByRole('button', { name: /Limpar filtros/ }).click();
   await pagina.waitForTimeout(200);
+
+  // ── ordenação dos grupos, clicando no próprio tema ──
+  const primeiroGrupo = () => pagina.locator('.grupo-nome').first().innerText();
+  const todosGrupos = () => pagina.locator('.grupo-nome').allInnerTexts();
+
+  // Sem recorte, a subscrição tem quatro registros em dois temas de tamanhos
+  // diferentes — que é o que distingue as duas ordens.
+  await pagina.getByRole('tab', { name: /Subscrição/ }).click();
+  await pagina.waitForTimeout(250);
+
+  const porQuantidade = await todosGrupos();
+  await pagina.locator('.grupo-botao').first().click();
+  await pagina.waitForTimeout(250);
+  const alfabetica = await todosGrupos();
+
+  conferir('clicar no tema reordena os grupos de A a Z',
+    JSON.stringify(alfabetica) === JSON.stringify([...alfabetica].sort((a, b) => a.localeCompare(b, 'pt-BR')))
+    && JSON.stringify(alfabetica) !== JSON.stringify(porQuantidade),
+    `antes ${JSON.stringify(porQuantidade)} depois ${JSON.stringify(alfabetica)}`);
+
+  await pagina.locator('.grupo-botao').first().click();
+  await pagina.waitForTimeout(250);
+  conferir('clicar de novo volta à ordem por quantidade',
+    JSON.stringify(await todosGrupos()) === JSON.stringify(porQuantidade));
+
+  // A escolha precisa sobreviver: reordenar a cada visita é atrito puro.
+  await pagina.locator('.grupo-botao').first().click();
+  await pagina.waitForTimeout(200);
+  await pagina.goto(`${BASE}/#/chefia/tarefas`, { waitUntil: 'domcontentloaded' });
+  await pagina.waitForSelector('.tabela');
+  await pagina.goto(`${BASE}/#/legislativo/autorias`, { waitUntil: 'domcontentloaded' });
+  await pagina.waitForSelector('.tabela');
+  await pagina.waitForTimeout(250);
+  const depoisDeVoltar = await todosGrupos();
+  conferir('a ordem escolhida sobrevive à navegação',
+    JSON.stringify(depoisDeVoltar) === JSON.stringify([...depoisDeVoltar].sort((a, b) => a.localeCompare(b, 'pt-BR'))),
+    JSON.stringify(depoisDeVoltar));
+
+  await pagina.locator('.grupo-botao').first().click();
+  await pagina.waitForTimeout(200);
+  await pagina.getByRole('tab', { name: /Autoria/ }).click();
+  await pagina.waitForTimeout(250);
+  conferir('o nome do grupo sai na forma curta, não na oficial',
+    !(await primeiroGrupo()).includes(','), await primeiroGrupo());
 
   // ── enviar para acompanhamento ──
   // A produção é o arquivo de tudo que ele assinou; acompanhar de perto é
@@ -753,6 +804,29 @@ console.log('\nHistórico por tema\n');
 console.log('\nLeitura política do voto\n');
 
 {
+  const t = await import('../js/temas.js');
+
+  // O erro de origem: os temas foram gravados num texto só, e os nomes oficiais
+  // têm vírgula dentro. Repartir por pontuação inventaria temas que não existem.
+  conferir('reparte o texto antigo pelo vocabulário oficial',
+    JSON.stringify(t.separarTemas('Administração Pública, Economia, Finanças Públicas e Orçamento'))
+      === JSON.stringify(['Administração Pública', 'Economia', 'Finanças Públicas e Orçamento']),
+    JSON.stringify(t.separarTemas('Administração Pública, Economia, Finanças Públicas e Orçamento')));
+  conferir('nome com vírgula continua sendo um tema só',
+    JSON.stringify(t.separarTemas('Ciência, Tecnologia e Inovação')) === JSON.stringify(['Ciência, Tecnologia e Inovação']),
+    JSON.stringify(t.separarTemas('Ciência, Tecnologia e Inovação')));
+  conferir('o nome mais longo vence o mais curto que o prefixa',
+    t.separarTemas('Direito Penal e Processual Penal')[0] === 'Direito Penal e Processual Penal');
+  conferir('tema fora do vocabulário é preservado, não descartado',
+    t.separarTemas('Tema Novo Da Câmara, Saúde').length === 2);
+  conferir('a forma curta encurta o que era longo',
+    t.temaCurto('Finanças Públicas e Orçamento') === 'Orçamento'
+    && t.temaCurto('Viação, Transporte e Mobilidade') === 'Transporte');
+  conferir('agrupa por um tema só, o principal',
+    t.temaPrincipal('Administração Pública, Saúde') === 'Administração pública');
+  conferir('registro sem tema não vira grupo fantasma',
+    t.temaPrincipal(null) === null && t.temasCurtos([]).length === 0);
+
   const v = await import('../js/votos.js');
 
   conferir('reconhece retirada de pauta',
