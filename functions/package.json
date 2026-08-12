@@ -3,7 +3,7 @@
   "description": "Ponte para as bases de execução orçamentária que não podem ser consultadas do navegador.",
   "main": "index.js",
   "private": true,
-  "engines": { "node": "20" },
+  "engines": { "node": "22" },
   "scripts": {
     "serve": "firebase emulators:start --only functions",
     "deploy": "firebase deploy --only functions",

@@ -180,6 +180,12 @@ exatamente os mesmos números.
    O nome do banco (`appgab`) já vai em `functions/.env`, que não é segredo —
    só a chave é.
 
+   **Se o deploy falhar com `iam.serviceaccounts.actAs denied`**, é a conta de
+   serviço padrão do Compute que ainda não existe: projetos do Firebase não a
+   criam até a API do Compute Engine ser ativada. Rode
+   `gcloud services enable compute.googleapis.com`, espere um minuto e repita o
+   deploy.
+
 5. **Ligue no cliente.** Em `js/config.js`, mude `CONSULTA_AUTOMATICA` para `true` e
    confira que `REGIAO_FUNCOES` é a mesma região declarada em `functions/index.js`
    (`southamerica-east1`). Região divergente não dá erro de configuração: dá
