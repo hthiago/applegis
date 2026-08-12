@@ -1133,6 +1133,40 @@ console.log('\nPlanilhas de emenda\n');
   await pagina.close();
 }
 
+// A sondagem existe porque adivinhar endereço custava uma implantação por
+// palpite. Ela precisa dizer, de uma vez, qual responde e com que campos.
+{
+  const pagina = await abrir({
+    consultaAutomatica: true,
+    ignorarConsole: true,
+    funcoes: {
+      consultarFonte: {
+        __fn: `if (dados.caminho === '/convenios/proposta') {
+          return { dados: [{ id_proposta: 1, objeto_proposta: 'Reforma da UBS', vl_global: 500000 }] };
+        }
+        var e = new Error('portal-emenda respondeu 403: — 403 sem explicação costuma ser caminho inexistente');
+        e.code = 'functions/unavailable';
+        throw e;`,
+      },
+    },
+  });
+
+  await pagina.goto(`${BASE}/#/orcamento/emendas`, { waitUntil: 'domcontentloaded' });
+  await pagina.waitForSelector('.modulo-topo');
+  await pagina.getByRole('button', { name: 'Sondar fontes' }).click();
+  await pagina.waitForSelector('.sondagem-texto', { timeout: 15000 });
+
+  const texto = await pagina.locator('.sondagem-texto').inputValue();
+  conferir('a sondagem aponta o caminho que respondeu',
+    /OK\s+\/convenios\/proposta/.test(texto), texto.split('\n').slice(0, 4).join(' | '));
+  conferir('e mostra os campos que ele devolve, que é o que falta para ler',
+    /objeto_proposta/.test(texto), texto.split('\n').find((l) => l.includes('proposta')) || '');
+  conferir('os que falharam aparecem com o motivo',
+    /FALHA\s+\/emendas\/documentos/.test(texto) && /403/.test(texto), '');
+
+  await pagina.close();
+}
+
 // A sanfona: a emenda de sete milhões que aparece como "MÚLTIPLO" precisa
 // abrir na própria linha e mostrar para onde cada parte foi.
 {

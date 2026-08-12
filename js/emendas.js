@@ -632,3 +632,62 @@ export async function detalharEmendas({ aoProgredir = () => {} } = {}) {
   }
   return funil;
 }
+
+// ───────────────────────── sondagem de fontes ─────────────────────────
+
+/**
+ * Caminhos candidatos para o detalhamento de uma emenda.
+ *
+ * Escrevi o primeiro pela documentação e ele respondeu 403 — que no gateway do
+ * Portal significa caminho inexistente, não chave inválida. Como não alcanço
+ * essas APIs do meu ambiente, adivinhar de novo custaria uma implantação por
+ * palpite. A sondagem tenta todos de uma vez e diz qual responde.
+ */
+export const CAMINHOS_CANDIDATOS = [
+  { fonte: 'portal-livre', caminho: '/emendas/documentos', usa: 'codigoEmenda' },
+  { fonte: 'portal-livre', caminho: '/emendas/documentos-impedimentos', usa: 'codigoEmenda' },
+  { fonte: 'portal-livre', caminho: '/emendas/documentos-impedidos', usa: 'codigoEmenda' },
+  { fonte: 'portal-livre', caminho: '/despesas/documentos', usa: 'codigoEmenda' },
+  { fonte: 'portal-livre', caminho: '/emendas', usa: 'codigoEmenda' },
+  { fonte: 'transferegov-livre', caminho: '/emendas/emenda', usa: 'nr_emenda' },
+  { fonte: 'transferegov-livre', caminho: '/emendas/emenda_parlamentar', usa: 'nr_emenda' },
+  { fonte: 'transferegov-livre', caminho: '/convenios/proposta', usa: null },
+  { fonte: 'transferegov-livre', caminho: '/convenios/convenio', usa: null },
+  { fonte: 'transferegov-livre', caminho: '/transferenciasespeciais/plano_acao', usa: null },
+  { fonte: 'transferegov-livre', caminho: '/transferenciasespeciais/programa_transferencia_especial', usa: null },
+];
+
+/**
+ * Tenta cada caminho e relata o que aconteceu em cada um.
+ *
+ * Devolve, para os que responderam, quantos registros vieram e quais campos —
+ * que é exatamente o que falta para escrever o leitor certo de primeira.
+ */
+export async function sondarFontes(codigoEmenda) {
+  const { consultarFonte } = await import('./fontes.js');
+  const achados = [];
+
+  for (const candidato of CAMINHOS_CANDIDATOS) {
+    const parametros = {};
+    if (candidato.usa === 'codigoEmenda' && codigoEmenda) parametros.codigoEmenda = codigoEmenda;
+    // O Transferegov é PostgREST: o filtro vai como `campo=eq.valor`.
+    if (candidato.usa === 'nr_emenda' && codigoEmenda) parametros.nr_emenda = `eq.${codigoEmenda}`;
+    if (candidato.fonte === 'transferegov-livre') parametros.limit = 3;
+    else parametros.pagina = 1;
+
+    try {
+      const r = await consultarFonte(candidato.fonte, parametros, candidato.caminho);
+      const lote = Array.isArray(r.dados) ? r.dados : [r.dados].filter(Boolean);
+      achados.push({
+        caminho: candidato.caminho,
+        ok: true,
+        quantidade: lote.length,
+        campos: Object.keys(lote[0] || {}),
+      });
+    } catch (erro) {
+      achados.push({ caminho: candidato.caminho, ok: false, erro: String(erro.message || erro).slice(0, 160) });
+    }
+  }
+
+  return achados;
+}

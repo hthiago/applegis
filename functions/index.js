@@ -68,6 +68,33 @@ const FONTES = {
   },
 
   /**
+   * Fontes exploratórias: mesmo host, caminho variável.
+   *
+   * Cada endpoint novo declarado como fonte fixa custa uma implantação para ser
+   * testado, e descobrir qual caminho existe numa API que eu não alcanço daqui
+   * exige tentar vários. Estas duas entradas trocam a lista fechada de caminhos
+   * por uma lista fechada de *hosts*: o proxy continua sem poder buscar
+   * endereço arbitrário na internet, mas deixa de exigir um deploy por palpite.
+   *
+   * O sufixo é validado: só letras, dígitos, hífen e barra, sem "..", sem
+   * protocolo, sem host — nada que permita sair da base declarada.
+   */
+  'portal-livre': {
+    base: 'https://api.portaldatransparencia.gov.br/api-de-dados',
+    permiteSufixo: true,
+    parametrosLivres: true,
+    cabecalhos: () => ({ 'chave-api-dados': CHAVE_PORTAL.value() }),
+    exigeChave: true,
+  },
+  'transferegov-livre': {
+    base: 'https://api.transferegov.gestao.gov.br',
+    permiteSufixo: true,
+    parametrosLivres: true,
+    cabecalhos: () => ({}),
+    exigeChave: false,
+  },
+
+  /**
    * O Transferegov serve por PostgREST: o filtro vai no próprio nome do campo,
    * na forma `campo=eq.valor`. Por isso a lista de parâmetros aqui é de nomes
    * de coluna, e não de parâmetros de consulta no sentido usual.
@@ -141,12 +168,29 @@ exports.consultarFonte = onCall(
 
     const busca = new URLSearchParams();
     for (const [chave, valor] of Object.entries(parametros)) {
-      if (config.parametros.includes(chave) && valor !== null && valor !== '') {
-        busca.set(chave, String(valor));
-      }
+      if (valor === null || valor === undefined || valor === '') continue;
+      const aceito = config.parametrosLivres
+        ? /^[a-zA-Z_][a-zA-Z0-9_]{0,40}$/.test(chave) && String(valor).length <= 120
+        : (config.parametros || []).includes(chave);
+      if (aceito) busca.set(chave, String(valor));
     }
 
-    const url = `${config.base}?${busca}`;
+    // O sufixo só existe nas fontes exploratórias, e passa por uma peneira
+    // estreita: sem protocolo, sem host, sem subir de diretório. O que sobra é
+    // um caminho dentro da base declarada, e nada mais.
+    const { caminho = '' } = request.data || {};
+    let sufixo = '';
+    if (caminho) {
+      if (!config.permiteSufixo) {
+        throw new HttpsError('invalid-argument', `A fonte ${fonte} não aceita caminho.`);
+      }
+      if (!/^\/[A-Za-z0-9\-_/]{1,120}$/.test(caminho) || caminho.includes('..')) {
+        throw new HttpsError('invalid-argument', `Caminho recusado: ${caminho}`);
+      }
+      sufixo = caminho;
+    }
+
+    const url = `${config.base}${sufixo}?${busca}`;
     let resposta;
     try {
       resposta = await fetch(url, {
@@ -166,10 +210,17 @@ exports.consultarFonte = onCall(
       // porque a função fica presa à versão do segredo que existia quando ela
       // foi implantada. Quem troca e não reimplanta vê o mesmo 401 e conclui
       // que a chave nova também está errada.
-      const dica = config.exigeChave && [401, 403].includes(resposta.status)
-        ? ' — confira o valor guardado com `firebase functions:secrets:access CHAVE_PORTAL_TRANSPARENCIA`;'
-          + ' se precisar trocá-lo, reimplante a função depois, senão ela continua usando o valor antigo.'
-        : '';
+      // 401 é chave recusada. 403 com corpo vazio, numa fonte cuja chave funciona
+      // em outro caminho, é o gateway recusando o próprio caminho — dizer
+      // "confira a chave" ali manda procurar no lugar errado, como já mandou.
+      let dica = '';
+      if (config.exigeChave && resposta.status === 401) {
+        dica = ' — confira o valor guardado com `firebase functions:secrets:access CHAVE_PORTAL_TRANSPARENCIA`;'
+          + ' se precisar trocá-lo, reimplante a função depois, senão ela continua usando o valor antigo.';
+      } else if (resposta.status === 403 && !corpo.trim()) {
+        dica = ' — 403 sem explicação costuma ser caminho inexistente:'
+          + ` a fonte não reconhece ${sufixo || config.base.split('/').pop()}.`;
+      }
 
       throw new HttpsError('unavailable',
         `${fonte} respondeu ${resposta.status}: ${corpo.slice(0, 300)}${dica}`);

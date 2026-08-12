@@ -28,14 +28,14 @@ const RECADOS = {
     'A ponte no servidor não respondeu. Se as Cloud Functions ainda não foram implantadas, é isso — veja o README, seção "Consulta automática". Se já foram, o log mostra a causa: firebase functions:log',
 };
 
-export async function consultarFonte(fonte, parametros = {}) {
+export async function consultarFonte(fonte, parametros = {}, caminho = null) {
   if (!CONSULTA_AUTOMATICA) {
     throw new Error('A consulta automática está desligada. Ligue CONSULTA_AUTOMATICA em js/config.js depois de implantar as funções.');
   }
 
   try {
     const chamar = httpsCallable(funcoes, 'consultarFonte');
-    const r = await chamar({ fonte, parametros });
+    const r = await chamar({ fonte, parametros, caminho });
     return r.data;
   } catch (erro) {
     // A mensagem da função já vem pronta e diz o que a fonte respondeu; só as

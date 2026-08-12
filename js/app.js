@@ -520,6 +520,36 @@ function extrasDasEmendas() {
       return el('span', { class: 'importador' }, [btn, escolher]);
     },
 
+    // Sondagem: descobre qual caminho das bases responde, em vez de custar uma
+    // implantação por palpite. Fica junto da consulta porque é dali que a
+    // pergunta nasce quando algo não vem.
+    (recarregar) => {
+      if (!nucleo.fontes.disponivel()) return null;
+
+      return el('button', {
+        class: 'btn btn--fantasma',
+        texto: 'Sondar fontes',
+        title: 'Descobre quais endereços das bases federais respondem',
+        onclick: async (e) => {
+          const btn = e.currentTarget;
+          btn.disabled = true;
+          btn.textContent = 'Sondando…';
+          try {
+            const emendas = await nucleo.dados.listar('emendas');
+            const codigo = (emendas.find((x) => x.codigo) || {}).codigo || null;
+            const achados = await nucleo.emendas.sondarFontes(codigo);
+            abrirSondagem(achados, codigo);
+          } catch (erro) {
+            console.error(erro);
+            aviso(erro.message || 'Não foi possível sondar as fontes.', 'erro');
+          } finally {
+            btn.disabled = false;
+            btn.textContent = 'Sondar fontes';
+          }
+        },
+      });
+    },
+
     // A consulta direta só aparece quando a ponte no servidor está no ar. Um
     // botão que só sabe explicar por que não funciona é pior do que botão
     // nenhum — a importação por planilha continua ali, ao lado, funcionando.
@@ -627,6 +657,44 @@ function extrasDasTransferencias() {
       });
     },
   ];
+}
+
+/**
+ * Mostra o resultado da sondagem, com um botão para copiar.
+ *
+ * O texto é para ser colado numa conversa: é ele que diz qual endereço existe e
+ * com que campos, e é o que fecha em uma rodada uma investigação que de outro
+ * modo levaria várias.
+ */
+function abrirSondagem(achados, codigo) {
+  const resumo = achados.map((a) => (a.ok
+    ? `OK   ${a.caminho} — ${a.quantidade} registro(s): ${a.campos.join(', ') || '(sem campos)'}`
+    : `FALHA ${a.caminho} — ${a.erro}`)).join('\n');
+
+  const texto = `Sondagem com a emenda ${codigo || '(nenhuma)'}\n\n${resumo}`;
+  const area = el('textarea', { class: 'sondagem-texto', rows: '16', readonly: true });
+  area.value = texto;
+
+  const fundo = el('div', { class: 'modal-fundo', onclick: (ev) => { if (ev.target === fundo) fundo.remove(); } }, [
+    el('div', { class: 'modal modal--largo', role: 'dialog', 'aria-modal': 'true' }, [
+      el('h2', { class: 'modal-titulo', texto: 'O que cada endereço respondeu' }),
+      el('p', { class: 'campo-dica', texto: `${achados.filter((a) => a.ok).length} de ${achados.length} responderam.` }),
+      area,
+      el('div', { class: 'modal-acoes' }, [
+        el('button', {
+          class: 'btn btn--primario',
+          type: 'button',
+          texto: 'Copiar',
+          onclick: async (ev) => {
+            await navigator.clipboard.writeText(texto).catch(() => {});
+            ev.currentTarget.textContent = 'Copiado';
+          },
+        }),
+        el('button', { class: 'btn btn--fantasma', type: 'button', texto: 'Fechar', onclick: () => fundo.remove() }),
+      ]),
+    ]),
+  ]);
+  document.body.appendChild(fundo);
 }
 
 /**
