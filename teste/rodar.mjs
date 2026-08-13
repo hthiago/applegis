@@ -918,6 +918,23 @@ console.log('\nPlanilhas de emenda\n');
   conferir('sem sequencial nem número, a linha não atende por código nenhum',
     em.codigosDoPlano({ ano_emenda_parlamentar_plano_acao: 2025, codigo_parlamentar_emenda_plano_acao: 1234 })
       .length === 0);
+
+  // Nome de campo não fecha diagnóstico nenhum: os nomes podem estar todos
+  // certos e os valores todos vazios. O recorte mostra o que a linha tem.
+  const recorte = em.recorteDaLinha({
+    id_plano_acao: 7, nome_beneficiario_plano_acao: 'MUNICIPIO DE ERECHIM',
+    motivo_impedimento_plano_acao: null, valor_custeio_plano_acao: '',
+  });
+  conferir('o recorte mostra o que a linha tem, com o sufixo repetido fora do caminho',
+    recorte === 'id=7 · nome_beneficiario=MUNICIPIO DE ERECHIM', recorte);
+  conferir('plano sem beneficiário e sem valor continua guardável: é o impedido',
+    em.chaveDaTransferencia(em.doPlanoAcao({
+      id_plano_acao: 55, situacao_plano_acao: 'Aguardando indicação',
+    })) === 'pa-55');
+  conferir('linha inteiramente vazia é dita como tal, não como ausência de campos',
+    em.recorteDaLinha({ a: null, b: '' }) === '(todos os campos vieram vazios)');
+  conferir('valor longo é cortado para caber num recado de tela',
+    em.recorteDaLinha({ x: 'a'.repeat(400), y: 'b'.repeat(400) }, 80).endsWith('…'));
   conferir('o código se desmonta de volta nas três partes',
     JSON.stringify(em.partesDoCodigo('202512340001'))
       === JSON.stringify({ ano: 2025, parlamentar: 1234, sequencial: 1 }),

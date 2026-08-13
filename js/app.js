@@ -642,9 +642,9 @@ function extrasDasTransferencias() {
                 btn.textContent = `Página ${p.paginas} · ${p.linhas} linhas`;
               },
             });
-            if (r.camposRecebidos) {
-              aviso(`O Transferegov devolveu ${r.linhas} linhas, mas nenhum campo foi reconhecido.`
-                + ` Ele mandou: ${r.camposRecebidos.join(', ')}`, 'erro');
+            if (r.amostra) {
+              aviso(`O Transferegov devolveu ${r.linhas} linhas, mas nenhuma virou repasse.`
+                + ` A primeira veio assim → ${r.amostra}`, 'erro');
             } else if (!r.linhas) {
               aviso(`Nada encontrado para "${nomeAutor}" nos planos de ação do Transferegov.`
                 + ' Confira a grafia do nome em Acessos → Dados do gabinete —'
@@ -803,9 +803,9 @@ async function sanfonaDaEmenda(emenda, alvo, recarregar) {
     }
 
     const r = await nucleo.emendas.detalharEmenda(emenda.codigo);
-    if (r.camposRecebidos) {
-      desenhar([], 'O Transferegov respondeu, mas nenhum campo foi reconhecido.'
-        + ` Ele mandou: ${r.camposRecebidos.join(', ')}`);
+    if (r.amostra) {
+      desenhar([], `O Transferegov achou ${r.linhas} plano(s) de ação desta emenda,`
+        + ` mas nenhum virou repasse. A primeira linha veio assim → ${r.amostra}`);
       return;
     }
     // Linha que chegou mas é de outra emenda: o que falta é saber como esta base

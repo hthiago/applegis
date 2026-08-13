@@ -607,13 +607,29 @@ async function guardarTransferencias(planos) {
 }
 
 /**
+ * Uma linha da fonte, encolhida para caber num recado de tela.
+ *
+ * Campo vazio é descartado — é o que a linha *tem* que interessa —, e o valor
+ * longo é cortado. Sem isso o recado vira uma parede de `campo: null`.
+ */
+export function recorteDaLinha(linha, limite = 700) {
+  const pares = Object.entries(linha || {})
+    .filter(([, v]) => v !== null && v !== undefined && v !== '')
+    .map(([k, v]) => `${k.replace(/_plano_acao$/, '')}=${String(v).slice(0, 60)}`);
+  if (!pares.length) return '(todos os campos vieram vazios)';
+
+  const texto = pares.join(' · ');
+  return texto.length > limite ? `${texto.slice(0, limite)}…` : texto;
+}
+
+/**
  * Os planos de ação de uma emenda só. É a unidade da sanfona: abrir uma linha
  * custa uma consulta, e ela usa as três partes do código para filtrar.
  */
 export async function detalharEmenda(codigo) {
   const { consultarFonte } = await import('./fontes.js');
   const partes = partesDoCodigo(codigo);
-  if (!partes) return { transferencias: [], camposRecebidos: null };
+  if (!partes) return { transferencias: [], amostra: null, codigosVistos: null, linhas: 0 };
 
   // O filtro vai só por ano e parlamentar, e o sequencial é conferido aqui.
   // Não sei se a base guarda o sequencial como número ou como texto com zeros
@@ -629,16 +645,20 @@ export async function detalharEmenda(codigo) {
   const lote = Array.isArray(r.dados) ? r.dados : [];
   const alvo = normalizarCodigo(codigo);
   const desta = lote.filter((linha) => codigosDoPlano(linha).includes(alvo));
-  const planos = desta.map(doPlanoAcao).filter((t) => t.favorecido || t.valor);
+  // Sem peneira de conteúdo: plano de ação sem beneficiário e sem valor ainda é
+  // um plano de ação — costuma ser o que está impedido, que é justamente o que o
+  // gabinete precisa ver. Quem decide o que se guarda é a chave, e ela vem do
+  // id do plano.
+  const transferencias = await guardarTransferencias(desta.map(doPlanoAcao));
 
   return {
-    transferencias: await guardarTransferencias(planos),
+    transferencias,
     // Três resultados diferentes, três recados diferentes. Confundi-los uma vez
-    // já mandou procurar nome de campo quando o problema era o código: linha que
-    // chega e não vira nada aponta campo com outro nome; linha que chega e não é
-    // desta emenda aponta código escrito de outro jeito. Dizer "campo não
-    // reconhecido" nos dois casos manda olhar no lugar errado.
-    camposRecebidos: (desta.length && !planos.length) ? Object.keys(desta[0]) : null,
+    // já mandou procurar nome de campo quando o problema era o código. E nome de
+    // campo sozinho não fecha a dúvida: os nomes podem estar todos certos e os
+    // valores todos vazios. Por isso o que volta aqui é a linha inteira, com
+    // valores — é ela que responde qualquer das perguntas de uma vez.
+    amostra: (desta.length && !transferencias.length) ? recorteDaLinha(desta[0]) : null,
     codigosVistos: (lote.length && !desta.length)
       ? [...new Set(lote.flatMap(codigosDoPlano))].slice(0, 12)
       : null,
@@ -688,7 +708,7 @@ export async function detalharEmendas({ nomeAutor, aoProgredir = () => {} } = {}
       funil.linhas += lote.length;
       if (!amostra && lote.length) [amostra] = lote;
 
-      encontrados.push(...lote.map(doPlanoAcao).filter((t) => t.favorecido || t.valor));
+      encontrados.push(...lote.map(doPlanoAcao));
       aoProgredir({ ...funil, procurado: grafia });
 
       if (lote.length < porPagina) break;
@@ -699,7 +719,7 @@ export async function detalharEmendas({ nomeAutor, aoProgredir = () => {} } = {}
   const gravadas = await guardarTransferencias(encontrados);
   funil.gravadas = gravadas.length;
   funil.emendas = new Set(gravadas.map((t) => t.codigoEmenda).filter(Boolean)).size;
-  if (funil.linhas && !gravadas.length) funil.camposRecebidos = Object.keys(amostra || {});
+  if (funil.linhas && !gravadas.length) funil.amostra = recorteDaLinha(amostra);
   return funil;
 }
 
