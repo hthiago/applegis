@@ -553,6 +553,10 @@ function extrasDasEmendas() {
       });
     },
 
+    // A mesma varredura da aba de Transferências. A pergunta "para onde foi
+    // esta emenda" nasce aqui, olhando a lista — e era aqui que o botão faltava.
+    botaoDetalhar,
+
     // A consulta direta só aparece quando a ponte no servidor está no ar. Um
     // botão que só sabe explicar por que não funciona é pior do que botão
     // nenhum — a importação por planilha continua ali, ao lado, funcionando.
@@ -622,64 +626,72 @@ function extrasDasEmendas() {
  * uma varredura só traz tudo, e a partir dela abrir uma linha não custa consulta.
  */
 function extrasDasTransferencias() {
-  return [
-    (recarregar) => {
-      if (!nucleo.fontes.disponivel()) return null;
+  return [botaoDetalhar];
+}
 
-      return el('button', {
-        class: 'btn btn--fantasma',
-        texto: 'Detalhar emendas',
-        title: 'Busca no Transferegov quem recebeu cada emenda, quanto e em que situação',
-        onclick: async (e) => {
-          const btn = e.currentTarget;
-          const nomeAutor = nucleo.sessaoMod.sessao.gabinete?.deputado || null;
-          if (!nomeAutor) {
-            aviso('Informe o nome do parlamentar em Acessos → Dados do gabinete.', 'erro');
-            return;
-          }
-          btn.disabled = true;
-          try {
-            // Os códigos já importados são o filtro exato do fundo a fundo,
-            // onde a grafia do nome nem sempre bate.
-            const codigos = (await nucleo.dados.listar('emendas'))
-              .map((e) => e.codigo).filter(Boolean);
+/**
+ * A varredura completa, oferecida nas duas abas.
+ *
+ * Ela nasceu em Transferências, mas a pergunta nasce em Emendas: é olhando a
+ * emenda de sete milhões que se quer saber para onde ela foi. Botão que só
+ * existe na outra tela é botão que não se acha.
+ */
+function botaoDetalhar(recarregar) {
+  if (!nucleo.fontes.disponivel()) return null;
 
-            const r = await nucleo.emendas.detalharEmendas({
-              nomeAutor,
-              codigos,
-              aoProgredir: (p) => {
-                btn.textContent = `${p.etapa || 'Buscando'}… ${p.linhas} linhas`;
-              },
-            });
-            if (r.amostra) {
-              aviso(`O Transferegov devolveu ${r.linhas} linhas, mas nenhuma virou repasse.`
-                + ` A primeira veio assim → ${r.amostra}`, 'erro');
-            } else if (!r.linhas) {
-              aviso(`Nada encontrado para "${nomeAutor}" nos planos de ação do Transferegov.`
-                + ' Confira a grafia do nome em Acessos → Dados do gabinete —'
-                + ' é por ele que a busca filtra.', 'erro');
-            } else {
-              aviso([
-                `${r.gravadas} destinos guardados`,
-                `${r.emendas} emendas`,
-                r.executores ? `${r.executores} executores` : null,
-                r.metas ? `${r.metas} metas` : null,
-                r.empenhos ? `${r.empenhos} empenhos` : null,
-                r.fundoAFundo ? `${r.fundoAFundo} fundo a fundo` : null,
-              ].filter(Boolean).join(' · '), r.gravadas ? 'ok' : 'erro');
-            }
-            recarregar();
-          } catch (erro) {
-            console.error(erro);
-            aviso(erro.message || 'Não foi possível detalhar as emendas.', 'erro');
-          } finally {
-            btn.disabled = false;
-            btn.textContent = 'Detalhar emendas';
-          }
-        },
-      });
+  return el('button', {
+    class: 'btn btn--fantasma',
+    texto: 'Detalhar emendas',
+    title: 'Varre Transferegov e Portal: quem recebeu cada emenda, para quê, quanto e em que situação',
+    onclick: async (e) => {
+      const btn = e.currentTarget;
+      const nomeAutor = nucleo.sessaoMod.sessao.gabinete?.deputado || null;
+      if (!nomeAutor) {
+        aviso('Informe o nome do parlamentar em Acessos → Dados do gabinete.', 'erro');
+        return;
+      }
+      btn.disabled = true;
+      try {
+        // Os códigos já importados são o filtro exato do fundo a fundo,
+        // onde a grafia do nome nem sempre bate.
+        const codigos = (await nucleo.dados.listar('emendas'))
+          .map((e) => e.codigo).filter(Boolean);
+
+        const r = await nucleo.emendas.detalharEmendas({
+          nomeAutor,
+          codigos,
+          aoProgredir: (p) => {
+            btn.textContent = `${p.etapa || 'Buscando'}… ${p.linhas} linhas`;
+          },
+        });
+        if (r.amostra) {
+          aviso(`O Transferegov devolveu ${r.linhas} linhas, mas nenhuma virou repasse.`
+            + ` A primeira veio assim → ${r.amostra}`, 'erro');
+        } else if (!r.linhas) {
+          aviso(`Nada encontrado para "${nomeAutor}" nos planos de ação do Transferegov.`
+            + ' Confira a grafia do nome em Acessos → Dados do gabinete —'
+            + ' é por ele que a busca filtra.', 'erro');
+        } else {
+          aviso([
+            `${r.gravadas} destinos guardados`,
+            `${r.emendas} emendas`,
+            r.executores ? `${r.executores} executores` : null,
+            r.metas ? `${r.metas} metas` : null,
+            r.empenhos ? `${r.empenhos} empenhos` : null,
+            r.fundoAFundo ? `${r.fundoAFundo} fundo a fundo` : null,
+            r.documentos ? `${r.documentos} documentos no Portal` : null,
+          ].filter(Boolean).join(' · '), r.gravadas ? 'ok' : 'erro');
+        }
+        recarregar();
+      } catch (erro) {
+        console.error(erro);
+        aviso(erro.message || 'Não foi possível detalhar as emendas.', 'erro');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Detalhar emendas';
+      }
     },
-  ];
+  });
 }
 
 /**

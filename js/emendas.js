@@ -585,9 +585,89 @@ export function doPlanoAcao(r) {
   };
 }
 
+// ── a execução no Portal, que vale para qualquer modalidade ──
+//
+// O caminho é `/emendas/documentos/{codigo}` — com o código no caminho, não na
+// consulta. Tentei a outra forma três vezes e ela responde 403, que naquele
+// gateway quer dizer "não existe"; a sondagem que percorre hipóteses achou esta.
+//
+// É a única fonte que cobre as quatro modalidades, inclusive a execução direta
+// pelo órgão, que nunca vira transferência e por isso não aparece em base
+// nenhuma do Transferegov. Ela devolve o índice dos documentos — empenho,
+// liquidação, pagamento, com data e número. Favorecido e valor vêm quando a
+// fonte os manda; o leitor aceita as duas situações em vez de descartar a linha.
+
+const FASES = [
+  { v: 'empenho', re: /empenh/i },
+  { v: 'liquidacao', re: /liquida/i },
+  { v: 'pagamento', re: /pagamen/i },
+];
+
+export function tipoDaFase(texto) {
+  const t = String(texto || '');
+  return (FASES.find((f) => f.re.test(t)) || {}).v || null;
+}
+
+export function doDocumentoDaEmenda(r, codigoEmenda) {
+  const pegar = (...nomes) => {
+    for (const n of nomes) {
+      const v = r[n];
+      if (v !== undefined && v !== null && v !== '') return v;
+    }
+    return null;
+  };
+  const texto = (v) => (v && typeof v === 'object'
+    ? (v.descricao || v.nome || v.especie || null)
+    : v);
+
+  const fase = texto(pegar('fase', 'faseDespesa'));
+  const local = separarLocalidade(texto(pegar('municipio', 'localidadeDoGasto')));
+
+  return {
+    codigoEmenda: normalizarCodigo(codigoEmenda),
+    documento: pegar('codigoDocumentoResumido', 'documentoResumido', 'codigoDocumento') || null,
+    tipo: tipoDaFase(fase) || 'empenho',
+    data: dataBr(pegar('data', 'dataEmissao')),
+    favorecido: texto(pegar('nomeFavorecido', 'favorecido', 'nomeBeneficiario')),
+    favorecidoDoc: pegar('codigoFavorecido', 'cpfCnpjFavorecido') || null,
+    municipio: local.municipio,
+    uf: local.uf,
+    objeto: texto(pegar('observacao', 'objeto', 'descricao', 'especieTipo')),
+    valor: numeroBr(pegar('valor', 'valorDocumento', 'valorEmpenhado')),
+    idDocumento: pegar('id') ?? null,
+    fonte: 'Portal da Transparência — documentos da emenda',
+  };
+}
+
+/**
+ * Os documentos de execução de uma emenda, direto no Portal.
+ *
+ * Paginado até acabar: uma emenda repartida entre muitos municípios tem muitos
+ * empenhos, e parar na primeira página mostraria uma fatia se passando pelo todo
+ * — que é o erro que a consulta de emendas já cometeu uma vez.
+ */
+export async function documentosDaEmenda(codigo, { paginasMaximas = 40 } = {}) {
+  const { consultarFonte } = await import('./fontes.js');
+  const alvo = normalizarCodigo(codigo);
+  if (!alvo) return { linhas: [], paginas: 0 };
+
+  const linhas = [];
+  let paginas = 0;
+  for (let pagina = 1; pagina <= paginasMaximas; pagina += 1) {
+    // eslint-disable-next-line no-await-in-loop
+    const r = await consultarFonte('portal-livre', { pagina }, `/emendas/documentos/${alvo}`);
+    const lote = Array.isArray(r.dados) ? r.dados : [];
+    paginas = pagina;
+    linhas.push(...lote.map((x) => doDocumentoDaEmenda(x, alvo)));
+    if (!lote.length) break;
+  }
+  return { linhas, paginas };
+}
+
 /** A chave de uma transferência: o plano de ação identifica sozinho. */
 export function chaveDaTransferencia({
-  idPlanoAcao, idExecutor, idBeneficiario, codigoEmenda, documento, favorecido, data,
+  idPlanoAcao, idExecutor, idBeneficiario, idDocumento,
+  codigoEmenda, documento, favorecido, data,
 }) {
   const limpo = (v) => String(v || '').trim().replace(/[^\w.-]+/g, '-').replace(/^-|-$/g, '');
   // Um plano repartido entre executores são vários destinos, com objetos
@@ -596,6 +676,7 @@ export function chaveDaTransferencia({
   if (idPlanoAcao && idExecutor) return `pa-${limpo(idPlanoAcao)}-ex-${limpo(idExecutor)}`;
   if (idBeneficiario) return `ff-${limpo(idBeneficiario)}`;
   if (idPlanoAcao) return `pa-${limpo(idPlanoAcao)}`;
+  if (idDocumento) return `doc-${limpo(idDocumento)}`;
   if (codigoEmenda && documento) return `${limpo(codigoEmenda)}-${limpo(documento)}`;
   if (documento) return `doc-${limpo(documento)}`;
   if (codigoEmenda && favorecido) {
@@ -697,17 +778,35 @@ export async function detalharEmenda(codigo, { nomeAutor = null } = {}) {
   // um plano de ação — costuma ser o que está impedido, que é justamente o que o
   // gabinete precisa ver. Quem decide o que se guarda é a chave, e ela vem do
   // id do plano.
-  const transferencias = await guardarTransferencias(desta.map(doPlanoAcao));
+  let transferencias = await guardarTransferencias(desta.map(doPlanoAcao));
+
+  // A emenda que não é especial ainda foi executada, e o Portal registra essa
+  // execução para qualquer modalidade — inclusive a direta, em que o ministério
+  // paga o fornecedor e nenhuma base de transferência jamais a vê. Parar antes
+  // daqui era o que fazia a sanfona dizer "não tem" sobre uma emenda que foi
+  // para vários municípios.
+  let documentos = 0;
+  if (!transferencias.length) {
+    tentativas.push('documentos no Portal');
+    const doPortalEmenda = await documentosDaEmenda(alvo);
+    documentos = doPortalEmenda.linhas.length;
+    if (documentos) {
+      transferencias = await guardarTransferencias(doPortalEmenda.linhas);
+    }
+  }
 
   return {
     transferencias,
+    documentos,
     // Três resultados diferentes, três recados diferentes. Confundi-los uma vez
     // já mandou procurar nome de campo quando o problema era o código. E nome de
     // campo sozinho não fecha a dúvida: os nomes podem estar todos certos e os
     // valores todos vazios. Por isso o que volta aqui é a linha inteira, com
     // valores — é ela que responde qualquer das perguntas de uma vez.
+    // Todo diagnóstico abaixo só vale quando não houve resultado. Achado o
+    // destino, explicar por onde não se achou é ruído na frente da resposta.
     amostra: (desta.length && !transferencias.length) ? recorteDaLinha(desta[0]) : null,
-    codigosVistos: (lote.length && !desta.length)
+    codigosVistos: (lote.length && !desta.length && !transferencias.length)
       ? [...new Set(lote.flatMap(codigosDoPlano))].slice(0, 12)
       : null,
     linhas: lote.length,
@@ -716,7 +815,7 @@ export async function detalharEmenda(codigo, { nomeAutor = null } = {}) {
     // O que foi de fato perguntado. Sem isso, "não encontrei" e "não perguntei
     // direito" saem com o mesmo texto — e só um dos dois é resposta.
     tentativas,
-    motivo: lote.length ? null : 'sem-linhas',
+    motivo: transferencias.length ? null : 'sem-linhas',
   };
 }
 
@@ -728,6 +827,11 @@ export async function detalharEmenda(codigo, { nomeAutor = null } = {}) {
  * porque a grafia entre as bases federais não é a mesma.
  */
 const PAGINAS_ESPECIAIS = 40;
+
+// Uma consulta por emenda ao Portal, e um mandato tem centenas. O teto existe
+// para a varredura não virar uma espera de minutos sem aviso; o que passar dele
+// se resolve abrindo a sanfona da emenda, que consulta uma só.
+const EMENDAS_NO_PORTAL = 120;
 
 /** As grafias a tentar para um nome, da mais fiel à mais tolerante. */
 export function grafiasDoNome(nome) {
@@ -836,6 +940,7 @@ export async function detalharEmendas({ nomeAutor, codigos = [], aoProgredir = (
   const funil = {
     linhas: 0, gravadas: 0, paginas: 0, emendas: 0, procurado: null,
     executores: 0, metas: 0, empenhos: 0, fundoAFundo: 0,
+    documentos: 0, consultadas: 0, semDocumentos: 0,
   };
   const contar = (etapa) => aoProgredir({ ...funil, etapa });
 
@@ -997,6 +1102,30 @@ export async function detalharEmendas({ nomeAutor, codigos = [], aoProgredir = (
     ...b,
     objeto: objetivoPorPrograma.get(b.idPrograma) || null,
   })));
+
+  // ── 7. o resto: as emendas que nenhuma base de transferência conhece ──
+  //
+  // Convênio de finalidade definida e execução direta pelo órgão não passam por
+  // Transferegov nenhum. O Portal registra os documentos de execução de todas
+  // elas, uma emenda por consulta — caro, e por isso só para as que sobraram.
+  const jaTem = new Set(linhas.map((l) => l.codigoEmenda).filter(Boolean));
+  const faltando = [...new Set(codigos.map(normalizarCodigo).filter(Boolean))]
+    .filter((c) => !jaTem.has(c));
+
+  for (const codigo of faltando.slice(0, EMENDAS_NO_PORTAL)) {
+    try {
+      // eslint-disable-next-line no-await-in-loop
+      const doPortalEmenda = await documentosDaEmenda(codigo, { paginasMaximas: 20 });
+      funil.documentos += doPortalEmenda.linhas.length;
+      linhas.push(...doPortalEmenda.linhas);
+    } catch {
+      // Uma emenda sem documentos não invalida as outras; o funil conta o total
+      // no fim e a diferença fala por si.
+      funil.semDocumentos += 1;
+    }
+    funil.consultadas += 1;
+    contar('documentos no Portal');
+  }
 
   const gravadas = await guardarTransferencias(linhas);
   funil.gravadas = gravadas.length;

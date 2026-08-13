@@ -999,6 +999,34 @@ console.log('\nPlanilhas de emenda\n');
       === '202512340001-2025NE000123');
   conferir('sem documento nem emenda não há chave possível',
     em.chaveDaTransferencia({ favorecido: 'Prefeitura' }) === null);
+
+  // A execução no Portal cobre o que nenhuma base de transferência vê: convênio
+  // de finalidade definida e a execução direta pelo órgão.
+  conferir('a fase vem da palavra que a fonte usa',
+    em.tipoDaFase('Empenho') === 'empenho'
+    && em.tipoDaFase('Pagamento') === 'pagamento'
+    && em.tipoDaFase('Liquidação') === 'liquidacao'
+    && em.tipoDaFase('Outra coisa') === null);
+
+  const doc = em.doDocumentoDaEmenda({
+    id: 5, data: '10/02/2026', fase: 'Empenho',
+    codigoDocumentoResumido: '2026NE000001',
+    especieTipo: { descricao: 'Nota de empenho' },
+    nomeFavorecido: 'MUNICIPIO DE GRAMADO', municipio: 'GRAMADO - RS',
+    valor: '250.000,00',
+  }, '202612340003');
+  conferir('o documento do Portal vira um destino da emenda',
+    doc.codigoEmenda === '202612340003' && doc.tipo === 'empenho'
+    && doc.documento === '2026NE000001' && doc.data === '2026-02-10'
+    && doc.favorecido === 'MUNICIPIO DE GRAMADO' && doc.municipio === 'GRAMADO'
+    && doc.uf === 'RS' && doc.valor === 250000,
+    JSON.stringify(doc));
+  // `especieTipo` chega como objeto; despejar "[object Object]" na coluna de
+  // objeto seria pior do que deixá-la vazia.
+  conferir('campo que vem como objeto é lido pela descrição, não empilhado cru',
+    doc.objeto === 'Nota de empenho', String(doc.objeto));
+  conferir('documento sem plano de ação ainda tem chave própria',
+    em.chaveDaTransferencia(doc) === 'doc-5', em.chaveDaTransferencia(doc));
   conferir('o nome é procurado como está e também sem acento',
     JSON.stringify(em.grafiasDoNome('José Medeiros')) === JSON.stringify(['José Medeiros', 'JOSE MEDEIROS'])
     && em.grafiasDoNome('Marcel van Hattem').length === 2
@@ -1406,6 +1434,54 @@ console.log('\nPlanilhas de emenda\n');
     /não é transferência especial/.test(recado)
     && /202612340008/.test(recado)
     && !/campo/i.test(recado), recado);
+  await pagina.close();
+}
+
+// A emenda que não é transferência especial ainda foi executada. O Portal
+// registra essa execução para qualquer modalidade — inclusive a direta, em que o
+// ministério paga o fornecedor e nenhuma base de transferência jamais a vê.
+{
+  const pagina = await abrir({
+    consultaAutomatica: true,
+    funcoes: {
+      consultarFonte: {
+        __fn: `var c = dados.caminho || '';
+        var par = dados.parametros || {};
+        if (c === '/emendas/documentos/202612340000') {
+          if (Number(par.pagina || 1) > 1) return { dados: [] };
+          return { dados: [
+            { id: 1, data: '10/02/2026', fase: 'Empenho',
+              codigoDocumentoResumido: '2026NE000001',
+              especieTipo: { descricao: 'Aquisição de equipamentos hospitalares' },
+              nomeFavorecido: 'MUNICIPIO DE ERECHIM', municipio: 'ERECHIM - RS',
+              valor: '4.000.000,00' },
+            { id: 2, data: '11/02/2026', fase: 'Pagamento',
+              codigoDocumentoResumido: '2026OB000009',
+              especieTipo: { descricao: 'Reforma de unidade básica' },
+              nomeFavorecido: 'MUNICIPIO DE GRAMADO', municipio: 'GRAMADO - RS',
+              valor: '3.000.000,00' },
+          ] };
+        }
+        return { dados: [] };`,
+      },
+    },
+  });
+
+  await pagina.goto(`${BASE}/#/orcamento/emendas`, { waitUntil: 'domcontentloaded' });
+  await pagina.waitForSelector('.tabela');
+  await pagina.locator('.btn-sanfona').first().click();
+  await pagina.waitForTimeout(1500);
+
+  const dentro = (await pagina.locator('.linha-detalhe').first().innerText()).replace(/\s+/g, ' ');
+  conferir('emenda fora do Transferegov abre pelos documentos do Portal',
+    dentro.includes('ERECHIM') && dentro.includes('GRAMADO'), dentro);
+  conferir('com o objeto de cada documento',
+    /Aquisição de equipamentos hospitalares/.test(dentro)
+    && /Reforma de unidade básica/.test(dentro), dentro);
+  conferir('e as fases distintas, que só aqui aparecem',
+    /Empenho/.test(dentro) && /Pagamento/.test(dentro), dentro);
+  conferir('somando o que a emenda repartiu',
+    /7\.000\.000/.test(dentro), dentro);
   await pagina.close();
 }
 
