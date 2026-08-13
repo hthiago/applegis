@@ -76,6 +76,12 @@ firebase deploy --only firestore:rules
 
 **Não pule este passo.** Sem as regras publicadas, o banco fica aberto ou fechado demais.
 
+**O `firebase.json` precisa nomear o banco.** Este projeto usa um banco Firestore nomeado
+(`appgab`), não o `(default)`. Sem a chave `database` no `firebase.json`, o deploy publica
+no `(default)` sem avisar — e o banco que o sistema lê continua com as regras antigas.
+O sintoma é traiçoeiro: as coleções que já estavam nas regras continuam gravando, só as
+novas falham, e republicar não muda nada. Um teste da suíte confere essa correspondência.
+
 **E repita-o sempre que uma aba nova aparecer no sistema.** O `firestore.rules` traz um
 mapa de coleções; coleção que não está nele não é gravável por ninguém — nem pela chefia.
 Quando isso acontece, o Firebase responde `Missing or insufficient permissions`, que

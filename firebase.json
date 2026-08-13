@@ -1,7 +1,14 @@
 {
-  "firestore": {
-    "rules": "firestore.rules"
-  },
+  "firestore": [
+    {
+      "database": "(default)",
+      "rules": "firestore.rules"
+    },
+    {
+      "database": "appgab",
+      "rules": "firestore.rules"
+    }
+  ],
   "hosting": {
     "public": ".",
     "ignore": [

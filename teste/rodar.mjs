@@ -1785,6 +1785,17 @@ conferir('toda coleção de módulo tem área nas regras', semRegra.length === 0
 const semModulo = [...declaradas].filter((c) => !colecoes.includes(c));
 conferir('nenhuma regra sobra sem módulo', semModulo.length === 0, semModulo.join(', '));
 
+// Regra certa publicada no banco errado é indistinguível de regra errada, e
+// custou muitas rodadas: o sistema usa um banco nomeado, e o deploy sem
+// `database` no firebase.json vai calado para o `(default)`, que ninguém lê.
+const config = fs.readFileSync(path.join(RAIZ, 'js', 'config.js'), 'utf8');
+const bancoDoApp = /FIRESTORE_DATABASE_ID\s*=\s*'([^']+)'/.exec(config)?.[1];
+const firebaseJson = JSON.parse(fs.readFileSync(path.join(RAIZ, 'firebase.json'), 'utf8'));
+const alvos = [].concat(firebaseJson.firestore || []).map((f) => f.database);
+conferir('o deploy das regras aponta para o banco que o sistema usa',
+  !!bancoDoApp && alvos.includes(bancoDoApp),
+  `app usa "${bancoDoApp}", firebase.json publica em ${alvos.map((a) => `"${a}"`).join(', ') || '(nenhum banco declarado)'}`);
+
 // ──────────────────────────────── desfecho ────────────────────────────────
 
 await navegador.close();
