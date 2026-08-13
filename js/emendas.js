@@ -766,44 +766,65 @@ export async function detalharEmendas({ nomeAutor, aoProgredir = () => {} } = {}
 // ───────────────────────── sondagem de fontes ─────────────────────────
 
 /**
- * Caminhos candidatos para o detalhamento de uma emenda.
+ * Reconhecimento das bases de execução de emendas.
  *
- * Escrevi o primeiro pela documentação e ele respondeu 403 — que no gateway do
- * Portal significa caminho inexistente, não chave inválida. Como não alcanço
- * essas APIs do meu ambiente, adivinhar de novo custaria uma implantação por
- * palpite. A sondagem tenta todos de uma vez e diz qual responde.
+ * Por que existe: não alcanço essas APIs do meu ambiente. Escrever um leitor
+ * por palpite custa uma rodada inteira para descobrir que o caminho não existe,
+ * e já custou várias. A sondagem inverte isso — ela pergunta às próprias bases
+ * o que elas têm, e a resposta volta pronta para virar código.
+ *
+ * O que mudou desta vez, e é o ponto: a lista de tabelas deixou de ser escrita
+ * aqui. O Transferegov serve por PostgREST, e todo serviço PostgREST descreve a
+ * si mesmo na raiz. A sondagem lê esse catálogo e percorre o que ele declarar —
+ * então um módulo com vinte tabelas se explora sozinho, sem eu adivinhar nome
+ * nenhum. É isso que troca N rodadas por uma.
+ *
+ * A execução de uma emenda não mora num lugar só. São quatro caminhos, cada um
+ * com sua base, e é por isso que achar um não resolvia o resto:
+ *
+ *   1. Transferência especial — vai direto ao município, sem convênio.
+ *      Transferegov, `transferenciasespeciais`. É a que já está ligada.
+ *   2. Fundo a fundo — SUS e assistência social, do fundo nacional ao municipal.
+ *      Transferegov, `fundoafundo`.
+ *   3. Finalidade definida / convênio — passa por proposta e instrumento.
+ *      Transferegov, módulo ainda por identificar.
+ *   4. Execução direta pelo órgão — nunca vira transferência; o ministério
+ *      empenha e paga o fornecedor. Só aparece no Portal, em despesas.
  */
-export const CAMINHOS_CANDIDATOS = [
-  // As tabelas que o próprio serviço declarou existir. Os nomes já contam a
-  // estrutura: o programa é a emenda, o plano de ação é a repartição por
-  // beneficiário, e empenho, ordem bancária e histórico são a execução.
-  // Falta saber os nomes das colunas — e por qual delas se liga na emenda.
-  { fonte: 'transferegov-livre', caminho: '/transferenciasespeciais/plano_acao_especial' },
-  { fonte: 'transferegov-livre', caminho: '/transferenciasespeciais/programa_especial' },
-  { fonte: 'transferegov-livre', caminho: '/transferenciasespeciais/empenho_especial' },
-  { fonte: 'transferegov-livre', caminho: '/transferenciasespeciais/ordem_pagamento_ordem_bancaria_especial' },
-  { fonte: 'transferegov-livre', caminho: '/transferenciasespeciais/historico_pagamento_especial' },
-  { fonte: 'transferegov-livre', caminho: '/transferenciasespeciais/executor_especial' },
-  { fonte: 'transferegov-livre', caminho: '/transferenciasespeciais/finalidade_especial' },
-  { fonte: 'transferegov-livre', caminho: '/transferenciasespeciais/meta_especial' },
-  { fonte: 'transferegov-livre', caminho: '/transferenciasespeciais/documento_habil_especial' },
-  { fonte: 'transferegov-livre', caminho: '/transferenciasespeciais/plano_trabalho_especial' },
 
-  // Outros módulos da plataforma, para achar as emendas de finalidade definida
-  // — as que passam por convênio em vez de ir direto ao município.
-  { fonte: 'transferegov-livre', caminho: '/transferenciasvoluntarias', raiz: true },
-  { fonte: 'transferegov-livre', caminho: '/transferenciafinalidadedefinida', raiz: true },
-  { fonte: 'transferegov-livre', caminho: '/fundoafundo', raiz: true },
-  { fonte: 'transferegov-livre', caminho: '/siconv', raiz: true },
-  { fonte: 'transferegov-livre', caminho: '/parlamentar', raiz: true },
+/** Módulos do Transferegov cujo catálogo vale abrir e percorrer. */
+export const MODULOS_TRANSFEREGOV = [
+  '/transferenciasespeciais',
+  '/fundoafundo',
+  '/convenios',
+  '/emendas',
+  '/execucao',
+  '/planoacao',
+  '/transferenciafinalidadedefinida',
+  '/transferenciasvoluntarias',
+  '/siconv',
+  '/parlamentar',
 ];
 
 /**
- * Tenta cada caminho e relata o que aconteceu em cada um.
+ * Hipóteses de caminho no Portal da Transparência.
  *
- * Devolve, para os que responderam, quantos registros vieram e quais campos —
- * que é exatamente o que falta para escrever o leitor certo de primeira.
+ * Ali não há catálogo: o serviço não se descreve, e 403 com corpo vazio é como
+ * ele diz "não existe". Resta tentar — inclusive a forma com o código na URL,
+ * que é como boa parte dos caminhos dele funciona e que eu nunca testei.
  */
+export function caminhosDoPortal(codigoEmenda) {
+  const c = String(codigoEmenda || '').replace(/\D/g, '');
+  return [
+    { caminho: '/emendas', usa: 'codigoEmenda' },
+    c && { caminho: `/emendas/${c}` },
+    c && { caminho: `/emendas/documentos/${c}` },
+    c && { caminho: `/emendas/${c}/documentos` },
+    { caminho: '/emendas/documentos', usa: 'codigoEmenda' },
+    { caminho: '/despesas/documentos', usa: 'codigoEmenda' },
+  ].filter(Boolean);
+}
+
 /**
  * O catálogo de tabelas que um serviço PostgREST publica na própria raiz.
  *
@@ -818,34 +839,122 @@ export function tabelasDe(dados) {
   return nomes.map((n) => String(n).replace(/^\//, '')).filter(Boolean);
 }
 
-export async function sondarFontes(codigoEmenda) {
+/**
+ * A coluna por onde filtrar pelo parlamentar, se a tabela tiver uma.
+ *
+ * Tabela que nomeia o parlamentar é tabela que se liga na emenda — e uma linha
+ * de verdade, com os valores dele, diz mais sobre como usá-la do que a lista de
+ * colunas inteira.
+ */
+export function colunaDoParlamentar(campos = []) {
+  return campos.find((c) => /^nome_parlamentar/.test(c))
+    || campos.find((c) => /nome_parlamentar/.test(c))
+    || null;
+}
+
+/** As colunas por onde uma tabela pode se ligar à emenda. */
+export function colunasDeEmenda(campos = []) {
+  return campos.filter((c) => /emenda|parlamentar/i.test(c));
+}
+
+/** Roda as tarefas em pequenas levas, para não enfileirar dezenas de esperas. */
+async function emLevas(itens, quantos, tarefa, aoProgredir = () => {}) {
+  const saida = [];
+  let feitos = 0;
+  for (let i = 0; i < itens.length; i += quantos) {
+    const leva = itens.slice(i, i + quantos);
+    // eslint-disable-next-line no-await-in-loop
+    const r = await Promise.all(leva.map((item) => tarefa(item)));
+    saida.push(...r);
+    feitos += leva.length;
+    aoProgredir(feitos, itens.length);
+  }
+  return saida;
+}
+
+/**
+ * Percorre tudo e relata o que cada endereço respondeu.
+ *
+ * Para cada tabela devolve as colunas, quais delas se ligam à emenda e — quando
+ * a tabela nomeia o parlamentar — uma linha de verdade dele. É esse conjunto
+ * que permite escrever o leitor certo de primeira, em vez de mais um palpite.
+ */
+export async function sondarFontes(codigoEmenda, { nomeAutor = null, aoProgredir = () => {} } = {}) {
   const { consultarFonte } = await import('./fontes.js');
   const achados = [];
 
-  for (const candidato of CAMINHOS_CANDIDATOS) {
-    const parametros = {};
-    if (candidato.usa === 'codigoEmenda' && codigoEmenda) parametros.codigoEmenda = codigoEmenda;
-    // O Transferegov é PostgREST: o filtro vai como `campo=eq.valor`.
-    if (candidato.usa === 'nr_emenda' && codigoEmenda) parametros.nr_emenda = `eq.${codigoEmenda}`;
-    if (candidato.raiz) { /* a raiz não leva parâmetro nenhum */ }
-    else if (candidato.fonte === 'transferegov-livre') parametros.limit = 3;
-    else parametros.pagina = 1;
-
+  const tentar = async (fonte, caminho, parametros) => {
     try {
-      const r = await consultarFonte(candidato.fonte, parametros, candidato.caminho);
-      const tabelas = tabelasDe(r.dados);
-      const lote = Array.isArray(r.dados) ? r.dados : [r.dados].filter(Boolean);
-      achados.push({
-        caminho: candidato.caminho,
-        ok: true,
-        tabelas,
-        quantidade: lote.length,
-        campos: tabelas ? [] : Object.keys(lote[0] || {}),
-      });
+      const r = await consultarFonte(fonte, parametros, caminho);
+      return { ok: true, dados: r.dados };
     } catch (erro) {
-      achados.push({ caminho: candidato.caminho, ok: false, erro: String(erro.message || erro).slice(0, 320) });
+      return { ok: false, erro: String(erro.message || erro).slice(0, 320) };
     }
-  }
+  };
+
+  // ── Portal: sem catálogo, só hipóteses ──
+  const doPortalTentado = caminhosDoPortal(codigoEmenda);
+  await emLevas(doPortalTentado, 3, async (candidato) => {
+    const parametros = candidato.usa === 'codigoEmenda' && codigoEmenda
+      ? { codigoEmenda, pagina: 1 }
+      : { pagina: 1 };
+    const r = await tentar('portal-livre', candidato.caminho, parametros);
+    const lote = r.ok ? [].concat(r.dados).filter(Boolean) : [];
+    achados.push({
+      caminho: `portal${candidato.caminho}`,
+      ok: r.ok,
+      erro: r.erro,
+      quantidade: lote.length,
+      campos: Object.keys(lote[0] || {}),
+    });
+  }, (f, t) => aoProgredir({ etapa: 'Portal', feitos: f, total: t }));
+
+  // ── Transferegov: catálogo primeiro, tabelas depois ──
+  const tabelas = [];
+  await emLevas(MODULOS_TRANSFEREGOV, 3, async (modulo) => {
+    const r = await tentar('transferegov-livre', modulo, {});
+    const lista = r.ok ? tabelasDe(r.dados) : null;
+    achados.push({
+      caminho: modulo, ok: r.ok, erro: r.erro, tabelas: lista, raiz: true,
+    });
+    (lista || []).forEach((t) => tabelas.push(`${modulo}/${t}`));
+  }, (f, t) => aoProgredir({ etapa: 'Catálogos', feitos: f, total: t }));
+
+  // Uma linha por tabela dá as colunas. Onde houver coluna de parlamentar, uma
+  // segunda consulta filtrada mostra os valores dele — que é o que ensina a
+  // ligar as tabelas entre si.
+  await emLevas(tabelas, 4, async (caminho) => {
+    const r = await tentar('transferegov-livre', caminho, { limit: 1 });
+    if (!r.ok) {
+      achados.push({ caminho, ok: false, erro: r.erro });
+      return;
+    }
+    const lote = Array.isArray(r.dados) ? r.dados : [];
+    const campos = Object.keys(lote[0] || {});
+    const coluna = nomeAutor ? colunaDoParlamentar(campos) : null;
+
+    let amostra = null;
+    if (coluna) {
+      for (const grafia of grafiasDoNome(nomeAutor)) {
+        // eslint-disable-next-line no-await-in-loop
+        const f = await tentar('transferegov-livre', caminho,
+          { [coluna]: `ilike.*${grafia}*`, limit: 1 });
+        const dela = f.ok && Array.isArray(f.dados) ? f.dados : [];
+        if (dela.length) { amostra = recorteDaLinha(dela[0], 900); break; }
+        if (!f.ok) { amostra = `(filtro recusado: ${f.erro})`; break; }
+      }
+      if (!amostra) amostra = '(nenhuma linha do parlamentar)';
+    }
+
+    achados.push({
+      caminho,
+      ok: true,
+      quantidade: lote.length,
+      campos,
+      chaves: colunasDeEmenda(campos),
+      amostra,
+    });
+  }, (f, t) => aoProgredir({ etapa: 'Tabelas', feitos: f, total: t }));
 
   return achados;
 }

@@ -537,7 +537,10 @@ function extrasDasEmendas() {
           try {
             const emendas = await nucleo.dados.listar('emendas');
             const codigo = (emendas.find((x) => x.codigo) || {}).codigo || null;
-            const achados = await nucleo.emendas.sondarFontes(codigo);
+            const achados = await nucleo.emendas.sondarFontes(codigo, {
+              nomeAutor: nucleo.sessaoMod.sessao.gabinete?.deputado || null,
+              aoProgredir: (p) => { btn.textContent = `${p.etapa} ${p.feitos}/${p.total}`; },
+            });
             abrirSondagem(achados, codigo);
           } catch (erro) {
             console.error(erro);
@@ -689,7 +692,13 @@ function abrirSondagem(achados, codigo) {
     // Um catálogo de tabelas vale mais que uma amostra: é a lista dos nomes
     // que faltavam para parar de adivinhar.
     if (a.tabelas?.length) return `TABELAS ${a.caminho} — ${a.tabelas.join(', ')}`;
-    return `OK   ${a.caminho} — ${a.quantidade} registro(s): ${a.campos.join(', ') || '(sem campos)'}`;
+
+    // Colunas de ligação e uma linha de verdade do parlamentar valem mais que a
+    // lista de campos: são elas que dizem como pendurar a tabela na emenda.
+    const partes = [`OK   ${a.caminho} — ${a.campos.join(', ') || '(sem campos)'}`];
+    if (a.chaves?.length) partes.push(`     liga por: ${a.chaves.join(', ')}`);
+    if (a.amostra) partes.push(`     exemplo: ${a.amostra}`);
+    return partes.join('\n');
   }).join('\n');
 
   const texto = `Sondagem com a emenda ${codigo || '(nenhuma)'}\n\n${resumo}`;

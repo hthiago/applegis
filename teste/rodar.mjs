@@ -1235,7 +1235,8 @@ console.log('\nPlanilhas de emenda\n');
 }
 
 // A sondagem existe porque adivinhar endereço custava uma implantação por
-// palpite. Ela precisa dizer, de uma vez, qual responde e com que campos.
+// palpite. Agora ela se expande sozinha: lê o catálogo do serviço e percorre o
+// que ele declarar, em vez de depender de uma lista escrita à mão aqui.
 {
   const pagina = await abrir({
     consultaAutomatica: true,
@@ -1244,13 +1245,24 @@ console.log('\nPlanilhas de emenda\n');
       consultarFonte: {
         // A raiz de um serviço PostgREST devolve o catálogo das tabelas: é o
         // que substitui o palpite pelo nome certo.
-        __fn: `if (dados.caminho === '/transferenciasvoluntarias') {
+        __fn: `var c = dados.caminho || '';
+        var par = dados.parametros || {};
+        if (c === '/transferenciasvoluntarias') {
           return { dados: { paths: { '/': {}, '/proposta': {}, '/convenio': {} } } };
         }
-        if (dados.caminho === '/transferenciasespeciais/plano_acao_especial') {
-          return { dados: [{ id_plano_acao: 7, nr_emenda: '202041160001',
-            nome_beneficiario: 'MUNICIPIO DE ERECHIM', uf_beneficiario: 'RS',
-            vl_total_plano_acao: 4000000 }] };
+        if (c === '/transferenciasvoluntarias/proposta') {
+          if (par.nome_parlamentar_proposta) {
+            return /Deputada Teste/i.test(par.nome_parlamentar_proposta)
+              ? { dados: [{ id_proposta: 55, nr_emenda: '202612340000',
+                  nome_parlamentar_proposta: 'Deputada Teste',
+                  objeto_proposta: 'Pavimentação de vias urbanas' }] }
+              : { dados: [] };
+          }
+          return { dados: [{ id_proposta: 1, nr_emenda: '209900000000',
+            nome_parlamentar_proposta: 'Outro Deputado', objeto_proposta: 'Outra coisa' }] };
+        }
+        if (c === '/transferenciasvoluntarias/convenio') {
+          return { dados: [{ id_convenio: 9, vl_global_convenio: 1000 }] };
         }
         var e = new Error('respondeu 404: <html><head><title>404</title></head><body>nginx</body></html>');
         e.code = 'functions/unavailable';
@@ -1262,16 +1274,33 @@ console.log('\nPlanilhas de emenda\n');
   await pagina.goto(`${BASE}/#/orcamento/emendas`, { waitUntil: 'domcontentloaded' });
   await pagina.waitForSelector('.modulo-topo');
   await pagina.getByRole('button', { name: 'Sondar fontes' }).click();
-  await pagina.waitForSelector('.sondagem-texto', { timeout: 15000 });
+  await pagina.waitForSelector('.sondagem-texto', { timeout: 30000 });
 
   const texto = await pagina.locator('.sondagem-texto').inputValue();
   conferir('a sondagem lê o catálogo de tabelas na raiz do serviço',
     /TABELAS\s+\/transferenciasvoluntarias — proposta, convenio/.test(texto),
     texto.split('\n').find((l) => l.includes('TABELAS')) || texto.slice(0, 120));
-  conferir('a tabela que responde aparece com suas colunas',
-    /OK\s+\/transferenciasespeciais\/plano_acao_especial/.test(texto)
-    && /nome_beneficiario/.test(texto) && /nr_emenda/.test(texto),
-    texto.split('\n').find((l) => l.startsWith('OK')) || '');
+  // O ponto da reescrita: ninguém escreveu "proposta" numa lista de candidatos.
+  // Ela veio do catálogo e foi consultada por causa disso.
+  conferir('e percorre as tabelas que o catálogo declarou, sem lista escrita à mão',
+    /OK\s+\/transferenciasvoluntarias\/proposta/.test(texto)
+    && /OK\s+\/transferenciasvoluntarias\/convenio/.test(texto),
+    texto.split('\n').filter((l) => l.startsWith('OK')).join(' | '));
+  conferir('a tabela responde com suas colunas',
+    /objeto_proposta/.test(texto) && /vl_global_convenio/.test(texto));
+  conferir('as colunas que ligam à emenda vêm apontadas',
+    /liga por: nr_emenda, nome_parlamentar_proposta/.test(texto),
+    texto.split('\n').find((l) => l.includes('liga por')) || '');
+  // Uma linha de verdade do parlamentar ensina mais que a lista de colunas:
+  // mostra que valores esperar e como pendurá-la na emenda.
+  conferir('e uma linha do próprio parlamentar, quando a tabela o nomeia',
+    /exemplo: .*Pavimentação de vias urbanas/.test(texto),
+    texto.split('\n').find((l) => l.includes('exemplo:')) || '');
+  conferir('tabela sem coluna de parlamentar não inventa exemplo',
+    !/vl_global_convenio[\s\S]{0,80}exemplo/.test(texto));
+  conferir('o Portal também é sondado, com o código na URL',
+    /portal\/emendas\/202612340000/.test(texto),
+    texto.split('\n').filter((l) => l.includes('portal/')).join(' | ').slice(0, 200));
   conferir('página HTML de erro não é despejada inteira no relatório',
     /FALHA/.test(texto) && !/<head>/.test(texto),
     texto.split('\n').find((l) => l.startsWith('FALHA')) || '');

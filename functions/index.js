@@ -161,8 +161,14 @@ exports.consultarFonte = onCall(
     const busca = new URLSearchParams();
     for (const [chave, valor] of Object.entries(parametros)) {
       if (valor === null || valor === undefined || valor === '') continue;
+      // O limite de 40 caracteres no nome era meu, não da fonte, e recusava
+      // calado nomes que o Transferegov usa de verdade —
+      // `codigo_emenda_parlamentar_formatado_plano_acao` tem 46. Parâmetro
+      // descartado em silêncio vira consulta sem filtro, que devolve a tabela
+      // inteira e parece "não encontrei". O que precisa ser estreito aqui é o
+      // conjunto de hosts, não o comprimento do nome da coluna.
       const aceito = config.parametrosLivres
-        ? /^[a-zA-Z_][a-zA-Z0-9_]{0,40}$/.test(chave) && String(valor).length <= 120
+        ? /^[a-zA-Z_][a-zA-Z0-9_]{0,79}$/.test(chave) && String(valor).length <= 200
         : (config.parametros || []).includes(chave);
       if (aceito) busca.set(chave, String(valor));
     }
