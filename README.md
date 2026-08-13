@@ -59,6 +59,14 @@ Essas chaves são públicas por natureza — quem protege os dados é o `firesto
 
 ### 3. Publicar as regras de segurança
 
+Os comandos abaixo precisam rodar **dentro da pasta do projeto** — é lá que está o
+`firebase.json`. No Cloud Shell, que abre na pasta pessoal:
+
+```bash
+cd ~/applegis || git clone https://github.com/hthiago/applegis.git ~/applegis && cd ~/applegis
+git pull origin main       # publica as regras de agora, não as do último clone
+```
+
 ```bash
 npm install -g firebase-tools
 firebase login
@@ -67,6 +75,12 @@ firebase deploy --only firestore:rules
 ```
 
 **Não pule este passo.** Sem as regras publicadas, o banco fica aberto ou fechado demais.
+
+**E repita-o sempre que uma aba nova aparecer no sistema.** O `firestore.rules` traz um
+mapa de coleções; coleção que não está nele não é gravável por ninguém — nem pela chefia.
+Quando isso acontece, o Firebase responde `Missing or insufficient permissions`, que
+parece problema de perfil de usuário e não é. O sistema traduz esse erro na tela e diz
+qual coleção falhou, mas quem resolve é este comando.
 
 ### 4. Publicar o site
 
