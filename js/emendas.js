@@ -447,189 +447,205 @@ export async function consultarPortal({ nomeAutor, aoProgredir = () => {} }) {
 }
 
 // ───────────────────── a emenda discriminada ─────────────────────
+//
+// O Portal da Transparência não publica o detalhamento por emenda — os
+// caminhos que tentei responderam 403, que no gateway dele significa caminho
+// inexistente. Quem publica é o Transferegov, em `plano_acao_especial`: uma
+// linha por beneficiário, com o que cada um recebeu de custeio e investimento,
+// a situação e, quando há, o motivo do impedimento.
+//
+// Vale só para transferências especiais — a emenda que vai direto ao município,
+// sem convênio. As de finalidade definida moram noutro módulo, e a sondagem
+// mostrou que existe um `fundoafundo` com estrutura parecida, ainda por ligar.
+
+const ESPECIAIS = '/transferenciasespeciais/plano_acao_especial';
 
 /**
- * Traduz um documento de execução do Portal.
- *
- * Cada emenda vira várias linhas aqui: um empenho, uma liquidação, um
- * pagamento — cada um com o favorecido, que é a informação que o consolidado
- * esconde. "Quanto foi para Gramado, para quê" só se responde neste nível.
- *
- * Como em `doPortal`, cada campo é lido por mais de um nome possível: não
- * consigo alcançar essa API do meu ambiente, e é melhor tentar três nomes do
- * que gravar vazio quando a fonte usa o segundo.
+ * O código de doze dígitos que o Portal usa, remontado a partir das partes que
+ * o Transferegov guarda separadas: ano, código do parlamentar e sequencial.
+ * É o que permite pendurar cada plano de ação na emenda certa.
  */
-export function doDocumento(r, codigoEmenda) {
-  const pegar = (...nomes) => {
-    for (const n of nomes) {
-      const v = n.split('.').reduce((o, k) => (o == null ? o : o[k]), r);
-      if (v !== undefined && v !== null && v !== '') return v;
-    }
-    return null;
-  };
+export function codigoDaEmenda({ ano, parlamentar, sequencial }) {
+  const n = (v, tamanho) => String(v ?? '').replace(/\D/g, '').padStart(tamanho, '0');
+  if (!ano || !parlamentar) return null;
+  return `${n(ano, 4)}${n(parlamentar, 4)}${n(sequencial, 4)}`;
+}
 
-  const local = separarLocalidade(pegar('municipio', 'localidade', 'localidadeDoGasto'));
-  const data = dataBr(pegar('data', 'dataEmissao', 'dataDocumento'));
+/** As partes de um código de emenda, para consultar o Transferegov. */
+export function partesDoCodigo(codigo) {
+  const limpo = String(codigo || '').replace(/\D/g, '');
+  if (limpo.length < 12) return null;
+  return {
+    ano: Number(limpo.slice(0, 4)),
+    parlamentar: Number(limpo.slice(4, 8)),
+    sequencial: Number(limpo.slice(8, 12)),
+  };
+}
+
+/** "MUNICIPIO DE ERECHIM" é o beneficiário; "Erechim" é o município. */
+export function municipioDoBeneficiario(nome) {
+  const t = String(nome || '').trim();
+  if (!t) return null;
+  const m = /^(?:munic[íi]pio|prefeitura(?:\s+municipal)?)\s+(?:de\s+|do\s+|da\s+|dos\s+|das\s+)?(.+)$/i.exec(t);
+  return (m ? m[1] : t).trim();
+}
+
+/** Traduz um plano de ação do Transferegov para uma transferência nossa. */
+export function doPlanoAcao(r) {
+  const custeio = numeroBr(r.valor_custeio_plano_acao);
+  const investimento = numeroBr(r.valor_investimento_plano_acao);
+  const total = (custeio || 0) + (investimento || 0);
 
   return {
-    codigoEmenda: pegar('codigoEmenda') || codigoEmenda || null,
-    documento: pegar('documentoResumido', 'documento', 'numeroDocumento', 'codigoDocumento'),
-    tipo: tipoDoDocumento(pegar('fase', 'tipoDocumento', 'especieDocumento')),
-    data,
-    ano: data ? Number(data.slice(0, 4)) : numeroBr(pegar('ano')),
-    favorecido: pegar('nomeFavorecido', 'favorecido.nome', 'favorecido', 'nomeBeneficiario'),
-    favorecidoDoc: pegar('codigoFavorecido', 'favorecido.cnpjFormatado', 'cnpjFavorecido', 'cpfCnpjFavorecido'),
-    municipio: local.municipio,
-    uf: local.uf || pegar('uf', 'siglaUf'),
-    orgao: pegar('nomeOrgao', 'orgao.nome', 'orgaoSuperior', 'unidadeGestora'),
-    objeto: pegar('observacao', 'objeto', 'descricao', 'historico'),
-    valor: numeroBr(pegar('valor', 'valorDocumento', 'valorEmpenhado', 'valorPago')),
-    situacao: pegar('situacao', 'status'),
-    fonte: 'Portal da Transparência',
+    codigoEmenda: codigoDaEmenda({
+      ano: r.ano_emenda_parlamentar_plano_acao,
+      parlamentar: r.codigo_parlamentar_emenda_plano_acao,
+      sequencial: r.sequencial_emenda_parlamentar_plano_acao,
+    }) || r.codigo_emenda_parlamentar_formatado_plano_acao || null,
+    documento: r.codigo_plano_acao ? `PA ${r.codigo_plano_acao}` : (r.id_plano_acao ? `PA ${r.id_plano_acao}` : null),
+    tipo: 'especial',
+    ano: Number(r.ano_plano_acao) || Number(r.ano_emenda_parlamentar_plano_acao) || null,
+    favorecido: r.nome_beneficiario_plano_acao || null,
+    favorecidoDoc: r.cnpj_beneficiario_plano_acao || null,
+    municipio: municipioDoBeneficiario(r.nome_beneficiario_plano_acao),
+    uf: r.uf_beneficiario_plano_acao || null,
+    objeto: r.descricao_programacao_orcamentaria_plano_acao
+      || r.codigo_descricao_areas_politicas_publicas_plano_acao || null,
+    // Impedimento é a informação mais acionável desta base: é o que trava o
+    // repasse, e é sobre isso que a prefeitura liga para o gabinete.
+    situacao: r.motivo_impedimento_plano_acao
+      ? `${r.situacao_plano_acao || 'Impedida'} — ${r.motivo_impedimento_plano_acao}`
+      : (r.situacao_plano_acao || null),
+    valor: total || null,
+    valorCusteio: custeio,
+    valorInvestimento: investimento,
+    idPlanoAcao: r.id_plano_acao ?? null,
+    fonte: 'Transferegov — transferências especiais',
   };
 }
 
-/** A fase da execução, como o Portal a escreve, reduzida ao que a lista mostra. */
-function tipoDoDocumento(texto) {
-  const t = String(texto || '').toLowerCase();
-  if (t.includes('pagamento') || t.startsWith('ob')) return 'pagamento';
-  if (t.includes('liquida')) return 'liquidacao';
-  if (t.includes('empenho') || t.startsWith('ne')) return 'empenho';
-  if (t.includes('conv')) return 'convenio';
-  if (t.includes('proposta')) return 'proposta';
-  if (t.includes('especial')) return 'especial';
-  return 'empenho';
-}
-
-/** A chave de uma transferência: a emenda mais o documento que a executou. */
-export function chaveDaTransferencia({ codigoEmenda, documento, favorecido, data }) {
+/** A chave de uma transferência: o plano de ação identifica sozinho. */
+export function chaveDaTransferencia({ idPlanoAcao, codigoEmenda, documento, favorecido, data }) {
   const limpo = (v) => String(v || '').trim().replace(/[^\w.-]+/g, '-').replace(/^-|-$/g, '');
+  if (idPlanoAcao) return `pa-${limpo(idPlanoAcao)}`;
   if (codigoEmenda && documento) return `${limpo(codigoEmenda)}-${limpo(documento)}`;
   if (documento) return `doc-${limpo(documento)}`;
-  if (codigoEmenda && favorecido && data) {
+  if (codigoEmenda && favorecido) {
     return `${limpo(codigoEmenda)}-${limpo(data)}-${limpo(favorecido).slice(0, 40)}`;
   }
   return null;
 }
 
-/**
- * Busca, para cada emenda já importada, as transferências que a executaram.
- *
- * É uma consulta por emenda — não há como pedir todas de uma vez —, então o
- * trabalho é gravado a cada punhado em vez de no fim: uma varredura longa que
- * só grava no último instante perde tudo se a aba fechar, erro que já cometi
- * uma vez neste projeto.
- */
-/**
- * Busca no Portal os documentos de uma emenda e os guarda.
- *
- * É a unidade da sanfona: abrir uma linha custa uma consulta, não uma
- * varredura. Devolve as transferências já normalizadas, para a tela poder
- * mostrá-las sem esperar uma releitura do banco.
- */
-export async function detalharEmenda(codigo) {
+/** Grava um lote de planos de ação já traduzidos. */
+async function guardarTransferencias(planos) {
   const { salvarEmLote } = await import('./dados.js');
-  const { consultarFonte } = await import('./fontes.js');
+  const registros = [];
+  const vistos = new Set();
 
-  const encontradas = [];
-  let amostra = null;
-
-  for (let pagina = 1; pagina <= 30; pagina += 1) {
-    const r = await consultarFonte('portal-emenda-documentos', { codigoEmenda: codigo, pagina });
-    const lote = Array.isArray(r.dados) ? r.dados : [];
-    if (!lote.length) break;
-    if (!amostra) [amostra] = lote;
-
-    for (const bruto of lote) {
-      const t = doDocumento(bruto, codigo);
-      const id = chaveDaTransferencia(t);
-      if (!id) continue;
-      const dados = {};
-      for (const [campo, valor] of Object.entries(t)) comValor(dados, campo, valor);
-      dados.importadoEm = new Date().toISOString().slice(0, 10);
-      encontradas.push({ id, dados });
-    }
-    if (lote.length < 15) break;
+  for (const t of planos) {
+    const id = chaveDaTransferencia(t);
+    if (!id || vistos.has(id)) continue;
+    vistos.add(id);
+    const dados = {};
+    for (const [campo, valor] of Object.entries(t)) comValor(dados, campo, valor);
+    dados.importadoEm = new Date().toISOString().slice(0, 10);
+    registros.push({ id, dados });
   }
 
-  if (encontradas.length) {
-    const gravacao = await salvarEmLote('transferencias', encontradas);
+  if (registros.length) {
+    const gravacao = await salvarEmLote('transferencias', registros);
     if (gravacao.falhas.length) throw gravacao.falhas[0];
   }
+  return registros.map((r) => ({ id: r.id, ...r.dados }));
+}
+
+/**
+ * Os planos de ação de uma emenda só. É a unidade da sanfona: abrir uma linha
+ * custa uma consulta, e ela usa as três partes do código para filtrar.
+ */
+export async function detalharEmenda(codigo) {
+  const { consultarFonte } = await import('./fontes.js');
+  const partes = partesDoCodigo(codigo);
+  if (!partes) return { transferencias: [], camposRecebidos: null };
+
+  // O filtro vai só por ano e parlamentar, e o sequencial é conferido aqui.
+  // Não sei se a base guarda o sequencial como número ou como texto com zeros
+  // à esquerda, e `eq.1` não encontra `0001`. Um ano de emendas de um único
+  // parlamentar são poucas dezenas de linhas — barato de peneirar do lado de cá,
+  // e imune ao formato.
+  const r = await consultarFonte('transferegov-livre', {
+    ano_emenda_parlamentar_plano_acao: `eq.${partes.ano}`,
+    codigo_parlamentar_emenda_plano_acao: `eq.${partes.parlamentar}`,
+    limit: 1000,
+  }, ESPECIAIS);
+
+  const lote = Array.isArray(r.dados) ? r.dados : [];
+  const planos = lote
+    .map(doPlanoAcao)
+    .filter((t) => String(t.codigoEmenda) === String(codigo))
+    .filter((t) => t.favorecido || t.valor);
 
   return {
-    transferencias: encontradas.map((e) => ({ id: e.id, ...e.dados })),
-    camposRecebidos: (amostra && !encontradas.length) ? Object.keys(amostra) : null,
+    transferencias: await guardarTransferencias(planos),
+    // Registro que chega e não vira nada aponta nome de campo diferente, não
+    // ausência de dados — e a tela precisa dizer qual dos dois é.
+    camposRecebidos: (lote.length && !planos.length) ? Object.keys(lote[0]) : null,
   };
 }
 
-export async function detalharEmendas({ aoProgredir = () => {} } = {}) {
-  const { salvarEmLote, listar } = await import('./dados.js');
+/**
+ * Todos os planos de ação do parlamentar, de uma vez.
+ *
+ * Uma consulta por emenda seriam duzentas; filtrar pelo nome do parlamentar
+ * traz tudo em poucas páginas. O nome vai como comparação insensível a caixa,
+ * porque a grafia entre as bases federais não é a mesma.
+ */
+const PAGINAS_ESPECIAIS = 40;
+
+/** As grafias a tentar para um nome, da mais fiel à mais tolerante. */
+export function grafiasDoNome(nome) {
+  const limpo = String(nome || '').trim().replace(/\s+/g, ' ');
+  if (!limpo) return [];
+  // `ilike` resolve a caixa, não o acento: se a base grava "José" e mandamos
+  // "JOSE", o resultado volta vazio — e vazio parece "não tem emenda". Tentar as
+  // duas grafias custa uma consulta a mais e evita concluir errado.
+  return [...new Set([limpo, nomeParaBusca(limpo)])].filter(Boolean);
+}
+
+export async function detalharEmendas({ nomeAutor, aoProgredir = () => {} } = {}) {
   const { consultarFonte } = await import('./fontes.js');
+  if (!nomeAutor) throw new Error('Informe o nome do parlamentar em Acessos → Dados do gabinete.');
 
-  const emendas = (await listar('emendas', { recarregar: true })).filter((e) => e.codigo);
-  if (!emendas.length) {
-    throw new Error('Importe as emendas primeiro — é delas que sai a lista a detalhar.');
-  }
-
-  const funil = {
-    emendas: emendas.length,
-    consultadas: 0,
-    linhas: 0,
-    reconhecidas: 0,
-    semChave: 0,
-    gravadas: 0,
-  };
+  const funil = { linhas: 0, gravadas: 0, paginas: 0, emendas: 0, procurado: null };
+  const porPagina = 500;
+  const encontrados = [];
   let amostra = null;
-  let acumulado = [];
 
-  const descarregar = async () => {
-    if (!acumulado.length) return;
-    const gravacao = await salvarEmLote('transferencias', acumulado);
-    if (gravacao.falhas.length) throw gravacao.falhas[0];
-    funil.gravadas += acumulado.length;
-    acumulado = [];
-  };
+  for (const grafia of grafiasDoNome(nomeAutor)) {
+    for (let pagina = 0; pagina < PAGINAS_ESPECIAIS; pagina += 1) {
+      const r = await consultarFonte('transferegov-livre', {
+        nome_parlamentar_emenda_plano_acao: `ilike.*${grafia}*`,
+        limit: porPagina,
+        offset: pagina * porPagina,
+      }, ESPECIAIS);
 
-  for (const emenda of emendas) {
-    try {
-      for (let pagina = 1; pagina <= 30; pagina += 1) {
-        const r = await consultarFonte('portal-emenda-documentos', {
-          codigoEmenda: emenda.codigo, pagina,
-        });
-        const lote = Array.isArray(r.dados) ? r.dados : [];
-        if (!lote.length) break;
-        if (!amostra) [amostra] = lote;
-        funil.linhas += lote.length;
+      const lote = Array.isArray(r.dados) ? r.dados : [];
+      funil.paginas += 1;
+      funil.linhas += lote.length;
+      if (!amostra && lote.length) [amostra] = lote;
 
-        for (const bruto of lote) {
-          const t = doDocumento(bruto, emenda.codigo);
-          const id = chaveDaTransferencia(t);
-          if (!id) { funil.semChave += 1; continue; }
-          if (t.favorecido || t.valor !== null) funil.reconhecidas += 1;
+      encontrados.push(...lote.map(doPlanoAcao).filter((t) => t.favorecido || t.valor));
+      aoProgredir({ ...funil, procurado: grafia });
 
-          const dados = {};
-          for (const [campo, valor] of Object.entries(t)) comValor(dados, campo, valor);
-          dados.importadoEm = new Date().toISOString().slice(0, 10);
-          acumulado.push({ id, dados });
-        }
-      }
-    } catch (erro) {
-      console.error(`Não detalhou a emenda ${emenda.codigo}`, erro);
-    } finally {
-      funil.consultadas += 1;
-      if (acumulado.length >= 200) await descarregar();
-      aoProgredir({ ...funil });
+      if (lote.length < porPagina) break;
     }
+    if (funil.linhas) { funil.procurado = grafia; break; }
   }
 
-  await descarregar();
-
-  // Mesmo raciocínio da consulta principal: linhas que chegam e não são
-  // reconhecidas apontam nomes de campo diferentes, não ausência de dados.
-  if (funil.linhas && !funil.reconhecidas) {
-    funil.camposRecebidos = Object.keys(amostra || {});
-  }
+  const gravadas = await guardarTransferencias(encontrados);
+  funil.gravadas = gravadas.length;
+  funil.emendas = new Set(gravadas.map((t) => t.codigoEmenda).filter(Boolean)).size;
+  if (funil.linhas && !gravadas.length) funil.camposRecebidos = Object.keys(amostra || {});
   return funil;
 }
 

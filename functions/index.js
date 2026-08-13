@@ -43,22 +43,14 @@ const FONTES = {
     exigeChave: true,
   },
   /**
-   * A emenda discriminada, no Portal: os documentos de execução — empenho,
-   * liquidação, pagamento — com o favorecido de cada um. É o nível abaixo do
-   * consolidado que /emendas devolve.
+   * Onde NÃO está a emenda discriminada, para não se procurar ali de novo:
+   * `/emendas/documentos` e `/emendas/documentos-impedimentos` respondem 403 com
+   * corpo vazio, que no gateway do Portal significa caminho inexistente — não
+   * chave recusada. `/despesas/documentos` existe, mas filtra por data de
+   * emissão, não por emenda. Quem publica o detalhamento por beneficiário é o
+   * Transferegov, em `transferenciasespeciais/plano_acao_especial`, alcançado
+   * pela fonte exploratória abaixo.
    */
-  'portal-emenda-documentos': {
-    base: 'https://api.portaldatransparencia.gov.br/api-de-dados/emendas/documentos',
-    parametros: ['codigoEmenda', 'pagina'],
-    cabecalhos: () => ({ 'chave-api-dados': CHAVE_PORTAL.value() }),
-    exigeChave: true,
-  },
-  'portal-emenda-impedimentos': {
-    base: 'https://api.portaldatransparencia.gov.br/api-de-dados/emendas/documentos-impedimentos',
-    parametros: ['codigoEmenda', 'pagina'],
-    cabecalhos: () => ({ 'chave-api-dados': CHAVE_PORTAL.value() }),
-    exigeChave: true,
-  },
   'portal-convenios': {
     base: 'https://api.portaldatransparencia.gov.br/api-de-dados/convenios',
     parametros: ['codigoIBGE', 'dataInicial', 'dataFinal', 'ufSigla', 'pagina',

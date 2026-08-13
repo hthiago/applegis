@@ -883,26 +883,60 @@ console.log('\nPlanilhas de emenda\n');
     && pl.nomeParaBusca('Vinícius Gurgel') === 'VINICIUS GURGEL'
     && pl.nomeParaBusca('  José  Medeiros ') === 'JOSE MEDEIROS');
 
-  // A emenda discriminada: uma linha por documento de execução, com favorecido.
-  const doc = em.doDocumento({
-    codigoEmenda: '202512340001', documentoResumido: '2025NE000123', fase: 'Empenho',
-    data: '12/03/2025', nomeFavorecido: 'MUNICIPIO DE GRAMADO',
-    codigoFavorecido: '88.111.222/0001-00', municipio: 'GRAMADO - RS',
-    nomeOrgao: 'MINISTERIO DA SAUDE', observacao: 'Custeio da atenção básica',
-    valor: '500.000,00',
-  }, null);
-  conferir('o documento traz quem recebeu, quanto e em que fase',
-    doc.favorecido === 'MUNICIPIO DE GRAMADO' && doc.valor === 500000
-    && doc.tipo === 'empenho' && doc.municipio === 'GRAMADO' && doc.uf === 'RS',
-    JSON.stringify(doc));
-  conferir('a fase vem da palavra que a fonte usa',
-    em.doDocumento({ fase: 'Pagamento' }).tipo === 'pagamento'
-    && em.doDocumento({ fase: 'Liquidação' }).tipo === 'liquidacao');
-  conferir('a transferência é identificada pela emenda mais o documento',
+  // A emenda discriminada: uma linha por beneficiário, como o Transferegov
+  // publica em plano_acao_especial. É o nível que mostra para onde foi cada
+  // parte de uma emenda que se repartiu entre municípios.
+  conferir('o código de doze dígitos se remonta das partes que a base separa',
+    em.codigoDaEmenda({ ano: 2025, parlamentar: 1234, sequencial: 1 }) === '202512340001',
+    em.codigoDaEmenda({ ano: 2025, parlamentar: 1234, sequencial: 1 }));
+  conferir('sem ano ou sem parlamentar não há código',
+    em.codigoDaEmenda({ ano: 2025 }) === null && em.codigoDaEmenda({ parlamentar: 1234 }) === null);
+  conferir('o código se desmonta de volta nas três partes',
+    JSON.stringify(em.partesDoCodigo('202512340001'))
+      === JSON.stringify({ ano: 2025, parlamentar: 1234, sequencial: 1 }),
+    JSON.stringify(em.partesDoCodigo('202512340001')));
+  conferir('código curto demais não vira partes',
+    em.partesDoCodigo('2025') === null);
+  conferir('o município sai do nome do beneficiário',
+    em.municipioDoBeneficiario('MUNICIPIO DE GRAMADO') === 'GRAMADO'
+    && em.municipioDoBeneficiario('Prefeitura Municipal de Erechim') === 'Erechim'
+    && em.municipioDoBeneficiario('ESTADO DO RIO GRANDE DO SUL') === 'ESTADO DO RIO GRANDE DO SUL');
+
+  const plano = em.doPlanoAcao({
+    id_plano_acao: 9911,
+    ano_emenda_parlamentar_plano_acao: 2025,
+    codigo_parlamentar_emenda_plano_acao: 1234,
+    sequencial_emenda_parlamentar_plano_acao: 1,
+    nome_beneficiario_plano_acao: 'MUNICIPIO DE GRAMADO',
+    cnpj_beneficiario_plano_acao: '88.111.222/0001-00',
+    uf_beneficiario_plano_acao: 'RS',
+    descricao_programacao_orcamentaria_plano_acao: 'Custeio da atenção básica',
+    situacao_plano_acao: 'Impedimento técnico',
+    motivo_impedimento_plano_acao: 'Dado bancário inválido',
+    valor_custeio_plano_acao: '400000',
+    valor_investimento_plano_acao: '100000',
+  });
+  conferir('o plano de ação traz quem recebeu, quanto e de qual emenda',
+    plano.favorecido === 'MUNICIPIO DE GRAMADO' && plano.valor === 500000
+    && plano.municipio === 'GRAMADO' && plano.uf === 'RS'
+    && plano.codigoEmenda === '202512340001' && plano.tipo === 'especial',
+    JSON.stringify(plano));
+  conferir('o motivo do impedimento vem colado na situação, que é o que trava o repasse',
+    plano.situacao === 'Impedimento técnico — Dado bancário inválido', plano.situacao);
+  conferir('custeio e investimento continuam separados além do total',
+    plano.valorCusteio === 400000 && plano.valorInvestimento === 100000);
+  conferir('o plano de ação identifica a transferência sozinho',
+    em.chaveDaTransferencia(plano) === 'pa-9911', em.chaveDaTransferencia(plano));
+  conferir('sem plano de ação, a emenda mais o documento servem de chave',
     em.chaveDaTransferencia({ codigoEmenda: '202512340001', documento: '2025NE000123' })
       === '202512340001-2025NE000123');
   conferir('sem documento nem emenda não há chave possível',
     em.chaveDaTransferencia({ favorecido: 'Prefeitura' }) === null);
+  conferir('o nome é procurado como está e também sem acento',
+    JSON.stringify(em.grafiasDoNome('José Medeiros')) === JSON.stringify(['José Medeiros', 'JOSE MEDEIROS'])
+    && em.grafiasDoNome('Marcel van Hattem').length === 2
+    && em.grafiasDoNome('').length === 0,
+    JSON.stringify(em.grafiasDoNome('José Medeiros')));
 
   conferir('a chave concilia pelo código e ano',
     em.chaveDaLinha({ codigo: '202512340001', ano: 2025 }) === '2025-202512340001');
@@ -1185,15 +1219,29 @@ console.log('\nPlanilhas de emenda\n');
     consultaAutomatica: true,
     funcoes: {
       consultarFonte: {
-        __fn: `if (dados.fonte !== 'portal-emenda-documentos') return { dados: [] };
-        if (Number((dados.parametros || {}).pagina || 1) > 1) return { dados: [] };
+        // O Transferegov filtra por ano e parlamentar; o sequencial é peneirado
+        // no cliente, então o duble devolve as duas linhas da mesma emenda mais
+        // uma de outra, para conferir que a peneira funciona.
+        __fn: `if (dados.caminho !== '/transferenciasespeciais/plano_acao_especial') return { dados: [] };
+        if (Number((dados.parametros || {}).offset || 0) > 0) return { dados: [] };
         return { dados: [
-          { codigoEmenda: '202612340000', documentoResumido: '2026NE000001', fase: 'Empenho',
-            data: '10/02/2026', nomeFavorecido: 'MUNICIPIO DE ERECHIM',
-            municipio: 'ERECHIM - RS', valor: '4.000.000,00' },
-          { codigoEmenda: '202612340000', documentoResumido: '2026NE000002', fase: 'Empenho',
-            data: '11/02/2026', nomeFavorecido: 'MUNICIPIO DE GRAMADO',
-            municipio: 'GRAMADO - RS', valor: '3.000.000,00' },
+          { id_plano_acao: 1, ano_emenda_parlamentar_plano_acao: 2026,
+            codigo_parlamentar_emenda_plano_acao: 1234,
+            sequencial_emenda_parlamentar_plano_acao: 0,
+            nome_beneficiario_plano_acao: 'MUNICIPIO DE ERECHIM',
+            uf_beneficiario_plano_acao: 'RS', situacao_plano_acao: 'Em execução',
+            valor_custeio_plano_acao: '4000000' },
+          { id_plano_acao: 2, ano_emenda_parlamentar_plano_acao: 2026,
+            codigo_parlamentar_emenda_plano_acao: 1234,
+            sequencial_emenda_parlamentar_plano_acao: 0,
+            nome_beneficiario_plano_acao: 'MUNICIPIO DE GRAMADO',
+            uf_beneficiario_plano_acao: 'RS', situacao_plano_acao: 'Em execução',
+            valor_investimento_plano_acao: '3000000' },
+          { id_plano_acao: 3, ano_emenda_parlamentar_plano_acao: 2026,
+            codigo_parlamentar_emenda_plano_acao: 1234,
+            sequencial_emenda_parlamentar_plano_acao: 7,
+            nome_beneficiario_plano_acao: 'MUNICIPIO DE VACARIA',
+            uf_beneficiario_plano_acao: 'RS', valor_custeio_plano_acao: '900000' },
         ] };`,
       },
     },
@@ -1216,6 +1264,10 @@ console.log('\nPlanilhas de emenda\n');
     dentro.includes('ERECHIM') && dentro.includes('GRAMADO'), dentro);
   conferir('e o valor de cada parcela',
     /4\.000\.000/.test(dentro) && /3\.000\.000/.test(dentro), dentro);
+  conferir('plano de ação de outra emenda não entra nesta sanfona',
+    !dentro.includes('VACARIA'), dentro);
+  conferir('a sanfona fecha a conta do que foi repartido',
+    /7\.000\.000/.test(dentro) && /2 destino/.test(dentro), dentro);
 
   await pagina.locator('.btn-sanfona').first().click();
   await pagina.waitForTimeout(250);
@@ -1244,17 +1296,30 @@ console.log('\nPlanilhas de emenda\n');
     consultaAutomatica: true,
     funcoes: {
       consultarFonte: {
-        __fn: `if (dados.fonte !== 'portal-emenda-documentos') return { dados: [] };
-        if (Number((dados.parametros || {}).pagina || 1) > 1) return { dados: [] };
+        // A varredura filtra pelo nome do parlamentar, como a base o guarda.
+        // O duble só responde a esse filtro: é ele que o botão precisa mandar.
+        __fn: `var par = dados.parametros || {};
+        if (dados.caminho !== '/transferenciasespeciais/plano_acao_especial') return { dados: [] };
+        if (!/Deputada Teste/i.test(String(par.nome_parlamentar_emenda_plano_acao || ''))) return { dados: [] };
+        if (Number(par.offset || 0) > 0) return { dados: [] };
         return { dados: [
-          { codigoEmenda: '202612340000', documentoResumido: '2026NE000001', fase: 'Empenho',
-            data: '10/02/2026', nomeFavorecido: 'MUNICIPIO DE ERECHIM',
-            codigoFavorecido: '87.612.917/0001-00', municipio: 'ERECHIM - RS',
-            nomeOrgao: 'MINISTERIO DA SAUDE', observacao: 'Custeio da atencao basica',
-            valor: '300.000,00' },
-          { codigoEmenda: '202612340000', documentoResumido: '2026OB000045', fase: 'Pagamento',
-            data: '05/06/2026', nomeFavorecido: 'MUNICIPIO DE ERECHIM',
-            municipio: 'ERECHIM - RS', valor: '100.000,00' },
+          { id_plano_acao: 11, ano_emenda_parlamentar_plano_acao: 2026,
+            codigo_parlamentar_emenda_plano_acao: 1234,
+            sequencial_emenda_parlamentar_plano_acao: 0,
+            nome_beneficiario_plano_acao: 'MUNICIPIO DE ERECHIM',
+            cnpj_beneficiario_plano_acao: '87.612.917/0001-00',
+            uf_beneficiario_plano_acao: 'RS',
+            descricao_programacao_orcamentaria_plano_acao: 'Custeio da atencao basica',
+            situacao_plano_acao: 'Em execução',
+            valor_custeio_plano_acao: '300000' },
+          { id_plano_acao: 12, ano_emenda_parlamentar_plano_acao: 2026,
+            codigo_parlamentar_emenda_plano_acao: 1234,
+            sequencial_emenda_parlamentar_plano_acao: 0,
+            nome_beneficiario_plano_acao: 'MUNICIPIO DE GRAMADO',
+            uf_beneficiario_plano_acao: 'RS',
+            situacao_plano_acao: 'Impedimento técnico',
+            motivo_impedimento_plano_acao: 'Dado bancário inválido',
+            valor_investimento_plano_acao: '100000' },
         ] };`,
       },
     },
@@ -1269,14 +1334,14 @@ console.log('\nPlanilhas de emenda\n');
   await pagina.waitForTimeout(1200);
 
   const recado = await pagina.locator('.aviso').last().innerText().catch(() => '');
-  conferir('o detalhamento guarda as transferências',
-    /2 transferências guardadas/.test(recado), recado.replace(/\s+/g, ' '));
+  conferir('o detalhamento guarda os repasses',
+    /2 repasses guardados/.test(recado), recado.replace(/\s+/g, ' '));
 
   const tabela = (await pagina.locator('.tabela tbody').innerText()).replace(/\s+/g, ' ');
   conferir('a linha mostra quem recebeu e o valor',
     tabela.includes('MUNICIPIO DE ERECHIM') && /300\.000/.test(tabela), tabela);
-  conferir('empenho e pagamento aparecem como fases distintas',
-    tabela.includes('Empenho') && tabela.includes('Pagamento'), tabela);
+  conferir('o motivo do impedimento chega até a tela',
+    /Dado banc/i.test(tabela), tabela);
   conferir('as transferências agrupam por município',
     (await pagina.locator('.grupo-nome').first().innerText()).includes('ERECHIM'),
     await pagina.locator('.grupo-nome').first().innerText());

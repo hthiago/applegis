@@ -812,6 +812,11 @@ export const MODULOS = [
       { k: 'orgao', l: 'Órgão concedente', t: 'texto' },
       { k: 'favorecidoDoc', l: 'CNPJ/CPF de quem recebeu', t: 'texto' },
       { k: 'ano', l: 'Ano', t: 'numero' },
+      // Custeio e investimento vêm separados da origem e não se somam de volta:
+      // a prefeitura pode gastar um em folha e obra e o outro não, e a pergunta
+      // "quanto deu para comprar equipamento" só se responde com os dois à vista.
+      { k: 'valorCusteio', l: 'Custeio', t: 'dinheiro' },
+      { k: 'valorInvestimento', l: 'Investimento', t: 'dinheiro' },
       { k: 'fonte', l: 'Origem do dado', t: 'texto' },
       { k: 'importadoEm', l: 'Importado em', t: 'data' },
     ],

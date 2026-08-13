@@ -614,8 +614,9 @@ function extrasDasEmendas() {
 }
 
 /**
- * A emenda discriminada: uma consulta por emenda já importada, buscando os
- * documentos que a executaram. É onde aparece quem recebeu e para quê.
+ * A emenda discriminada: os planos de ação do Transferegov, que é onde a emenda
+ * se reparte por beneficiário. É daqui que a sanfona de cada emenda se enche —
+ * uma varredura só traz tudo, e a partir dela abrir uma linha não custa consulta.
  */
 function extrasDasTransferencias() {
   return [
@@ -625,25 +626,35 @@ function extrasDasTransferencias() {
       return el('button', {
         class: 'btn btn--fantasma',
         texto: 'Detalhar emendas',
-        title: 'Busca no Portal quem recebeu cada emenda, e em que fase',
+        title: 'Busca no Transferegov quem recebeu cada emenda, quanto e em que situação',
         onclick: async (e) => {
           const btn = e.currentTarget;
+          const nomeAutor = nucleo.sessaoMod.sessao.gabinete?.deputado || null;
+          if (!nomeAutor) {
+            aviso('Informe o nome do parlamentar em Acessos → Dados do gabinete.', 'erro');
+            return;
+          }
           btn.disabled = true;
           try {
             const r = await nucleo.emendas.detalharEmendas({
+              nomeAutor,
               aoProgredir: (p) => {
-                btn.textContent = `Emenda ${p.consultadas}/${p.emendas} · ${p.linhas} linhas`;
+                btn.textContent = `Página ${p.paginas} · ${p.linhas} linhas`;
               },
             });
             if (r.camposRecebidos) {
-              aviso(`O Portal devolveu ${r.linhas} documentos, mas nenhum campo foi reconhecido.`
+              aviso(`O Transferegov devolveu ${r.linhas} linhas, mas nenhum campo foi reconhecido.`
                 + ` Ele mandou: ${r.camposRecebidos.join(', ')}`, 'erro');
+            } else if (!r.linhas) {
+              aviso(`Nada encontrado para "${nomeAutor}" nos planos de ação do Transferegov.`
+                + ' Confira a grafia do nome em Acessos → Dados do gabinete —'
+                + ' é por ele que a busca filtra.', 'erro');
             } else {
               aviso([
-                `${r.gravadas} transferências guardadas.`,
-                `${r.emendas} emendas consultadas`,
-                r.semChave ? `${r.semChave} sem identificação de documento` : null,
-              ].filter(Boolean).join(' · '), r.gravadas ? 'ok' : 'erro');
+                `${r.gravadas} repasses guardados`,
+                `${r.emendas} emendas`,
+                `${r.linhas} linhas em ${r.paginas} página(s)`,
+              ].join(' · '), r.gravadas ? 'ok' : 'erro');
             }
             recarregar();
           } catch (erro) {
@@ -720,6 +731,28 @@ async function sanfonaDaEmenda(emenda, alvo, recarregar) {
     if (aviso_) alvo.appendChild(el('p', { class: 'sanfona-recado', texto: aviso_ }));
     if (!linhas.length) return;
 
+    // As colunas dependem da procedência: o Transferegov traz objeto e
+    // situação e não traz data; a planilha do Portal traz fase e data e não traz
+    // situação. Mostrar coluna sempre vazia gasta largura e não informa nada.
+    const tem = (campo) => linhas.some((t) => t[campo]);
+    const colunas = [
+      { titulo: 'Município', valor: (t) => t.municipio || '—' },
+      { titulo: 'Quem recebeu', valor: (t) => t.favorecido || '—' },
+      tem('objeto') && { titulo: 'Objeto', valor: (t) => t.objeto || '—' },
+      // A fase só distingue quando há mais de uma; num lote todo de
+      // transferência especial ela repetiria a mesma palavra em todas as linhas.
+      new Set(linhas.map((t) => t.tipo)).size > 1
+        && { titulo: 'Fase', valor: (t) => ROTULO_FASE[t.tipo] || t.tipo || '—' },
+      // O impedimento é o que trava o repasse — é sobre isso que a prefeitura
+      // liga para o gabinete, e por isso ele vem colado na situação.
+      tem('situacao') && { titulo: 'Situação', valor: (t) => t.situacao || '—' },
+      tem('data') && {
+        titulo: 'Data',
+        valor: (t) => (t.data ? t.data.split('-').reverse().join('/') : '—'),
+      },
+      { titulo: 'Valor', num: true, valor: (t) => (t.valor != null ? fmtDinheiro(t.valor) : '—') },
+    ].filter(Boolean);
+
     // Por município, somando as parcelas: é a leitura que responde "quanto foi
     // para cada cidade", que é a pergunta de quem abre esta linha.
     const porMunicipio = new Map();
@@ -729,23 +762,29 @@ async function sanfonaDaEmenda(emenda, alvo, recarregar) {
       porMunicipio.get(chave).push(t);
     });
 
+    const total = linhas.reduce((soma, t) => soma + (Number(t.valor) || 0), 0);
+
     alvo.appendChild(el('table', { class: 'sanfona-tabela' }, [
-      el('thead', {}, [el('tr', {}, [
-        el('th', { texto: 'Município' }),
-        el('th', { texto: 'Quem recebeu' }),
-        el('th', { texto: 'Fase' }),
-        el('th', { texto: 'Data' }),
-        el('th', { class: 'num', texto: 'Valor' }),
-      ])]),
+      el('thead', {}, [el('tr', {}, colunas.map(
+        (c) => el('th', { class: c.num ? 'num' : null, texto: c.titulo }),
+      ))]),
       el('tbody', {}, [...porMunicipio.entries()]
         .sort((a, b) => a[0].localeCompare(b[0], 'pt-BR'))
-        .flatMap(([municipio, doLugar]) => doLugar.map((t, i) => el('tr', {}, [
-          el('td', { texto: i === 0 ? municipio : '' }),
-          el('td', { texto: t.favorecido || '—' }),
-          el('td', { texto: ROTULO_FASE[t.tipo] || t.tipo || '—' }),
-          el('td', { texto: t.data ? t.data.split('-').reverse().join('/') : '—' }),
-          el('td', { class: 'num', texto: t.valor != null ? fmtDinheiro(t.valor) : '—' }),
-        ])))),
+        .flatMap(([municipio, doLugar]) => doLugar.map((t, i) => el('tr', {}, colunas.map(
+          // O município repetido em cada parcela vira ruído; escrito uma vez,
+          // agrupa a leitura sem precisar de linha de cabeçalho.
+          (c, coluna) => el('td', {
+            class: c.num ? 'num' : null,
+            texto: (coluna === 0 && i > 0) ? '' : c.valor(t),
+          }),
+        ))))),
+      el('tfoot', {}, [el('tr', {}, [
+        el('td', {
+          colspan: String(Math.max(1, colunas.length - 1)),
+          texto: `${porMunicipio.size} destino(s) · ${linhas.length} repasse(s)`,
+        }),
+        el('td', { class: 'num', texto: fmtDinheiro(total) }),
+      ])]),
     ]));
   };
 
@@ -764,12 +803,15 @@ async function sanfonaDaEmenda(emenda, alvo, recarregar) {
 
     const r = await nucleo.emendas.detalharEmenda(emenda.codigo);
     if (r.camposRecebidos) {
-      desenhar([], `O Portal respondeu, mas nenhum campo foi reconhecido. Ele mandou: ${r.camposRecebidos.join(', ')}`);
+      desenhar([], 'O Transferegov respondeu, mas nenhum campo foi reconhecido.'
+        + ` Ele mandou: ${r.camposRecebidos.join(', ')}`);
       return;
     }
     desenhar(r.transferencias, r.transferencias.length
       ? null
-      : 'O Portal não tem documentos de execução para esta emenda.');
+      : 'O Transferegov não tem plano de ação para esta emenda. Ele publica as'
+        + ' transferências especiais — a emenda que vai direto ao município. As de'
+        + ' finalidade definida, que passam por convênio, ainda não estão ligadas.');
   } catch (erro) {
     console.error(erro);
     desenhar([], `Não foi possível detalhar: ${erro.message || erro}`);
