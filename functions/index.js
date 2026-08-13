@@ -87,6 +87,23 @@ const FONTES = {
   },
 
   /**
+   * A documentação da própria API, que é o fim do adivinhar.
+   *
+   * O Portal publica um OpenAPI com todos os endereços e todos os parâmetros de
+   * cada um. Ele não fica sob `/api-de-dados`, e por isso a fonte acima não o
+   * alcança: sair da base declarada é exatamente o que a peneira de caminho
+   * impede, e com razão. Uma fonte separada, com a raiz do host, resolve sem
+   * afrouxar nada — o host continua sendo o mesmo, e só ele.
+   */
+  'portal-doc': {
+    base: 'https://api.portaldatransparencia.gov.br',
+    permiteSufixo: true,
+    parametrosLivres: true,
+    cabecalhos: () => ({ 'chave-api-dados': CHAVE_PORTAL.value() }),
+    exigeChave: true,
+  },
+
+  /**
    * O Transferegov serve por PostgREST: o filtro vai no próprio nome do campo,
    * na forma `campo=eq.valor`. Por isso a lista de parâmetros aqui é de nomes
    * de coluna, e não de parâmetros de consulta no sentido usual.
@@ -182,7 +199,12 @@ exports.consultarFonte = onCall(
       if (!config.permiteSufixo) {
         throw new HttpsError('invalid-argument', `A fonte ${fonte} não aceita caminho.`);
       }
-      if (!/^\/[A-Za-z0-9\-_/]{1,120}$/.test(caminho) || caminho.includes('..')) {
+      // A barra sozinha é um caminho legítimo: é onde um serviço PostgREST
+      // publica o catálogo do que ele tem. A regra antiga exigia ao menos um
+      // caractere depois dela e recusava calada justamente a consulta que
+      // terminaria o adivinhar — o relatório dizia "caminho recusado" e eu li
+      // como se a fonte tivesse recusado.
+      if (!/^\/[A-Za-z0-9\-_/.]{0,120}$/.test(caminho) || caminho.includes('..')) {
         throw new HttpsError('invalid-argument', `Caminho recusado: ${caminho}`);
       }
       sufixo = caminho;

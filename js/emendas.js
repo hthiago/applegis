@@ -1307,6 +1307,29 @@ export function caminhosDoPortal(codigoEmenda, codigoDocumento = null, data = nu
  * nomes". Um serviço assim descreve a si mesmo em OpenAPI, e as chaves de
  * `paths` são exatamente as tabelas consultáveis.
  */
+/**
+ * Os endereços que um documento OpenAPI declara, com os parâmetros de cada um.
+ *
+ * É a diferença entre saber que um caminho existe e saber como chamá-lo. O
+ * Portal publica isso; consultá-lo encerra a série de palpites que já custou
+ * várias rodadas — cada uma descobrindo, uma por vez, o que este documento diz
+ * de uma vez só.
+ */
+export function enderecosDe(openapi, filtro = /emenda|despesa|documento/i) {
+  const caminhos = openapi?.paths;
+  if (!caminhos || typeof caminhos !== 'object') return null;
+
+  return Object.entries(caminhos)
+    .filter(([caminho]) => filtro.test(caminho))
+    .map(([caminho, verbos]) => {
+      const parametros = Object.values(verbos || {})
+        .flatMap((v) => (Array.isArray(v?.parameters) ? v.parameters : []))
+        .map((p) => (p?.required ? `${p.name}*` : p?.name))
+        .filter(Boolean);
+      return `${caminho}${parametros.length ? ` (${[...new Set(parametros)].join(', ')})` : ''}`;
+    });
+}
+
 export function tabelasDe(dados) {
   if (!dados || typeof dados !== 'object' || Array.isArray(dados)) return null;
   const nomes = dados.paths ? Object.keys(dados.paths) : (dados.definitions && Object.keys(dados.definitions));
@@ -1366,6 +1389,31 @@ export async function sondarFontes(codigoEmenda, { nomeAutor = null, aoProgredir
       return { ok: false, erro: String(erro.message || erro).slice(0, 320) };
     }
   };
+
+  // ── A documentação, antes de qualquer palpite ──
+  //
+  // Quatro rodadas gastas descobrindo um endereço por vez, quando o serviço
+  // publica a lista inteira. Se este bloco responder, nenhum dos palpites
+  // abaixo precisa acertar.
+  const DOCUMENTACOES = [
+    { fonte: 'portal-doc', caminho: '/v3/api-docs' },
+    { fonte: 'portal-doc', caminho: '/api-de-dados/v3/api-docs' },
+    { fonte: 'transferegov-livre', caminho: '/' },
+  ];
+  await emLevas(DOCUMENTACOES, 3, async (alvo) => {
+    const r = await tentar(alvo.fonte, alvo.caminho, {});
+    if (!r.ok) {
+      achados.push({ caminho: `doc ${alvo.caminho}`, ok: false, erro: r.erro });
+      return;
+    }
+    const enderecos = enderecosDe(r.dados);
+    achados.push({
+      caminho: `doc ${alvo.caminho}`,
+      ok: true,
+      tabelas: enderecos || tabelasDe(r.dados),
+      raiz: true,
+    });
+  }, (f, t) => aoProgredir({ etapa: 'Documentação', feitos: f, total: t }));
 
   // ── Portal: sem catálogo, só hipóteses ──
   //

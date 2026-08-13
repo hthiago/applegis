@@ -712,7 +712,13 @@ function abrirSondagem(achados, codigo) {
     }
     // Um catálogo de tabelas vale mais que uma amostra: é a lista dos nomes
     // que faltavam para parar de adivinhar.
-    if (a.tabelas?.length) return `TABELAS ${a.caminho} — ${a.tabelas.join(', ')}`;
+    // Uma lista longa em linha única é ilegível justamente onde ela é a
+    // resposta. Acima de meia dúzia, cada uma na sua linha.
+    if (a.tabelas?.length) {
+      return a.tabelas.length > 6
+        ? `TABELAS ${a.caminho} —\n${a.tabelas.map((t) => `     ${t}`).join('\n')}`
+        : `TABELAS ${a.caminho} — ${a.tabelas.join(', ')}`;
+    }
 
     // Colunas de ligação e uma linha de verdade do parlamentar valem mais que a
     // lista de campos: são elas que dizem como pendurar a tabela na emenda.

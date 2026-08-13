@@ -1030,6 +1030,27 @@ console.log('\nPlanilhas de emenda\n');
     `especie=${doc.especie} objeto=${doc.objeto}`);
   conferir('documento sem plano de ação ainda tem chave própria',
     em.chaveDaTransferencia(doc) === 'doc-5', em.chaveDaTransferencia(doc));
+
+  // Quatro rodadas descobrindo um endereço por vez, quando o serviço publica a
+  // lista inteira com os parâmetros de cada um. É isto que encerra o palpite.
+  const enderecos = em.enderecosDe({
+    paths: {
+      '/api-de-dados/emendas': { get: { parameters: [{ name: 'codigoEmenda' }, { name: 'pagina', required: true }] } },
+      '/api-de-dados/despesas/documentos': { get: { parameters: [{ name: 'dataEmissao', required: true }] } },
+      '/api-de-dados/contratos': { get: { parameters: [] } },
+    },
+  });
+  conferir('a documentação vira lista de endereços com seus parâmetros',
+    JSON.stringify(enderecos) === JSON.stringify([
+      '/api-de-dados/emendas (codigoEmenda, pagina*)',
+      '/api-de-dados/despesas/documentos (dataEmissao*)',
+    ]), JSON.stringify(enderecos));
+  conferir('parâmetro obrigatório é marcado, que é o que faz a chamada falhar',
+    enderecos[1].includes('dataEmissao*'));
+  conferir('o que não é do assunto fica de fora do relatório',
+    !JSON.stringify(enderecos).includes('contratos'));
+  conferir('resposta que não é documentação não vira lista vazia enganosa',
+    em.enderecosDe({ dados: [] }) === null);
   conferir('o nome é procurado como está e também sem acento',
     JSON.stringify(em.grafiasDoNome('José Medeiros')) === JSON.stringify(['José Medeiros', 'JOSE MEDEIROS'])
     && em.grafiasDoNome('Marcel van Hattem').length === 2
@@ -1278,6 +1299,13 @@ console.log('\nPlanilhas de emenda\n');
         // que substitui o palpite pelo nome certo.
         __fn: `var c = dados.caminho || '';
         var par = dados.parametros || {};
+        if (c === '/v3/api-docs') {
+          return { dados: { paths: {
+            '/api-de-dados/despesas/documentos-relacionados': {
+              get: { parameters: [{ name: 'codigoDocumento', required: true }] } },
+            '/api-de-dados/licitacoes': { get: { parameters: [] } },
+          } } };
+        }
         if (c === '/transferenciasvoluntarias') {
           return { dados: { paths: { '/': {}, '/proposta': {}, '/convenio': {} } } };
         }
@@ -1308,6 +1336,12 @@ console.log('\nPlanilhas de emenda\n');
   await pagina.waitForSelector('.sondagem-texto', { timeout: 30000 });
 
   const texto = await pagina.locator('.sondagem-texto').inputValue();
+  // Se a documentação responde, nenhum palpite precisa acertar: ela diz o
+  // endereço e os parâmetros obrigatórios de uma vez.
+  conferir('a sondagem consulta a documentação da API antes de adivinhar',
+    /doc \/v3\/api-docs/.test(texto)
+    && /despesas\/documentos-relacionados \(codigoDocumento\*\)/.test(texto),
+    texto.split('\n').filter((l) => l.includes('api-docs') || l.includes('relacionados')).join(' | '));
   conferir('a sondagem lê o catálogo de tabelas na raiz do serviço',
     /TABELAS\s+\/transferenciasvoluntarias — proposta, convenio/.test(texto),
     texto.split('\n').find((l) => l.includes('TABELAS')) || texto.slice(0, 120));
