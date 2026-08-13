@@ -771,9 +771,12 @@ async function sanfonaDaEmenda(emenda, alvo, recarregar) {
     // situação e não traz data; a planilha do Portal traz fase e data e não traz
     // situação. Mostrar coluna sempre vazia gasta largura e não informa nada.
     const tem = (campo) => linhas.some((t) => t[campo]);
+    // A coluna que agrupa é marcada, não deduzida da posição: com o município
+    // ausente — favorecido que não é prefeitura — ela sai da tabela, e amarrar
+    // o agrupamento ao índice zero passaria a apagar a coluna errada.
     const colunas = [
-      { titulo: 'Município', valor: (t) => t.municipio || '—' },
-      { titulo: 'Quem recebeu', valor: (t) => t.favorecido || '—' },
+      tem('municipio') && { titulo: 'Município', agrupa: true, valor: (t) => t.municipio || '—' },
+      { titulo: 'Quem recebeu', agrupa: !tem('municipio'), valor: (t) => t.favorecido || '—' },
       tem('objeto') && { titulo: 'Objeto', valor: (t) => t.objeto || '—' },
       // As metas são a resposta mais concreta a "para quê foi": o que se
       // comprou ou construiu, com quantidade.
@@ -818,12 +821,12 @@ async function sanfonaDaEmenda(emenda, alvo, recarregar) {
       ))]),
       el('tbody', {}, [...porMunicipio.entries()]
         .sort((a, b) => a[0].localeCompare(b[0], 'pt-BR'))
-        .flatMap(([municipio, doLugar]) => doLugar.map((t, i) => el('tr', {}, colunas.map(
-          // O município repetido em cada parcela vira ruído; escrito uma vez,
-          // agrupa a leitura sem precisar de linha de cabeçalho.
-          (c, coluna) => el('td', {
+        .flatMap(([, doLugar]) => doLugar.map((t, i) => el('tr', {}, colunas.map(
+          // O nome do grupo repetido em cada parcela vira ruído; escrito uma
+          // vez, agrupa a leitura sem precisar de linha de cabeçalho.
+          (c) => el('td', {
             class: c.num ? 'num' : null,
-            texto: (coluna === 0 && i > 0) ? '' : c.valor(t),
+            texto: (c.agrupa && i > 0) ? '' : c.valor(t),
           }),
         ))))),
       el('tfoot', {}, [el('tr', {}, [

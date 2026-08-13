@@ -833,6 +833,11 @@ export const MODULOS = [
       { k: 'acao', l: 'Ação orçamentária', t: 'texto', lista: true },
       { k: 'localizador', l: 'Localizador do gasto', t: 'texto' },
       { k: 'especie', l: 'Espécie do documento', t: 'texto' },
+      // A frase como a fonte a escreveu. O objeto é a leitura dela; isto é a
+      // prova, e fica fora da lista para não repetir o que já está resumido.
+      { k: 'historico', l: 'Histórico do documento', t: 'area' },
+      // O elo com o convênio no Transferegov, extraído da própria observação.
+      { k: 'proposta', l: 'Proposta', t: 'texto' },
       { k: 'fonte', l: 'Origem do dado', t: 'texto' },
       { k: 'importadoEm', l: 'Importado em', t: 'data' },
     ],

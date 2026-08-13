@@ -967,7 +967,11 @@ console.log('\nPlanilhas de emenda\n');
   conferir('o município sai do nome do beneficiário',
     em.municipioDoBeneficiario('MUNICIPIO DE GRAMADO') === 'GRAMADO'
     && em.municipioDoBeneficiario('Prefeitura Municipal de Erechim') === 'Erechim'
-    && em.municipioDoBeneficiario('ESTADO DO RIO GRANDE DO SUL') === 'ESTADO DO RIO GRANDE DO SUL');
+    // Favorecido que não é prefeitura não tem município a extrair. Devolver o
+    // nome da instituição escrevia "ASSOCIACAO BENEFICENTE HOSPITAL SANTO
+    // ANTONIO" na coluna de município — dado errado no lugar de vazio honesto.
+    && em.municipioDoBeneficiario('ASSOCIACAO BENEFICENTE HOSPITAL SANTO ANTONIO') === null
+    && em.municipioDoBeneficiario('FUNDO ESTADUAL DE SAUDE') === null);
 
   const plano = em.doPlanoAcao({
     id_plano_acao: 9911,
@@ -1038,6 +1042,40 @@ console.log('\nPlanilhas de emenda\n');
     detalhe.area === '10 - Saúde'
     && detalhe.acao === '5019 - ATENCAO PRIMARIA A SAUDE · 2E89 - INCREMENTO TEMPORARIO AO CUSTEIO'
     && detalhe.localizador === '0040 - NA REGIAO SUL', detalhe.acao);
+  // A observação do pagamento identifica o documento; a do empenho descreve o
+  // gasto. Escrever a primeira na coluna de objeto repetiu o erro do "Não se
+  // aplica": ocupar com identificação o lugar da resposta.
+  const burocratico = em.objetoDaObservacao(
+    'PAGAMENTO DA PROPOSTA 11707405000126004 - UF RS - EMENDA: (41160003) MARCEL VAN HATTEM',
+  );
+  conferir('observação que só identifica não vira objeto',
+    burocratico.objeto === null, String(burocratico.objeto));
+  conferir('mas o número da proposta é guardado: é o elo com o convênio',
+    burocratico.proposta === '11707405000126004', String(burocratico.proposta));
+
+  const descritivo = em.objetoDaObservacao(
+    'AQUISICAO DE EQUIPAMENTOS PARA UNIDADE DE SAUDE - UF RS - EMENDA: (41160003) MARCEL VAN HATTEM',
+  );
+  conferir('a descrição sobrevive à limpeza, sem os identificadores em volta',
+    descritivo.objeto === 'AQUISICAO DE EQUIPAMENTOS PARA UNIDADE DE SAUDE',
+    String(descritivo.objeto));
+
+  // O pagamento é a prova de que o dinheiro chegou e não pode sumir da lista.
+  // Mas ele não descreve objeto — e o empenho da mesma emenda descreve.
+  const herdadas = em.herdarObjeto([
+    { tipo: 'empenho', objeto: 'AQUISICAO DE AMBULANCIA' },
+    { tipo: 'pagamento', objeto: null },
+  ]);
+  conferir('o pagamento herda o objeto do empenho da mesma emenda',
+    herdadas[1].objeto === 'AQUISICAO DE AMBULANCIA' && herdadas[1].objetoHerdado === true,
+    JSON.stringify(herdadas[1]));
+  conferir('com dois objetos diferentes não se herda: seria atribuir destino errado',
+    em.herdarObjeto([
+      { tipo: 'empenho', objeto: 'A' },
+      { tipo: 'empenho', objeto: 'B' },
+      { tipo: 'pagamento', objeto: null },
+    ])[2].objeto === null);
+
   conferir('o código longo é o que serve para pedir o detalhe',
     detalhe.codigoDocumento === '257001000012020NE808376'
     && detalhe.documento === '2020NE808376', detalhe.codigoDocumento);
@@ -1586,7 +1624,7 @@ console.log('\nPlanilhas de emenda\n');
         if (c === '/despesas/documentos/257001000012026OB800111') {
           return { dados: { documento: '257001000012026OB800111',
             documentoResumido: '2026OB800111', data: '02/07/2026', fase: 'Pagamento',
-            observacao: 'PAGAMENTO REFERENTE A NOTA DE EMPENHO',
+            observacao: 'PAGAMENTO DA PROPOSTA 11707405000126004 - UF RS - EMENDA: (41160003) TESTE',
             funcao: '10 - Saúde', nomeFavorecido: 'MUNICIPIO DE GRAMADO',
             ufFavorecido: 'RS', valor: '3.000.000,00' } };
         }
@@ -1610,6 +1648,13 @@ console.log('\nPlanilhas de emenda\n');
     && !/valores não informados/.test(dentro), dentro);
   conferir('a ação orçamentária diz por qual programa o dinheiro saiu',
     /ATENCAO PRIMARIA A SAUDE/.test(dentro), dentro);
+  // A linha de pagamento fica — é a prova de que o dinheiro chegou —, mas a
+  // observação dela identifica em vez de descrever, e o objeto vem do empenho.
+  conferir('a linha de pagamento permanece e herda o objeto do empenho',
+    /Pagamento/.test(dentro)
+    && !/PAGAMENTO DA PROPOSTA/.test(dentro)
+    && (dentro.match(/EMPENHO PARA ATENDER A PORTARIA 706/g) || []).length === 2,
+    dentro);
   await pagina.close();
 }
 

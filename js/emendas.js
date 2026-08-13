@@ -540,12 +540,20 @@ export function partesDoCodigo(codigo) {
   };
 }
 
-/** "MUNICIPIO DE ERECHIM" é o beneficiário; "Erechim" é o município. */
+/**
+ * "MUNICIPIO DE ERECHIM" é o beneficiário; "Erechim" é o município.
+ *
+ * Quando o favorecido não é uma prefeitura — um hospital filantrópico, um fundo
+ * estadual, uma associação —, não há município a extrair. Devolver o nome da
+ * instituição na coluna de município escreveu "ASSOCIACAO BENEFICENTE HOSPITAL
+ * SANTO ANTONIO" onde se lê uma cidade: um dado errado no lugar de um vazio
+ * honesto, e ainda por cima agrupando a tabela por instituição.
+ */
 export function municipioDoBeneficiario(nome) {
   const t = String(nome || '').trim();
   if (!t) return null;
   const m = /^(?:munic[íi]pio|prefeitura(?:\s+municipal)?)\s+(?:de\s+|do\s+|da\s+|dos\s+|das\s+)?(.+)$/i.exec(t);
-  return (m ? m[1] : t).trim();
+  return m ? m[1].trim() : null;
 }
 
 /** Traduz um plano de ação do Transferegov para uma transferência nossa. */
@@ -608,6 +616,50 @@ export function tipoDaFase(texto) {
   return (FASES.find((f) => f.re.test(t)) || {}).v || null;
 }
 
+/**
+ * Trechos da observação que identificam o documento em vez de descrever o gasto.
+ *
+ * "PAGAMENTO DA PROPOSTA 11707405000126004 - UF RS - EMENDA: (41160003) MARCEL
+ * VAN HATTEM" não diz para que serviu o dinheiro: diz de qual proposta, de qual
+ * UF e de qual emenda ele veio — coisas que a tabela já mostra em colunas
+ * próprias. Escrever isso na coluna de objeto foi repetir o mesmo erro do
+ * "Não se aplica": ocupar com identificação o lugar da resposta.
+ */
+const RUIDO_NA_OBSERVACAO = [
+  /^pagamento\s+da\s+proposta\b/i,
+  /^proposta\s*n?[ºo]?\s*[\d./-]*$/i,
+  /^proposta\s+[\d./-]+/i,
+  /^uf\s+[a-z]{2}$/i,
+  /^emenda\s*:/i,
+  /^\(?\d{6,}\)?$/,
+];
+
+/**
+ * Separa a observação em objeto e identificadores.
+ *
+ * A quebra é por segmento, não por expressão que tenta adivinhar a frase
+ * inteira: cada pedaço entre hifens ou é identificação conhecida, e sai, ou é
+ * descrição, e fica. Sobrando pouco demais para significar algo, não se afirma
+ * objeto nenhum.
+ */
+export function objetoDaObservacao(texto) {
+  const bruto = String(texto ?? '').trim();
+  if (!bruto) return { objeto: null, proposta: null };
+
+  // O número da proposta é o elo com o convênio no Transferegov — vale guardar
+  // justamente o que se está tirando da frente.
+  const proposta = (/proposta\s*n?[ºo]?\s*([\d./-]{6,})/i.exec(bruto) || [])[1] || null;
+
+  const uteis = bruto
+    .split(/\s+-\s+/)
+    .map((p) => p.trim())
+    .filter(Boolean)
+    .filter((p) => !RUIDO_NA_OBSERVACAO.some((re) => re.test(p)));
+
+  const objeto = uteis.join(' - ').trim();
+  return { objeto: objeto.length >= 8 ? objeto : null, proposta };
+}
+
 export function doDocumentoDaEmenda(r, codigoEmenda) {
   const pegar = (...nomes) => {
     for (const n of nomes) {
@@ -643,7 +695,11 @@ export function doDocumentoDaEmenda(r, codigoEmenda) {
     //
     // O objeto de verdade é a observação do empenho: "EMPENHO PARA ATENDER A
     // PORTARIA 706 DE 08/04/2020". Ela só existe no documento detalhado.
-    objeto: texto(pegar('observacao', 'objeto', 'descricao')),
+    objeto: objetoDaObservacao(texto(pegar('observacao', 'objeto', 'descricao'))).objeto,
+    // A frase inteira, como a fonte a escreveu. O objeto é a leitura dela; o
+    // histórico é a prova, e some da lista sem sumir do registro.
+    historico: texto(pegar('observacao', 'objeto', 'descricao')),
+    proposta: objetoDaObservacao(texto(pegar('observacao'))).proposta,
     especie: texto(pegar('especieTipo', 'especie')),
     // A classificação funcional diz a política pública a que o gasto pertence,
     // e a ação orçamentária diz o programa concreto que o executou.
@@ -702,7 +758,27 @@ export async function documentosDaEmenda(codigo, {
     }
   }
 
-  return { linhas, paginas, completados };
+  return { linhas: herdarObjeto(linhas), paginas, completados };
+}
+
+/**
+ * Dá objeto às fases que não o descrevem, tomando-o do empenho da mesma emenda.
+ *
+ * A observação do empenho diz para que serviu o dinheiro; a do pagamento diz de
+ * qual proposta ele saiu. As duas linhas importam — o pagamento é a prova de que
+ * o dinheiro chegou —, mas só uma delas carrega o objeto. Como todas as linhas
+ * aqui são da mesma emenda, o objeto do empenho vale para as demais.
+ *
+ * Com mais de um objeto distinto entre os empenhos, não se herda nada: escolher
+ * um deles seria atribuir ao pagamento um destino que pode não ser o dele.
+ */
+export function herdarObjeto(linhas) {
+  const objetos = [...new Set(
+    linhas.filter((l) => l.tipo === 'empenho' && l.objeto).map((l) => l.objeto),
+  )];
+  if (objetos.length !== 1) return linhas;
+
+  return linhas.map((l) => (l.objeto ? l : { ...l, objeto: objetos[0], objetoHerdado: true }));
 }
 
 /**
