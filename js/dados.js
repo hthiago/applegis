@@ -140,6 +140,24 @@ const POR_LOTE = 400;
  * Devolve o que falhou, em vez de engolir o erro: um lote recusado pelas regras
  * de segurança precisa aparecer na tela, não no console.
  */
+/**
+ * "Missing or insufficient permissions" tem uma causa muito mais provável que
+ * as outras: as regras publicadas no projeto são anteriores a esta coleção.
+ * Coleção que não consta do mapa `areaDa` em firestore.rules não é gravável por
+ * ninguém — nem pela chefia —, e o recado cru manda procurar no perfil de quem
+ * está usando, que é justamente onde não está o problema.
+ */
+export function traduzirGravacao(erro, colecao) {
+  if (erro?.code !== 'permission-denied') return erro;
+  const traduzido = new Error(
+    `As regras do Firestore recusaram a gravação em "${colecao}".`
+    + ' Se esta parte do sistema é nova, as regras publicadas no projeto ainda não a'
+    + ' conhecem: rode `firebase deploy --only firestore:rules` e tente de novo.',
+  );
+  traduzido.code = erro.code;
+  return traduzido;
+}
+
 export async function salvarEmLote(colecao, itens) {
   const agora = serverTimestamp();
   const quem = sessao.membro.email;
@@ -160,7 +178,7 @@ export async function salvarEmLote(colecao, itens) {
       await lote.commit();
       gravados += fatia.length;
     } catch (erro) {
-      falhas.push(erro);
+      falhas.push(traduzirGravacao(erro, colecao));
     }
   }
 

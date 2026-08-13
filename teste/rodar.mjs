@@ -748,7 +748,13 @@ console.log('\nFalha de gravação\n');
   await pagina.waitForSelector('.aviso--erro', { timeout: 10000 }).catch(() => {});
 
   const recado = await pagina.locator('.aviso--erro').first().innerText().catch(() => '');
-  conferir('gravação recusada vira aviso de erro na tela', /permission|permiss/i.test(recado), recado);
+  conferir('gravação recusada vira aviso de erro na tela',
+    /recusaram a gravação/i.test(recado), recado);
+  // "Missing or insufficient permissions" manda procurar no perfil de quem está
+  // usando, que é justamente onde não está o problema: coleção fora do mapa das
+  // regras não é gravável por ninguém. O recado tem que apontar as regras.
+  conferir('permissão negada nomeia a coleção e diz como republicar as regras',
+    /"autorias"/.test(recado) && /firestore:rules/.test(recado), recado);
   conferir('nenhuma linha é anunciada como importada',
     !/proposições assinadas/.test(recado), recado);
   await pagina.close();
@@ -918,6 +924,23 @@ console.log('\nPlanilhas de emenda\n');
   conferir('sem sequencial nem número, a linha não atende por código nenhum',
     em.codigosDoPlano({ ano_emenda_parlamentar_plano_acao: 2025, codigo_parlamentar_emenda_plano_acao: 1234 })
       .length === 0);
+  // Visto na base real: numero_emenda traz o código inteiro, não o sequencial.
+  // Prefixar de novo gerava "20264116202641160008", que não casa com nada.
+  conferir('número que já é o código inteiro não recebe ano e parlamentar de novo',
+    JSON.stringify(em.codigosDoPlano({
+      codigo_emenda_parlamentar_formatado_plano_acao: '2026.4116.0008',
+      ano_emenda_parlamentar_plano_acao: 2026,
+      codigo_parlamentar_emenda_plano_acao: 4116,
+      sequencial_emenda_parlamentar_plano_acao: 8,
+      numero_emenda_parlamentar_plano_acao: '202641160008',
+    })) === JSON.stringify(['202641160008']),
+    JSON.stringify(em.codigosDoPlano({
+      codigo_emenda_parlamentar_formatado_plano_acao: '2026.4116.0008',
+      ano_emenda_parlamentar_plano_acao: 2026,
+      codigo_parlamentar_emenda_plano_acao: 4116,
+      sequencial_emenda_parlamentar_plano_acao: 8,
+      numero_emenda_parlamentar_plano_acao: '202641160008',
+    })));
 
   // Nome de campo não fecha diagnóstico nenhum: os nomes podem estar todos
   // certos e os valores todos vazios. O recorte mostra o que a linha tem.
@@ -1347,8 +1370,11 @@ console.log('\nPlanilhas de emenda\n');
   await pagina.waitForTimeout(900);
   const recado = (await pagina.locator('.sanfona-recado').first().innerText().catch(() => ''))
     .replace(/\s+/g, ' ');
-  conferir('código que não bate vira o diagnóstico do código, não o dos campos',
-    /nenhum com o código 202612340000/.test(recado)
+  // Planos de outras emendas do mesmo ano não são falha: são a resposta de que
+  // esta emenda não foi por transferência especial. Dizer isso poupa abrir uma
+  // a uma para descobrir quais foram.
+  conferir('emenda sem plano de ação é dita como resposta, não como erro',
+    /não é transferência especial/.test(recado)
     && /202612340008/.test(recado)
     && !/campo/i.test(recado), recado);
   await pagina.close();

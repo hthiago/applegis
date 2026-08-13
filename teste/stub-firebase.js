@@ -172,7 +172,10 @@ export function writeBatch() {
     },
     commit() {
       if (globalThis.__LOTE_RECUSADO_TESTE) {
-        return Promise.reject(new Error('Missing or insufficient permissions.'));
+        // Como o SDK de verdade recusa: mensagem opaca e o motivo só no `code`.
+        const erro = new Error('Missing or insufficient permissions.');
+        erro.code = 'permission-denied';
+        return Promise.reject(erro);
       }
       for (const { ref, dados, opcoes } of pendentes) {
         const col = colecaoDe(ref.colecao);

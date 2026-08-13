@@ -808,12 +808,15 @@ async function sanfonaDaEmenda(emenda, alvo, recarregar) {
         + ` mas nenhum virou repasse. A primeira linha veio assim → ${r.amostra}`);
       return;
     }
-    // Linha que chegou mas é de outra emenda: o que falta é saber como esta base
-    // escreve o código. Mostrar os que vieram fecha a dúvida numa rodada.
+    // Nenhum plano com este código, mas há planos de outras emendas do mesmo
+    // ano: isto não é falha, é resposta. Esta emenda não foi por transferência
+    // especial. Dizer quais foram poupa abrir uma a uma para descobrir.
     if (r.codigosVistos) {
-      desenhar([], `O Transferegov devolveu ${r.linhas} plano(s) de ação do parlamentar`
-        + ` neste ano, mas nenhum com o código ${r.procurado}.`
-        + ` Os códigos que vieram: ${r.codigosVistos.join(', ')}.`);
+      desenhar([], `Esta emenda não é transferência especial — o Transferegov não tem`
+        + ` plano de ação para o código ${r.procurado}. Em ${r.ano} ele tem plano para`
+        + ` ${r.codigosVistos.length === 1 ? 'a emenda' : 'as emendas'}`
+        + ` ${r.codigosVistos.join(', ')}. As de finalidade definida, que passam por`
+        + ' convênio, ficam em outra base e ainda não estão ligadas.');
       return;
     }
     desenhar(r.transferencias, r.transferencias.length

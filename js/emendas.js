@@ -506,6 +506,14 @@ export function codigosDoPlano(r) {
     r.sequencial_emenda_parlamentar_plano_acao,
     r.numero_emenda_parlamentar_plano_acao,
   ]) {
+    // `numero_emenda` às vezes traz o código inteiro, não o sequencial. Prefixar
+    // ano e parlamentar de novo produz um código de vinte dígitos, que não casa
+    // com nada e ainda suja o diagnóstico — foi o que apareceu como
+    // "20264116202641160008".
+    if (String(sequencial ?? '').replace(/\D/g, '').length >= 12) {
+      guardar(sequencial);
+      continue;
+    }
     guardar(codigoDaEmenda({
       ano: r.ano_emenda_parlamentar_plano_acao,
       parlamentar: r.codigo_parlamentar_emenda_plano_acao,
@@ -664,6 +672,7 @@ export async function detalharEmenda(codigo) {
       : null,
     linhas: lote.length,
     procurado: alvo,
+    ano: partes.ano,
   };
 }
 
