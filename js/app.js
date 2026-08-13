@@ -639,10 +639,16 @@ function extrasDasTransferencias() {
           }
           btn.disabled = true;
           try {
+            // Os códigos já importados são o filtro exato do fundo a fundo,
+            // onde a grafia do nome nem sempre bate.
+            const codigos = (await nucleo.dados.listar('emendas'))
+              .map((e) => e.codigo).filter(Boolean);
+
             const r = await nucleo.emendas.detalharEmendas({
               nomeAutor,
+              codigos,
               aoProgredir: (p) => {
-                btn.textContent = `Página ${p.paginas} · ${p.linhas} linhas`;
+                btn.textContent = `${p.etapa || 'Buscando'}… ${p.linhas} linhas`;
               },
             });
             if (r.amostra) {
@@ -654,10 +660,13 @@ function extrasDasTransferencias() {
                 + ' é por ele que a busca filtra.', 'erro');
             } else {
               aviso([
-                `${r.gravadas} repasses guardados`,
+                `${r.gravadas} destinos guardados`,
                 `${r.emendas} emendas`,
-                `${r.linhas} linhas em ${r.paginas} página(s)`,
-              ].join(' · '), r.gravadas ? 'ok' : 'erro');
+                r.executores ? `${r.executores} executores` : null,
+                r.metas ? `${r.metas} metas` : null,
+                r.empenhos ? `${r.empenhos} empenhos` : null,
+                r.fundoAFundo ? `${r.fundoAFundo} fundo a fundo` : null,
+              ].filter(Boolean).join(' · '), r.gravadas ? 'ok' : 'erro');
             }
             recarregar();
           } catch (erro) {
@@ -748,6 +757,9 @@ async function sanfonaDaEmenda(emenda, alvo, recarregar) {
       { titulo: 'Município', valor: (t) => t.municipio || '—' },
       { titulo: 'Quem recebeu', valor: (t) => t.favorecido || '—' },
       tem('objeto') && { titulo: 'Objeto', valor: (t) => t.objeto || '—' },
+      // As metas são a resposta mais concreta a "para quê foi": o que se
+      // comprou ou construiu, com quantidade.
+      tem('metas') && { titulo: 'Metas', valor: (t) => t.metas || '—' },
       // A fase só distingue quando há mais de uma; num lote todo de
       // transferência especial ela repetiria a mesma palavra em todas as linhas.
       new Set(linhas.map((t) => t.tipo)).size > 1

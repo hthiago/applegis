@@ -777,7 +777,7 @@ export const MODULOS = [
     singular: 'transferência',
     descricao: 'A emenda discriminada: quem recebeu, para quê, quanto e em que fase. Uma linha por proposta, convênio ou documento de execução.',
     ordenar: { campo: 'data', dir: 'desc' },
-    busca: ['favorecido', 'municipio', 'objeto', 'documento', 'codigoEmenda'],
+    busca: ['favorecido', 'municipio', 'objeto', 'metas', 'documento', 'codigoEmenda'],
     importaTransferencias: true,
     // Cada linha vem de uma base pública; cadastrar à mão criaria divergência.
     semCriacao: true,
@@ -785,6 +785,7 @@ export const MODULOS = [
       { campo: 'tipo', l: 'Tipo' },
       { campo: 'ano', l: 'Ano', ordem: 'valor-desc' },
       { campo: 'situacao', l: 'Situação' },
+      { campo: 'area', l: 'Área' },
       { campo: 'uf', l: 'UF' },
     ],
     // Por município, que é como o gabinete pensa a distribuição da emenda.
@@ -794,6 +795,10 @@ export const MODULOS = [
       { k: 'favorecido', l: 'Quem recebeu', t: 'texto', lista: true,
         subLinha: { campo: 'favorecidoDoc', prefixo: 'CNPJ ' } },
       { k: 'objeto', l: 'Objeto', t: 'area', lista: true },
+      // O que a emenda comprou ou construiu, com quantidade. É a resposta mais
+      // concreta que essas bases dão a "para quê foi" — mais concreta que a
+      // função orçamentária, que só diz a área.
+      { k: 'metas', l: 'Metas', t: 'area', lista: true },
       { k: 'valor', l: 'Valor', t: 'dinheiro', lista: true },
       { k: 'tipo', l: 'Tipo', t: 'select', lista: true, op: [
         { v: 'empenho', l: 'Empenho', cor: 'info' },
@@ -802,6 +807,7 @@ export const MODULOS = [
         { v: 'proposta', l: 'Proposta', cor: 'neutro' },
         { v: 'convenio', l: 'Convênio', cor: 'atencao' },
         { v: 'especial', l: 'Transferência especial', cor: 'atencao' },
+        { v: 'fundoafundo', l: 'Fundo a fundo', cor: 'info' },
       ] },
       { k: 'situacao', l: 'Situação', t: 'texto', lista: true },
       { k: 'notaInterna', l: 'Nota do gabinete', t: 'area', lista: true, inline: true },
@@ -817,6 +823,9 @@ export const MODULOS = [
       // "quanto deu para comprar equipamento" só se responde com os dois à vista.
       { k: 'valorCusteio', l: 'Custeio', t: 'dinheiro' },
       { k: 'valorInvestimento', l: 'Investimento', t: 'dinheiro' },
+      { k: 'valorEmpenhado', l: 'Empenhado', t: 'dinheiro' },
+      { k: 'execucao', l: 'Empenhos', t: 'area' },
+      { k: 'area', l: 'Área de política pública', t: 'texto' },
       { k: 'fonte', l: 'Origem do dado', t: 'texto' },
       { k: 'importadoEm', l: 'Importado em', t: 'data' },
     ],

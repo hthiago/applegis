@@ -459,6 +459,12 @@ export async function consultarPortal({ nomeAutor, aoProgredir = () => {} }) {
 // mostrou que existe um `fundoafundo` com estrutura parecida, ainda por ligar.
 
 const ESPECIAIS = '/transferenciasespeciais/plano_acao_especial';
+const EXECUTORES = '/transferenciasespeciais/executor_especial';
+const METAS = '/transferenciasespeciais/meta_especial';
+const FINALIDADES = '/transferenciasespeciais/finalidade_especial';
+const EMPENHOS = '/transferenciasespeciais/empenho_especial';
+const FUNDO_BENEFICIARIOS = '/fundoafundo/programa_beneficiario';
+const FUNDO_PLANOS = '/fundoafundo/plano_acao';
 
 /**
  * O código de doze dígitos que o Portal usa, remontado a partir das partes que
@@ -580,8 +586,15 @@ export function doPlanoAcao(r) {
 }
 
 /** A chave de uma transferência: o plano de ação identifica sozinho. */
-export function chaveDaTransferencia({ idPlanoAcao, codigoEmenda, documento, favorecido, data }) {
+export function chaveDaTransferencia({
+  idPlanoAcao, idExecutor, idBeneficiario, codigoEmenda, documento, favorecido, data,
+}) {
   const limpo = (v) => String(v || '').trim().replace(/[^\w.-]+/g, '-').replace(/^-|-$/g, '');
+  // Um plano repartido entre executores são vários destinos, com objetos
+  // diferentes. Chave só do plano faria o último sobrescrever os anteriores e o
+  // detalhamento sumiria justamente onde ele é mais fino.
+  if (idPlanoAcao && idExecutor) return `pa-${limpo(idPlanoAcao)}-ex-${limpo(idExecutor)}`;
+  if (idBeneficiario) return `ff-${limpo(idBeneficiario)}`;
   if (idPlanoAcao) return `pa-${limpo(idPlanoAcao)}`;
   if (codigoEmenda && documento) return `${limpo(codigoEmenda)}-${limpo(documento)}`;
   if (documento) return `doc-${limpo(documento)}`;
@@ -726,37 +739,266 @@ export function grafiasDoNome(nome) {
   return [...new Set([limpo, nomeParaBusca(limpo)])].filter(Boolean);
 }
 
-export async function detalharEmendas({ nomeAutor, aoProgredir = () => {} } = {}) {
+/**
+ * Quantos identificadores cabem num filtro `in.(...)` sem estourar o limite de
+ * comprimento que a ponte impõe ao valor de um parâmetro.
+ */
+export function lotesDeIds(ids, limite = 110) {
+  const limpos = [...new Set(ids.filter((x) => x !== null && x !== undefined && x !== ''))]
+    .map(String);
+  const saida = [];
+  let atual = [];
+  let tamanho = 0;
+  for (const id of limpos) {
+    if (atual.length && tamanho + id.length + 1 > limite) {
+      saida.push(atual); atual = []; tamanho = 0;
+    }
+    atual.push(id);
+    tamanho += id.length + 1;
+  }
+  if (atual.length) saida.push(atual);
+  return saida;
+}
+
+/** O executor é quem gasta, e `objeto_executor` é o para-quê que faltava. */
+export function doExecutor(r) {
+  const custeio = numeroBr(r.vl_custeio_executor);
+  const investimento = numeroBr(r.vl_investimento_executor);
+  return {
+    idPlanoAcao: r.id_plano_acao ?? null,
+    idExecutor: r.id_executor ?? null,
+    executor: r.nome_executor || null,
+    executorDoc: r.cnpj_executor || null,
+    objeto: r.objeto_executor || null,
+    valor: (custeio || 0) + (investimento || 0) || null,
+    valorCusteio: custeio,
+    valorInvestimento: investimento,
+  };
+}
+
+/** Uma meta física: o que a emenda comprou ou construiu, com quantidade. */
+export function rotuloDaMeta(r) {
+  const nome = r.nome_meta || r.desc_meta;
+  if (!nome) return null;
+  const quantidade = numeroBr(r.qt_uniade_meta ?? r.qt_unidade_meta);
+  const unidade = r.un_medida_meta;
+  return quantidade
+    ? `${nome} (${quantidade}${unidade ? ` ${unidade}` : ''})`
+    : String(nome);
+}
+
+/** Um empenho, resumido para caber numa linha ao lado do destino. */
+export function rotuloDoEmpenho(r) {
+  const partes = [r.numero_empenho, dataBr(r.data_emissao_empenho)].filter(Boolean);
+  const valor = numeroBr(r.valor_empenho);
+  if (valor) partes.push(valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }));
+  return partes.join(' · ') || null;
+}
+
+/** O beneficiário de um programa fundo a fundo: SUS, assistência social. */
+export function doBeneficiarioFundo(r) {
+  return {
+    codigoEmenda: normalizarCodigo(r.numero_emenda_beneficiario_programa),
+    tipo: 'fundoafundo',
+    favorecido: r.nome_beneficiario_programa || null,
+    favorecidoDoc: r.cnpj_beneficiario_programa || null,
+    municipio: municipioDoBeneficiario(r.nome_beneficiario_programa),
+    uf: r.uf_beneficiario_programa || null,
+    valor: numeroBr(r.valor_beneficiario_programa),
+    idBeneficiario: r.id_beneficiario_programa ?? null,
+    idPrograma: r.id_programa ?? null,
+    fonte: 'Transferegov — fundo a fundo',
+  };
+}
+
+/**
+ * Todo o detalhamento que as bases federais publicam sobre as emendas do
+ * parlamentar, numa varredura só.
+ *
+ * A execução de uma emenda não mora num lugar só, e foi isso que fez a busca
+ * andar em círculo por várias rodadas. São modalidades diferentes, em bases
+ * diferentes, e achar uma não adianta nada para as outras:
+ *
+ *   - Transferência especial: o dinheiro vai direto ao município. O plano de
+ *     ação diz quem recebeu; o executor diz para quê; a meta diz o que foi
+ *     comprado ou construído; o empenho diz o que de fato saiu.
+ *   - Fundo a fundo: SUS e assistência social, do fundo nacional ao municipal.
+ *     O beneficiário do programa se liga à emenda pelo número dela.
+ *
+ * O que não está aqui: convênio de finalidade definida — o módulo não existe
+ * nesse host — e execução direta pelo órgão, que nunca vira transferência e só
+ * aparece nos documentos do Portal.
+ */
+export async function detalharEmendas({ nomeAutor, codigos = [], aoProgredir = () => {} } = {}) {
   const { consultarFonte } = await import('./fontes.js');
   if (!nomeAutor) throw new Error('Informe o nome do parlamentar em Acessos → Dados do gabinete.');
 
-  const funil = { linhas: 0, gravadas: 0, paginas: 0, emendas: 0, procurado: null };
+  const funil = {
+    linhas: 0, gravadas: 0, paginas: 0, emendas: 0, procurado: null,
+    executores: 0, metas: 0, empenhos: 0, fundoAFundo: 0,
+  };
+  const contar = (etapa) => aoProgredir({ ...funil, etapa });
+
+  const buscar = async (caminho, parametros) => {
+    const r = await consultarFonte('transferegov-livre', { limit: 1000, ...parametros }, caminho);
+    return Array.isArray(r.dados) ? r.dados : [];
+  };
+  const porIds = async (caminho, campo, ids) => {
+    const saida = [];
+    for (const lote of lotesDeIds(ids)) {
+      // eslint-disable-next-line no-await-in-loop
+      saida.push(...await buscar(caminho, { [campo]: `in.(${lote.join(',')})` }));
+    }
+    return saida;
+  };
+
+  // ── 1. os planos de ação das transferências especiais ──
   const porPagina = 500;
-  const encontrados = [];
+  const planosBrutos = [];
   let amostra = null;
 
   for (const grafia of grafiasDoNome(nomeAutor)) {
     for (let pagina = 0; pagina < PAGINAS_ESPECIAIS; pagina += 1) {
-      const r = await consultarFonte('transferegov-livre', {
+      // eslint-disable-next-line no-await-in-loop
+      const lote = await buscar(ESPECIAIS, {
         nome_parlamentar_emenda_plano_acao: `ilike.*${grafia}*`,
         limit: porPagina,
         offset: pagina * porPagina,
-      }, ESPECIAIS);
-
-      const lote = Array.isArray(r.dados) ? r.dados : [];
+      });
       funil.paginas += 1;
       funil.linhas += lote.length;
       if (!amostra && lote.length) [amostra] = lote;
-
-      encontrados.push(...lote.map(doPlanoAcao));
-      aoProgredir({ ...funil, procurado: grafia });
-
+      planosBrutos.push(...lote);
+      contar('planos de ação');
       if (lote.length < porPagina) break;
     }
     if (funil.linhas) { funil.procurado = grafia; break; }
   }
 
-  const gravadas = await guardarTransferencias(encontrados);
+  const planos = planosBrutos.map(doPlanoAcao);
+  const idsPlano = planos.map((p) => p.idPlanoAcao).filter(Boolean);
+
+  // ── 2. quem executa e para quê ──
+  const executores = idsPlano.length
+    ? (await porIds(EXECUTORES, 'id_plano_acao', idsPlano)).map(doExecutor)
+    : [];
+  funil.executores = executores.length;
+  contar('executores');
+
+  const idsExecutor = executores.map((e) => e.idExecutor).filter(Boolean);
+
+  // ── 3. metas físicas e área de política pública, por executor ──
+  const metasPorExecutor = new Map();
+  const areasPorExecutor = new Map();
+  if (idsExecutor.length) {
+    for (const m of await porIds(METAS, 'id_executor', idsExecutor)) {
+      const rotulo = rotuloDaMeta(m);
+      if (!rotulo) continue;
+      if (!metasPorExecutor.has(m.id_executor)) metasPorExecutor.set(m.id_executor, []);
+      metasPorExecutor.get(m.id_executor).push(rotulo);
+      funil.metas += 1;
+    }
+    contar('metas');
+    for (const f of await porIds(FINALIDADES, 'id_executor', idsExecutor)) {
+      const area = f.area_politica_publica_pt || f.area_politica_publica_tipo_pt;
+      if (area) areasPorExecutor.set(f.id_executor, area);
+    }
+  }
+
+  // ── 4. os empenhos, por plano de ação ──
+  const empenhosPorPlano = new Map();
+  if (idsPlano.length) {
+    for (const e of await porIds(EMPENHOS, 'id_plano_acao', idsPlano)) {
+      if (!empenhosPorPlano.has(e.id_plano_acao)) empenhosPorPlano.set(e.id_plano_acao, []);
+      empenhosPorPlano.get(e.id_plano_acao).push(e);
+      funil.empenhos += 1;
+    }
+    contar('empenhos');
+  }
+
+  // ── 5. a junção: o destino em grão de executor, que é onde mora o objeto ──
+  const porPlano = new Map(planos.map((p) => [p.idPlanoAcao, p]));
+  const executoresPorPlano = new Map();
+  for (const e of executores) {
+    if (!executoresPorPlano.has(e.idPlanoAcao)) executoresPorPlano.set(e.idPlanoAcao, []);
+    executoresPorPlano.get(e.idPlanoAcao).push(e);
+  }
+
+  const resumoEmpenho = (id) => {
+    const lista = (empenhosPorPlano.get(id) || []).map(rotuloDoEmpenho).filter(Boolean);
+    return lista.length ? lista.join(' | ') : null;
+  };
+  const totalEmpenhado = (id) => (empenhosPorPlano.get(id) || [])
+    .reduce((soma, e) => soma + (numeroBr(e.valor_empenho) || 0), 0) || null;
+
+  const linhas = [];
+  for (const [id, plano] of porPlano) {
+    const seus = executoresPorPlano.get(id) || [];
+    const execucao = resumoEmpenho(id);
+    const empenhado = totalEmpenhado(id);
+
+    if (!seus.length) {
+      linhas.push({ ...plano, execucao, valorEmpenhado: empenhado });
+      continue;
+    }
+    // Um plano com vários executores é uma emenda repartida entre eles. O grão
+    // fino é o executor: é ele que tem objeto próprio e valor próprio. Somar de
+    // volta ao plano perderia justamente o "para quê".
+    for (const e of seus) {
+      linhas.push({
+        ...plano,
+        favorecido: e.executor || plano.favorecido,
+        favorecidoDoc: e.executorDoc || plano.favorecidoDoc,
+        objeto: e.objeto || plano.objeto,
+        area: areasPorExecutor.get(e.idExecutor) || null,
+        metas: (metasPorExecutor.get(e.idExecutor) || []).join(' | ') || null,
+        valor: e.valor ?? plano.valor,
+        valorCusteio: e.valorCusteio ?? plano.valorCusteio,
+        valorInvestimento: e.valorInvestimento ?? plano.valorInvestimento,
+        idExecutor: e.idExecutor,
+        execucao,
+        valorEmpenhado: seus.length === 1 ? empenhado : null,
+      });
+    }
+  }
+
+  // ── 6. fundo a fundo: a outra modalidade ──
+  let beneficiarios = [];
+  for (const grafia of grafiasDoNome(nomeAutor)) {
+    // eslint-disable-next-line no-await-in-loop
+    beneficiarios = await buscar(FUNDO_BENEFICIARIOS, {
+      nome_parlamentar_beneficiario_programa: `ilike.*${grafia}*`,
+    });
+    if (beneficiarios.length) break;
+  }
+  // O nome nem sempre está grafado igual entre as bases; o número da emenda é
+  // exato. Se o nome não achou nada, as emendas já importadas dizem o que
+  // procurar.
+  if (!beneficiarios.length && codigos.length) {
+    beneficiarios = await porIds(FUNDO_BENEFICIARIOS, 'numero_emenda_beneficiario_programa',
+      codigos.map(normalizarCodigo).filter(Boolean));
+  }
+  funil.fundoAFundo = beneficiarios.length;
+  contar('fundo a fundo');
+
+  const doFundo = beneficiarios.map(doBeneficiarioFundo);
+  const idsPrograma = doFundo.map((b) => b.idPrograma).filter(Boolean);
+  const planosFundo = idsPrograma.length
+    ? await porIds(FUNDO_PLANOS, 'id_programa', idsPrograma)
+    : [];
+  const objetivoPorPrograma = new Map();
+  for (const p of planosFundo) {
+    const objetivo = p.objetivos_plano_acao || p.diagnostico_plano_acao;
+    if (objetivo && !objetivoPorPrograma.has(p.id_programa)) {
+      objetivoPorPrograma.set(p.id_programa, String(objetivo).slice(0, 500));
+    }
+  }
+  linhas.push(...doFundo.map((b) => ({
+    ...b,
+    objeto: objetivoPorPrograma.get(b.idPrograma) || null,
+  })));
+
+  const gravadas = await guardarTransferencias(linhas);
   funil.gravadas = gravadas.length;
   funil.emendas = new Set(gravadas.map((t) => t.codigoEmenda).filter(Boolean)).size;
   if (funil.linhas && !gravadas.length) funil.amostra = recorteDaLinha(amostra);

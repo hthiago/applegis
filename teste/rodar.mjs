@@ -1491,8 +1491,8 @@ console.log('\nPlanilhas de emenda\n');
   await pagina.waitForTimeout(1200);
 
   const recado = await pagina.locator('.aviso').last().innerText().catch(() => '');
-  conferir('o detalhamento guarda os repasses',
-    /2 repasses guardados/.test(recado), recado.replace(/\s+/g, ' '));
+  conferir('o detalhamento guarda os destinos',
+    /2 destinos guardados/.test(recado), recado.replace(/\s+/g, ' '));
 
   const tabela = (await pagina.locator('.tabela tbody').innerText()).replace(/\s+/g, ' ');
   conferir('a linha mostra quem recebeu e o valor',
@@ -1510,6 +1510,101 @@ console.log('\nPlanilhas de emenda\n');
   conferir('detalhar de novo atualiza em vez de duplicar',
     (await pagina.locator('.tabela tbody tr').count()) === antes,
     `${antes} linhas`);
+
+  await pagina.close();
+}
+
+// A cadeia inteira: plano de ação → executor → meta → empenho, mais o fundo a
+// fundo. É o que responde "para onde foi e para quê" — a pergunta que sobrava
+// depois de saber só quem recebeu.
+{
+  const pagina = await abrir({
+    consultaAutomatica: true,
+    funcoes: {
+      consultarFonte: {
+        __fn: `var c = dados.caminho || '';
+        var par = dados.parametros || {};
+        if (c === '/transferenciasespeciais/plano_acao_especial') {
+          if (Number(par.offset || 0) > 0) return { dados: [] };
+          if (!/Deputada Teste/i.test(String(par.nome_parlamentar_emenda_plano_acao || ''))) return { dados: [] };
+          return { dados: [{ id_plano_acao: 11, ano_emenda_parlamentar_plano_acao: 2026,
+            codigo_parlamentar_emenda_plano_acao: 1234,
+            sequencial_emenda_parlamentar_plano_acao: 0,
+            nome_beneficiario_plano_acao: 'MUNICIPIO DE ERECHIM',
+            uf_beneficiario_plano_acao: 'RS', situacao_plano_acao: 'CIENTE',
+            valor_investimento_plano_acao: '500000' }] };
+        }
+        if (c === '/transferenciasespeciais/executor_especial') {
+          // Comparação literal, sem regex: dentro de um template literal a
+          // barra invertida some antes de virar expressão regular.
+          if (String(par.id_plano_acao || '') !== 'in.(11)') return { dados: [] };
+          return { dados: [
+            { id_plano_acao: 11, id_executor: 101, nome_executor: 'SECRETARIA DE SAUDE',
+              cnpj_executor: '11.111.111/0001-11', objeto_executor: 'Aquisição de ambulância',
+              vl_investimento_executor: '300000' },
+            { id_plano_acao: 11, id_executor: 102, nome_executor: 'SECRETARIA DE OBRAS',
+              objeto_executor: 'Pavimentação da Rua das Flores',
+              vl_custeio_executor: '200000' },
+          ] };
+        }
+        if (c === '/transferenciasespeciais/meta_especial') {
+          return { dados: [
+            { id_executor: 101, id_meta: 1, nome_meta: 'Ambulância tipo A',
+              un_medida_meta: 'unidade', qt_uniade_meta: '1' },
+            { id_executor: 102, id_meta: 2, nome_meta: 'Via pavimentada',
+              un_medida_meta: 'm2', qt_uniade_meta: '1200' },
+          ] };
+        }
+        if (c === '/transferenciasespeciais/finalidade_especial') {
+          return { dados: [{ id_executor: 101, area_politica_publica_pt: 'Saúde' }] };
+        }
+        if (c === '/transferenciasespeciais/empenho_especial') {
+          return { dados: [{ id_plano_acao: 11, numero_empenho: '2026NE000777',
+            data_emissao_empenho: '15/03/2026', valor_empenho: '500000' }] };
+        }
+        if (c === '/fundoafundo/programa_beneficiario') {
+          // Pelo nome não acha: é o caso que obriga a procurar pelo número da
+          // emenda, que é exato.
+          if (par.nome_parlamentar_beneficiario_programa) return { dados: [] };
+          return { dados: [{ id_beneficiario_programa: 900, id_programa: 77,
+            numero_emenda_beneficiario_programa: '202612340000',
+            nome_beneficiario_programa: 'FUNDO MUNICIPAL DE SAUDE DE GRAMADO',
+            uf_beneficiario_programa: 'RS', valor_beneficiario_programa: '150000' }] };
+        }
+        if (c === '/fundoafundo/plano_acao') {
+          return { dados: [{ id_programa: 77,
+            objetivos_plano_acao: 'Custeio da atenção primária' }] };
+        }
+        return { dados: [] };`,
+      },
+    },
+  });
+
+  await pagina.goto(`${BASE}/#/orcamento/transferencias`, { waitUntil: 'domcontentloaded' });
+  await pagina.waitForSelector('.modulo-topo');
+  await pagina.getByRole('button', { name: 'Detalhar emendas' }).click();
+  await pagina.waitForTimeout(2500);
+
+  const recado = (await pagina.locator('.aviso').last().innerText().catch(() => ''))
+    .replace(/\s+/g, ' ');
+  conferir('a varredura conta o que trouxe de cada nível',
+    /3 destinos guardados/.test(recado) && /2 executores/.test(recado)
+    && /2 metas/.test(recado) && /1 empenhos/.test(recado)
+    && /1 fundo a fundo/.test(recado), recado);
+
+  const tabela = (await pagina.locator('.tabela tbody').innerText()).replace(/\s+/g, ' ');
+  // O grão fino é o executor: um plano repartido entre dois vira dois destinos,
+  // cada um com seu objeto. Somado de volta ao plano, o "para quê" sumiria.
+  conferir('cada executor vira um destino, com objeto próprio',
+    /Aquisição de ambulância/.test(tabela) && /Pavimentação da Rua das Flores/.test(tabela),
+    tabela.slice(0, 300));
+  conferir('as metas físicas chegam à tela, com quantidade e unidade',
+    /Ambulância tipo A \(1 unidade\)/.test(tabela) && /Via pavimentada \(1200 m2\)/.test(tabela),
+    tabela.slice(0, 400));
+  // O nome do parlamentar não bate nessa base; o número da emenda é exato.
+  conferir('o fundo a fundo entra pelo número da emenda quando o nome não acha',
+    /FUNDO MUNICIPAL DE SAUDE DE GRAMADO/.test(tabela)
+    && /Custeio da atenção primária/.test(tabela), tabela.slice(0, 600));
 
   await pagina.close();
 }
