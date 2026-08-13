@@ -826,6 +826,13 @@ export const MODULOS = [
       { k: 'valorEmpenhado', l: 'Empenhado', t: 'dinheiro' },
       { k: 'execucao', l: 'Empenhos', t: 'area' },
       { k: 'area', l: 'Área de política pública', t: 'texto' },
+      { k: 'subfuncao', l: 'Subfunção', t: 'texto' },
+      // Por qual programa o dinheiro saiu e para qual recorte territorial. Na
+      // execução direta não há plano de ação descrevendo objeto: é isto que
+      // responde "para quê".
+      { k: 'acao', l: 'Ação orçamentária', t: 'texto', lista: true },
+      { k: 'localizador', l: 'Localizador do gasto', t: 'texto' },
+      { k: 'especie', l: 'Espécie do documento', t: 'texto' },
       { k: 'fonte', l: 'Origem do dado', t: 'texto' },
       { k: 'importadoEm', l: 'Importado em', t: 'data' },
     ],

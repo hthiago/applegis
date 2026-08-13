@@ -1015,6 +1015,32 @@ console.log('\nPlanilhas de emenda\n');
     nomeFavorecido: 'MUNICIPIO DE GRAMADO', municipio: 'GRAMADO - RS',
     valor: '250.000,00',
   }, '202612340003');
+  // O detalhe do documento, como a API o devolve de verdade: sem município, com
+  // UF do favorecido, e com a observação do empenho no lugar do objeto.
+  const detalhe = em.doDocumentoDaEmenda({
+    documento: '257001000012020NE808376', documentoResumido: '2020NE808376',
+    data: '08/04/2020', fase: 'Empenho', especie: 'ORIGINAL',
+    observacao: 'EMPENHO PARA ATENDER A PORTARIA 706 DE 08/04/2020',
+    funcao: '10 - Saúde', subfuncao: '301 - Atenção básica',
+    programa: '5019 - ATENCAO PRIMARIA A SAUDE',
+    acao: '2E89 - INCREMENTO TEMPORARIO AO CUSTEIO',
+    localizadorGasto: '0040 - NA REGIAO SUL',
+    nomeFavorecido: 'MUNICIPIO DE ERECHIM', codigoFavorecido: '87612917000100',
+    ufFavorecido: 'RS', valor: '1.720.227,00',
+  }, '202041160001');
+  conferir('o documento detalhado traz o objeto, o favorecido e o valor',
+    detalhe.objeto === 'EMPENHO PARA ATENDER A PORTARIA 706 DE 08/04/2020'
+    && detalhe.favorecido === 'MUNICIPIO DE ERECHIM' && detalhe.valor === 1720227
+    && detalhe.uf === 'RS', JSON.stringify(detalhe));
+  conferir('o município sai do nome do favorecido, que é onde ele está',
+    detalhe.municipio === 'ERECHIM', String(detalhe.municipio));
+  conferir('a classificação funcional diz por qual programa o dinheiro saiu',
+    detalhe.area === '10 - Saúde'
+    && detalhe.acao === '5019 - ATENCAO PRIMARIA A SAUDE · 2E89 - INCREMENTO TEMPORARIO AO CUSTEIO'
+    && detalhe.localizador === '0040 - NA REGIAO SUL', detalhe.acao);
+  conferir('o código longo é o que serve para pedir o detalhe',
+    detalhe.codigoDocumento === '257001000012020NE808376'
+    && detalhe.documento === '2020NE808376', detalhe.codigoDocumento);
   conferir('o documento do Portal vira um destino da emenda',
     doc.codigoEmenda === '202612340003' && doc.tipo === 'empenho'
     && doc.documento === '2026NE000001' && doc.data === '2026-02-10'
@@ -1521,6 +1547,109 @@ console.log('\nPlanilhas de emenda\n');
     /Empenho/.test(dentro) && /Pagamento/.test(dentro), dentro);
   conferir('somando o que a emenda repartiu',
     /7\.000\.000/.test(dentro), dentro);
+  await pagina.close();
+}
+
+// O caminho que a documentação da API nomeou, com o formato real das duas
+// consultas: o índice traz fase e data, o detalhe traz objeto, favorecido e
+// valor. É a resposta a "para quem foi e para qual objeto".
+{
+  const pagina = await abrir({
+    consultaAutomatica: true,
+    funcoes: {
+      consultarFonte: {
+        __fn: `var c = dados.caminho || '';
+        if (c === '/emendas/documentos/202612340000') {
+          if (Number((dados.parametros || {}).pagina || 1) > 1) return { dados: [] };
+          return { dados: [
+            { id: 1, data: '08/04/2026', fase: 'Empenho',
+              codigoDocumento: '257001000012026NE808376',
+              codigoDocumentoResumido: '2026NE808376',
+              especieTipo: 'ORIGINAL' },
+            { id: 2, data: '02/07/2026', fase: 'Pagamento',
+              codigoDocumento: '257001000012026OB800111',
+              codigoDocumentoResumido: '2026OB800111',
+              especieTipo: 'ORIGINAL' },
+          ] };
+        }
+        // O detalhe vem como objeto, não como lista — e é o código longo que o
+        // identifica, não o resumido.
+        if (c === '/despesas/documentos/257001000012026NE808376') {
+          return { dados: { documento: '257001000012026NE808376',
+            documentoResumido: '2026NE808376', data: '08/04/2026', fase: 'Empenho',
+            observacao: 'EMPENHO PARA ATENDER A PORTARIA 706',
+            funcao: '10 - Saúde', subfuncao: '301 - Atenção básica',
+            programa: '5019 - ATENCAO PRIMARIA A SAUDE', acao: '2E89 - INCREMENTO',
+            nomeFavorecido: 'MUNICIPIO DE ERECHIM', ufFavorecido: 'RS',
+            valor: '4.000.000,00' } };
+        }
+        if (c === '/despesas/documentos/257001000012026OB800111') {
+          return { dados: { documento: '257001000012026OB800111',
+            documentoResumido: '2026OB800111', data: '02/07/2026', fase: 'Pagamento',
+            observacao: 'PAGAMENTO REFERENTE A NOTA DE EMPENHO',
+            funcao: '10 - Saúde', nomeFavorecido: 'MUNICIPIO DE GRAMADO',
+            ufFavorecido: 'RS', valor: '3.000.000,00' } };
+        }
+        return { dados: [] };`,
+      },
+    },
+  });
+
+  await pagina.goto(`${BASE}/#/orcamento/emendas`, { waitUntil: 'domcontentloaded' });
+  await pagina.waitForSelector('.tabela');
+  await pagina.locator('.btn-sanfona').first().click();
+  await pagina.waitForTimeout(2500);
+
+  const dentro = (await pagina.locator('.linha-detalhe').first().innerText()).replace(/\s+/g, ' ');
+  conferir('o detalhe do documento traz para quem foi',
+    /MUNICIPIO DE ERECHIM/.test(dentro) && /MUNICIPIO DE GRAMADO/.test(dentro), dentro);
+  conferir('e para qual objeto',
+    /EMPENHO PARA ATENDER A PORTARIA 706/.test(dentro), dentro);
+  conferir('e quanto, agora com total de verdade',
+    /4\.000\.000/.test(dentro) && /7\.000\.000/.test(dentro)
+    && !/valores não informados/.test(dentro), dentro);
+  conferir('a ação orçamentária diz por qual programa o dinheiro saiu',
+    /ATENCAO PRIMARIA A SAUDE/.test(dentro), dentro);
+  await pagina.close();
+}
+
+// Guardado não é o mesmo que completo: linhas salvas sem quem recebeu e sem
+// valor faziam a versão que sabe buscar esse nível nunca rodar.
+{
+  const pagina = await abrir({
+    consultaAutomatica: true,
+    funcoes: {
+      consultarFonte: {
+        __fn: `var c = dados.caminho || '';
+        if (c === '/emendas/documentos/202612340000') {
+          if (Number((dados.parametros || {}).pagina || 1) > 1) return { dados: [] };
+          return { dados: [{ id: 1, data: '08/04/2026', fase: 'Empenho',
+            codigoDocumento: '257001000012026NE808376',
+            codigoDocumentoResumido: '2026NE808376' }] };
+        }
+        if (c === '/despesas/documentos/257001000012026NE808376') {
+          return { dados: { documento: '257001000012026NE808376', data: '08/04/2026',
+            fase: 'Empenho', observacao: 'AQUISICAO DE EQUIPAMENTOS',
+            nomeFavorecido: 'MUNICIPIO DE ERECHIM', valor: '1.000,00' } };
+        }
+        return { dados: [] };`,
+      },
+    },
+  });
+
+  await pagina.goto(`${BASE}/#/orcamento/emendas`, { waitUntil: 'domcontentloaded' });
+  await pagina.waitForSelector('.tabela');
+  // Primeira abertura guarda; a segunda leria do guardado.
+  await pagina.locator('.btn-sanfona').first().click();
+  await pagina.waitForTimeout(2000);
+  await pagina.locator('.btn-sanfona').first().click();
+  await pagina.waitForTimeout(300);
+  await pagina.locator('.btn-sanfona').first().click();
+  await pagina.waitForTimeout(1200);
+
+  const dentro = (await pagina.locator('.linha-detalhe').first().innerText()).replace(/\s+/g, ' ');
+  conferir('reabrir mostra o que foi guardado, agora completo',
+    /MUNICIPIO DE ERECHIM/.test(dentro) && /AQUISICAO DE EQUIPAMENTOS/.test(dentro), dentro);
   await pagina.close();
 }
 

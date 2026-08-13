@@ -621,6 +621,10 @@ export function doDocumentoDaEmenda(r, codigoEmenda) {
     : v);
 
   const fase = texto(pegar('fase', 'faseDespesa'));
+  const favorecido = texto(pegar('nomeFavorecido', 'favorecido', 'nomeBeneficiario'));
+  // O índice traz `municipio`; o detalhe não traz município nenhum, e sim a UF
+  // do favorecido. O nome do favorecido — "MUNICIPIO DE X" — é que carrega a
+  // cidade, como no Transferegov.
   const local = separarLocalidade(texto(pegar('municipio', 'localidadeDoGasto')));
 
   return {
@@ -628,19 +632,29 @@ export function doDocumentoDaEmenda(r, codigoEmenda) {
     documento: pegar('codigoDocumentoResumido', 'documentoResumido', 'codigoDocumento') || null,
     tipo: tipoDaFase(fase) || 'empenho',
     data: dataBr(pegar('data', 'dataEmissao')),
-    favorecido: texto(pegar('nomeFavorecido', 'favorecido', 'nomeBeneficiario')),
+    favorecido,
     favorecidoDoc: pegar('codigoFavorecido', 'cpfCnpjFavorecido') || null,
-    municipio: local.municipio,
-    uf: local.uf,
+    municipio: local.municipio || (favorecido ? municipioDoBeneficiario(favorecido) : null),
+    uf: local.uf || texto(pegar('ufFavorecido')),
     // `especieTipo` NÃO é o objeto: é a espécie do documento — "Original",
     // "Reforço", "Não se aplica". Escrevê-la na coluna de objeto encheu a tela
     // de "Não se aplica" onde se esperava ler para que serviu o dinheiro, o que
     // é pior do que a coluna vazia: parece resposta e não é.
+    //
+    // O objeto de verdade é a observação do empenho: "EMPENHO PARA ATENDER A
+    // PORTARIA 706 DE 08/04/2020". Ela só existe no documento detalhado.
     objeto: texto(pegar('observacao', 'objeto', 'descricao')),
     especie: texto(pegar('especieTipo', 'especie')),
+    // A classificação funcional diz a política pública a que o gasto pertence,
+    // e a ação orçamentária diz o programa concreto que o executou.
+    area: texto(pegar('funcao')),
+    subfuncao: texto(pegar('subfuncao')),
+    acao: [texto(pegar('programa')), texto(pegar('acao'))].filter(Boolean).join(' · ') || null,
+    localizador: texto(pegar('localizadorGasto', 'subTitulo')),
+    orgao: texto(pegar('orgao', 'unidadeGestora', 'ug')),
     valor: numeroBr(pegar('valor', 'valorDocumento', 'valorEmpenhado')),
     idDocumento: pegar('id') ?? null,
-    codigoDocumento: pegar('codigoDocumento') || null,
+    codigoDocumento: pegar('codigoDocumento', 'documento') || null,
     fonte: 'Portal da Transparência — documentos da emenda',
   };
 }
@@ -675,12 +689,16 @@ export async function documentosDaEmenda(codigo, {
   // todas as emendas do mandato numa varredura.
   let completados = 0;
   if (completar && linhas.length) {
-    for (let i = 0; i < linhas.length; i += 1) {
+    const POR_LEVA = 5;
+    for (let i = 0; i < linhas.length; i += POR_LEVA) {
+      const leva = linhas.slice(i, i + POR_LEVA);
       // eslint-disable-next-line no-await-in-loop
-      const completo = await detalharDocumento(linhas[i]);
-      if (completo.favorecido || completo.valor) completados += 1;
-      linhas[i] = completo;
-      aoProgredir({ feitos: i + 1, total: linhas.length, completados });
+      const prontos = await Promise.all(leva.map(detalharDocumento));
+      prontos.forEach((completo, j) => {
+        if (completo.favorecido || completo.valor) completados += 1;
+        linhas[i + j] = completo;
+      });
+      aoProgredir({ feitos: Math.min(i + POR_LEVA, linhas.length), total: linhas.length, completados });
     }
   }
 
@@ -696,24 +714,15 @@ export async function documentosDaEmenda(codigo, {
  * rodada por palpite, a lista é tentada em ordem uma única vez por sessão: o
  * primeiro que responder fica escolhido, e os outros não são tentados de novo.
  */
-export const DETALHES_DO_DOCUMENTO = [
-  { caminho: (c) => `/despesas/documentos/${c}`, parametros: () => ({}) },
-  { caminho: () => '/despesas/documentos-relacionados', parametros: (c) => ({ codigoDocumento: c }) },
-  { caminho: () => '/despesas/documentos', parametros: (c, data) => ({ codigoDocumento: c, dataEmissao: data }) },
-  { caminho: (c) => `/despesas/documento/${c}`, parametros: () => ({}) },
-];
-
-let caminhoDoDocumento = null;
-
-/** Só para o teste: esquece o caminho aprendido entre um caso e outro. */
-export function esquecerCaminhoDoDocumento() {
-  caminhoDoDocumento = null;
-}
-
 /**
- * Completa um documento com quem recebeu e quanto, quando a fonte permitir.
+ * Completa um documento com quem recebeu, quanto e para quê.
  *
- * Devolve o documento como veio se nada responder: linha sem valor continua
+ * O caminho não é mais palpite: a documentação da própria API o declara como
+ * `/despesas/documentos/{codigo}`, com o código longo — `257001000012020NE808376`,
+ * e não o resumido `2020NE808376`. É ali que estão a observação do empenho, que
+ * é o objeto de verdade, o favorecido, o valor e a classificação funcional.
+ *
+ * Devolve o documento como veio se a consulta falhar: linha sem valor continua
  * sendo a prova de que houve empenho naquela data, e apagá-la para "não mostrar
  * campo vazio" esconderia execução real.
  */
@@ -722,27 +731,12 @@ export async function detalharDocumento(documento) {
   const codigo = documento.codigoDocumento || documento.documento;
   if (!codigo) return documento;
 
-  const dataBrasileira = documento.data
-    ? documento.data.split('-').reverse().join('/')
-    : null;
-
-  const tentar = async (candidato) => {
-    const r = await consultarFonte('portal-livre',
-      { ...candidato.parametros(codigo, dataBrasileira), pagina: 1 },
-      candidato.caminho(codigo));
-    const lote = [].concat(r.dados).filter(Boolean);
-    return lote.length ? lote[0] : null;
-  };
-
   let bruto = null;
-  if (caminhoDoDocumento) {
-    bruto = await tentar(caminhoDoDocumento).catch(() => null);
-  } else {
-    for (const candidato of DETALHES_DO_DOCUMENTO) {
-      // eslint-disable-next-line no-await-in-loop
-      const achado = await tentar(candidato).catch(() => null);
-      if (achado) { caminhoDoDocumento = candidato; bruto = achado; break; }
-    }
+  try {
+    const r = await consultarFonte('portal-livre', {}, `/despesas/documentos/${codigo}`);
+    bruto = [].concat(r.dados).filter(Boolean)[0] || null;
+  } catch {
+    bruto = null;
   }
   if (!bruto) return documento;
 
@@ -821,7 +815,7 @@ export function recorteDaLinha(linha, limite = 700) {
  * Os planos de ação de uma emenda só. É a unidade da sanfona: abrir uma linha
  * custa uma consulta, e ela usa as três partes do código para filtrar.
  */
-export async function detalharEmenda(codigo, { nomeAutor = null } = {}) {
+export async function detalharEmenda(codigo, { nomeAutor = null, aoProgredir = () => {} } = {}) {
   const { consultarFonte } = await import('./fontes.js');
   const partes = partesDoCodigo(codigo);
   if (!partes) {
@@ -882,7 +876,7 @@ export async function detalharEmenda(codigo, { nomeAutor = null } = {}) {
   let completados = 0;
   if (!transferencias.length) {
     tentativas.push('documentos no Portal');
-    const doPortalEmenda = await documentosDaEmenda(alvo, { completar: true });
+    const doPortalEmenda = await documentosDaEmenda(alvo, { completar: true, aoProgredir });
     documentos = doPortalEmenda.linhas.length;
     completados = doPortalEmenda.completados;
     if (documentos) {
@@ -1290,13 +1284,14 @@ export function caminhosDoPortal(codigoEmenda, codigoDocumento = null, data = nu
     c && { caminho: `/emendas/${c}/documentos` },
     { caminho: '/emendas/documentos', usa: 'codigoEmenda' },
 
-    // O nível abaixo do índice: quem recebeu e quanto. Só faz sentido perguntar
-    // com um número de documento de verdade na mão.
+    // O nível abaixo do índice, agora com os nomes que a documentação declarou.
+    // Os dois últimos ainda não estão ligados e ficam sondados de propósito:
+    // itens de empenho é o objeto linha a linha, e favorecidos finais é para
+    // onde o dinheiro foi depois de passar por um fundo.
     d && { caminho: `/despesas/documentos/${d}` },
-    d && { caminho: `/despesas/documento/${d}` },
-    d && { caminho: '/despesas/documentos-relacionados', parametros: { codigoDocumento: d } },
-    d && data && { caminho: '/despesas/documentos', parametros: { codigoDocumento: d, dataEmissao: data } },
-    d && data && { caminho: '/despesas/documentos', parametros: { dataEmissao: data, fase: 'Empenho' } },
+    d && { caminho: '/despesas/itens-de-empenho', parametros: { codigoDocumento: d } },
+    d && { caminho: '/despesas/favorecidos-finais-por-documento', parametros: { codigoDocumento: d } },
+    d && { caminho: '/despesas/documentos-relacionados', parametros: { codigoDocumento: d, fase: 'Empenho' } },
   ].filter(Boolean);
 }
 

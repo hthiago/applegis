@@ -778,6 +778,10 @@ async function sanfonaDaEmenda(emenda, alvo, recarregar) {
       // As metas são a resposta mais concreta a "para quê foi": o que se
       // comprou ou construiu, com quantidade.
       tem('metas') && { titulo: 'Metas', valor: (t) => t.metas || '—' },
+      // A ação orçamentária e o localizador dizem por qual programa o dinheiro
+      // saiu e para qual recorte territorial — é o "para quê" da execução
+      // direta, em que não há plano de ação nenhum descrevendo objeto.
+      tem('acao') && { titulo: 'Ação orçamentária', valor: (t) => t.acao || '—' },
       // A fase só distingue quando há mais de uma; num lote todo de
       // transferência especial ela repetiria a mesma palavra em todas as linhas.
       new Set(linhas.map((t) => t.tipo)).size > 1
@@ -846,7 +850,13 @@ async function sanfonaDaEmenda(emenda, alvo, recarregar) {
     const guardadas = (await nucleo.dados.listar('transferencias'))
       .filter((t) => mesmoCodigo(t.codigoEmenda, emenda.codigo));
 
-    if (guardadas.length) { desenhar(guardadas); return; }
+    // Guardado não é o mesmo que completo. Vinte e sete linhas sem quem recebeu
+    // e sem valor foram salvas por uma versão que ainda não sabia buscar esse
+    // nível — e, por estarem salvas, faziam a versão que sabe nunca rodar. O
+    // cache serve para não repetir consulta, não para congelar uma resposta
+    // incompleta.
+    const util = guardadas.some((t) => t.favorecido || t.valor);
+    if (guardadas.length && util) { desenhar(guardadas); return; }
 
     if (!nucleo.fontes.disponivel()) {
       desenhar([], 'Nada detalhado ainda. A consulta automática está desligada — use "Importar planilha" ou ligue as Cloud Functions.');
@@ -855,6 +865,13 @@ async function sanfonaDaEmenda(emenda, alvo, recarregar) {
 
     const r = await nucleo.emendas.detalharEmenda(emenda.codigo, {
       nomeAutor: nucleo.sessaoMod.sessao.gabinete?.deputado || null,
+      aoProgredir: (p) => {
+        limpar(alvo);
+        alvo.appendChild(el('p', {
+          class: 'sanfona-recado',
+          texto: `Detalhando documento ${p.feitos} de ${p.total}…`,
+        }));
+      },
     });
     if (r.motivo === 'codigo-ilegivel') {
       desenhar([], `Não dá para consultar por este código: "${r.procurado || '(vazio)'}".`
