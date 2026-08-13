@@ -632,9 +632,15 @@ export function doDocumentoDaEmenda(r, codigoEmenda) {
     favorecidoDoc: pegar('codigoFavorecido', 'cpfCnpjFavorecido') || null,
     municipio: local.municipio,
     uf: local.uf,
-    objeto: texto(pegar('observacao', 'objeto', 'descricao', 'especieTipo')),
+    // `especieTipo` NÃO é o objeto: é a espécie do documento — "Original",
+    // "Reforço", "Não se aplica". Escrevê-la na coluna de objeto encheu a tela
+    // de "Não se aplica" onde se esperava ler para que serviu o dinheiro, o que
+    // é pior do que a coluna vazia: parece resposta e não é.
+    objeto: texto(pegar('observacao', 'objeto', 'descricao')),
+    especie: texto(pegar('especieTipo', 'especie')),
     valor: numeroBr(pegar('valor', 'valorDocumento', 'valorEmpenhado')),
     idDocumento: pegar('id') ?? null,
+    codigoDocumento: pegar('codigoDocumento') || null,
     fonte: 'Portal da Transparência — documentos da emenda',
   };
 }
@@ -646,10 +652,12 @@ export function doDocumentoDaEmenda(r, codigoEmenda) {
  * empenhos, e parar na primeira página mostraria uma fatia se passando pelo todo
  * — que é o erro que a consulta de emendas já cometeu uma vez.
  */
-export async function documentosDaEmenda(codigo, { paginasMaximas = 40 } = {}) {
+export async function documentosDaEmenda(codigo, {
+  paginasMaximas = 40, completar = false, aoProgredir = () => {},
+} = {}) {
   const { consultarFonte } = await import('./fontes.js');
   const alvo = normalizarCodigo(codigo);
-  if (!alvo) return { linhas: [], paginas: 0 };
+  if (!alvo) return { linhas: [], paginas: 0, completados: 0 };
 
   const linhas = [];
   let paginas = 0;
@@ -661,7 +669,92 @@ export async function documentosDaEmenda(codigo, { paginasMaximas = 40 } = {}) {
     linhas.push(...lote.map((x) => doDocumentoDaEmenda(x, alvo)));
     if (!lote.length) break;
   }
-  return { linhas, paginas };
+
+  // Completar custa uma consulta por documento — vinte e sete numa emenda só.
+  // Vale quando alguém abriu aquela emenda para olhar; não vale multiplicado por
+  // todas as emendas do mandato numa varredura.
+  let completados = 0;
+  if (completar && linhas.length) {
+    for (let i = 0; i < linhas.length; i += 1) {
+      // eslint-disable-next-line no-await-in-loop
+      const completo = await detalharDocumento(linhas[i]);
+      if (completo.favorecido || completo.valor) completados += 1;
+      linhas[i] = completo;
+      aoProgredir({ feitos: i + 1, total: linhas.length, completados });
+    }
+  }
+
+  return { linhas, paginas, completados };
+}
+
+/**
+ * Onde procurar o favorecido e o valor de um documento.
+ *
+ * O índice da emenda traz número, fase e data, e só. Quem recebeu e quanto
+ * estão um nível abaixo, num caminho que a documentação do Portal não deixa
+ * claro e que eu não alcanço daqui para conferir. Em vez de custar mais uma
+ * rodada por palpite, a lista é tentada em ordem uma única vez por sessão: o
+ * primeiro que responder fica escolhido, e os outros não são tentados de novo.
+ */
+export const DETALHES_DO_DOCUMENTO = [
+  { caminho: (c) => `/despesas/documentos/${c}`, parametros: () => ({}) },
+  { caminho: () => '/despesas/documentos-relacionados', parametros: (c) => ({ codigoDocumento: c }) },
+  { caminho: () => '/despesas/documentos', parametros: (c, data) => ({ codigoDocumento: c, dataEmissao: data }) },
+  { caminho: (c) => `/despesas/documento/${c}`, parametros: () => ({}) },
+];
+
+let caminhoDoDocumento = null;
+
+/** Só para o teste: esquece o caminho aprendido entre um caso e outro. */
+export function esquecerCaminhoDoDocumento() {
+  caminhoDoDocumento = null;
+}
+
+/**
+ * Completa um documento com quem recebeu e quanto, quando a fonte permitir.
+ *
+ * Devolve o documento como veio se nada responder: linha sem valor continua
+ * sendo a prova de que houve empenho naquela data, e apagá-la para "não mostrar
+ * campo vazio" esconderia execução real.
+ */
+export async function detalharDocumento(documento) {
+  const { consultarFonte } = await import('./fontes.js');
+  const codigo = documento.codigoDocumento || documento.documento;
+  if (!codigo) return documento;
+
+  const dataBrasileira = documento.data
+    ? documento.data.split('-').reverse().join('/')
+    : null;
+
+  const tentar = async (candidato) => {
+    const r = await consultarFonte('portal-livre',
+      { ...candidato.parametros(codigo, dataBrasileira), pagina: 1 },
+      candidato.caminho(codigo));
+    const lote = [].concat(r.dados).filter(Boolean);
+    return lote.length ? lote[0] : null;
+  };
+
+  let bruto = null;
+  if (caminhoDoDocumento) {
+    bruto = await tentar(caminhoDoDocumento).catch(() => null);
+  } else {
+    for (const candidato of DETALHES_DO_DOCUMENTO) {
+      // eslint-disable-next-line no-await-in-loop
+      const achado = await tentar(candidato).catch(() => null);
+      if (achado) { caminhoDoDocumento = candidato; bruto = achado; break; }
+    }
+  }
+  if (!bruto) return documento;
+
+  const completo = doDocumentoDaEmenda(bruto, documento.codigoEmenda);
+  // O índice manda fase e data; o detalhe manda favorecido e valor. Cada campo
+  // fica com quem o tem, e nenhum dos dois apaga o outro.
+  const junto = { ...documento };
+  for (const [campo, valor] of Object.entries(completo)) {
+    if (valor !== null && valor !== undefined && valor !== '') junto[campo] = valor;
+  }
+  junto.idDocumento = documento.idDocumento ?? completo.idDocumento;
+  return junto;
 }
 
 /** A chave de uma transferência: o plano de ação identifica sozinho. */
@@ -786,10 +879,12 @@ export async function detalharEmenda(codigo, { nomeAutor = null } = {}) {
   // daqui era o que fazia a sanfona dizer "não tem" sobre uma emenda que foi
   // para vários municípios.
   let documentos = 0;
+  let completados = 0;
   if (!transferencias.length) {
     tentativas.push('documentos no Portal');
-    const doPortalEmenda = await documentosDaEmenda(alvo);
+    const doPortalEmenda = await documentosDaEmenda(alvo, { completar: true });
     documentos = doPortalEmenda.linhas.length;
+    completados = doPortalEmenda.completados;
     if (documentos) {
       transferencias = await guardarTransferencias(doPortalEmenda.linhas);
     }
@@ -798,6 +893,7 @@ export async function detalharEmenda(codigo, { nomeAutor = null } = {}) {
   return {
     transferencias,
     documentos,
+    completados,
     // Três resultados diferentes, três recados diferentes. Confundi-los uma vez
     // já mandou procurar nome de campo quando o problema era o código. E nome de
     // campo sozinho não fecha a dúvida: os nomes podem estar todos certos e os
@@ -1184,15 +1280,23 @@ export const MODULOS_TRANSFEREGOV = [
  * ele diz "não existe". Resta tentar — inclusive a forma com o código na URL,
  * que é como boa parte dos caminhos dele funciona e que eu nunca testei.
  */
-export function caminhosDoPortal(codigoEmenda) {
+export function caminhosDoPortal(codigoEmenda, codigoDocumento = null, data = null) {
   const c = String(codigoEmenda || '').replace(/\D/g, '');
+  const d = codigoDocumento ? String(codigoDocumento).trim() : null;
   return [
     { caminho: '/emendas', usa: 'codigoEmenda' },
     c && { caminho: `/emendas/${c}` },
     c && { caminho: `/emendas/documentos/${c}` },
     c && { caminho: `/emendas/${c}/documentos` },
     { caminho: '/emendas/documentos', usa: 'codigoEmenda' },
-    { caminho: '/despesas/documentos', usa: 'codigoEmenda' },
+
+    // O nível abaixo do índice: quem recebeu e quanto. Só faz sentido perguntar
+    // com um número de documento de verdade na mão.
+    d && { caminho: `/despesas/documentos/${d}` },
+    d && { caminho: `/despesas/documento/${d}` },
+    d && { caminho: '/despesas/documentos-relacionados', parametros: { codigoDocumento: d } },
+    d && data && { caminho: '/despesas/documentos', parametros: { codigoDocumento: d, dataEmissao: data } },
+    d && data && { caminho: '/despesas/documentos', parametros: { dataEmissao: data, fase: 'Empenho' } },
   ].filter(Boolean);
 }
 
@@ -1264,11 +1368,38 @@ export async function sondarFontes(codigoEmenda, { nomeAutor = null, aoProgredir
   };
 
   // ── Portal: sem catálogo, só hipóteses ──
-  const doPortalTentado = caminhosDoPortal(codigoEmenda);
+  //
+  // O índice de documentos da emenda existe e não traz favorecido nem valor.
+  // Esses estão um nível abaixo, e para sondar esse nível é preciso um número de
+  // documento de verdade — que só o próprio índice fornece. Por isso ele é
+  // consultado antes, e o que ele devolver alimenta as hipóteses seguintes.
+  let umDocumento = null;
+  let umaData = null;
+  try {
+    const { linhas } = await documentosDaEmenda(codigoEmenda, { paginasMaximas: 1 });
+    const primeiro = linhas.find((l) => l.codigoDocumento || l.documento);
+    if (primeiro) {
+      umDocumento = primeiro.codigoDocumento || primeiro.documento;
+      umaData = primeiro.data ? primeiro.data.split('-').reverse().join('/') : null;
+      achados.push({
+        caminho: `portal/emendas/documentos/${normalizarCodigo(codigoEmenda)} (amostra)`,
+        ok: true,
+        quantidade: linhas.length,
+        campos: [],
+        amostra: recorteDaLinha(primeiro, 500),
+      });
+    }
+  } catch {
+    // O índice já é sondado logo abaixo; a falha aqui aparece lá com o motivo.
+  }
+
+  const doPortalTentado = caminhosDoPortal(codigoEmenda, umDocumento, umaData);
   await emLevas(doPortalTentado, 3, async (candidato) => {
-    const parametros = candidato.usa === 'codigoEmenda' && codigoEmenda
-      ? { codigoEmenda, pagina: 1 }
-      : { pagina: 1 };
+    const parametros = {
+      pagina: 1,
+      ...(candidato.usa === 'codigoEmenda' && codigoEmenda ? { codigoEmenda } : {}),
+      ...(candidato.parametros || {}),
+    };
     const r = await tentar('portal-livre', candidato.caminho, parametros);
     const lote = r.ok ? [].concat(r.dados).filter(Boolean) : [];
     achados.push({
@@ -1277,6 +1408,9 @@ export async function sondarFontes(codigoEmenda, { nomeAutor = null, aoProgredir
       erro: r.erro,
       quantidade: lote.length,
       campos: Object.keys(lote[0] || {}),
+      // Nome de campo não fecha dúvida: precisei aprender isso duas vezes. Uma
+      // linha com valores diz de uma vez se ali está o favorecido e o valor.
+      amostra: lote.length ? recorteDaLinha(lote[0], 500) : null,
     });
   }, (f, t) => aoProgredir({ etapa: 'Portal', feitos: f, total: t }));
 

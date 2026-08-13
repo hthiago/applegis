@@ -795,7 +795,12 @@ async function sanfonaDaEmenda(emenda, alvo, recarregar) {
       porMunicipio.get(chave).push(t);
     });
 
-    const total = linhas.reduce((soma, t) => soma + (Number(t.valor) || 0), 0);
+    // Somar linhas cujo valor a fonte não informou dá zero — e "R$ 0,00" ao pé
+    // de uma emenda de sete milhões lê-se como "nada foi pago", que é o oposto
+    // do que os dados dizem. Sem valor informado, não se afirma total nenhum.
+    const comValor = linhas.filter((t) => Number(t.valor));
+    const total = comValor.reduce((soma, t) => soma + Number(t.valor), 0);
+    const parcial = comValor.length && comValor.length < linhas.length;
 
     alvo.appendChild(el('table', { class: 'sanfona-tabela' }, [
       el('thead', {}, [el('tr', {}, colunas.map(
@@ -814,9 +819,16 @@ async function sanfonaDaEmenda(emenda, alvo, recarregar) {
       el('tfoot', {}, [el('tr', {}, [
         el('td', {
           colspan: String(Math.max(1, colunas.length - 1)),
-          texto: `${porMunicipio.size} destino(s) · ${linhas.length} repasse(s)`,
+          texto: [
+            `${porMunicipio.size} destino(s)`,
+            `${linhas.length} repasse(s)`,
+            parcial ? `valor informado em ${comValor.length} deles` : null,
+          ].filter(Boolean).join(' · '),
         }),
-        el('td', { class: 'num', texto: fmtDinheiro(total) }),
+        el('td', {
+          class: 'num',
+          texto: comValor.length ? fmtDinheiro(total) : 'valores não informados',
+        }),
       ])]),
     ]));
   };
@@ -863,8 +875,17 @@ async function sanfonaDaEmenda(emenda, alvo, recarregar) {
     // Zero linhas não é "esta emenda não é especial": é "ninguém apareceu nesta
     // consulta". Afirmar a primeira sem ter perguntado pelo nome também já foi
     // dito aqui, e estava errado. O recado passa a contar o que foi perguntado.
+    // Documento sem favorecido nem valor é execução real com detalhe faltando,
+    // não linha inútil. Dizer isso evita que a tela pareça quebrada quando na
+    // verdade é a fonte que não desceu a esse nível.
+    const incompleto = r.documentos && !r.completados
+      ? `${r.documentos} documentos de execução, do índice do Portal.`
+        + ' Ele publica fase, data e número; quem recebeu e quanto ficaram num'
+        + ' nível abaixo que esta consulta ainda não alcança.'
+      : null;
+
     desenhar(r.transferencias, r.transferencias.length
-      ? null
+      ? incompleto
       : `O Transferegov não devolveu nenhum plano de ação de ${r.ano} para este`
         + ` gabinete. Procurei por ${r.tentativas.join(' e depois por ')}.`
         + ' Ou nenhuma emenda deste ano foi por transferência especial, ou o nome do'

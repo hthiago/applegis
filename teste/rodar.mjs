@@ -1021,10 +1021,13 @@ console.log('\nPlanilhas de emenda\n');
     && doc.favorecido === 'MUNICIPIO DE GRAMADO' && doc.municipio === 'GRAMADO'
     && doc.uf === 'RS' && doc.valor === 250000,
     JSON.stringify(doc));
-  // `especieTipo` chega como objeto; despejar "[object Object]" na coluna de
-  // objeto seria pior do que deixá-la vazia.
-  conferir('campo que vem como objeto é lido pela descrição, não empilhado cru',
-    doc.objeto === 'Nota de empenho', String(doc.objeto));
+  // `especieTipo` é a espécie do documento — "Original", "Reforço", "Não se
+  // aplica" —, não o objeto do gasto. Escrevê-la na coluna de objeto encheu a
+  // tela de "Não se aplica" onde se esperava ler para que serviu o dinheiro:
+  // parece resposta e não é, o que é pior que a coluna vazia.
+  conferir('a espécie do documento não se disfarça de objeto do gasto',
+    doc.especie === 'Nota de empenho' && doc.objeto === null,
+    `especie=${doc.especie} objeto=${doc.objeto}`);
   conferir('documento sem plano de ação ainda tem chave própria',
     em.chaveDaTransferencia(doc) === 'doc-5', em.chaveDaTransferencia(doc));
   conferir('o nome é procurado como está e também sem acento',
@@ -1452,12 +1455,14 @@ console.log('\nPlanilhas de emenda\n');
           return { dados: [
             { id: 1, data: '10/02/2026', fase: 'Empenho',
               codigoDocumentoResumido: '2026NE000001',
-              especieTipo: { descricao: 'Aquisição de equipamentos hospitalares' },
+              especieTipo: { descricao: 'Original' },
+              observacao: 'Aquisição de equipamentos hospitalares',
               nomeFavorecido: 'MUNICIPIO DE ERECHIM', municipio: 'ERECHIM - RS',
               valor: '4.000.000,00' },
             { id: 2, data: '11/02/2026', fase: 'Pagamento',
               codigoDocumentoResumido: '2026OB000009',
-              especieTipo: { descricao: 'Reforma de unidade básica' },
+              especieTipo: { descricao: 'Original' },
+              observacao: 'Reforma de unidade básica',
               nomeFavorecido: 'MUNICIPIO DE GRAMADO', municipio: 'GRAMADO - RS',
               valor: '3.000.000,00' },
           ] };
@@ -1482,6 +1487,47 @@ console.log('\nPlanilhas de emenda\n');
     /Empenho/.test(dentro) && /Pagamento/.test(dentro), dentro);
   conferir('somando o que a emenda repartiu',
     /7\.000\.000/.test(dentro), dentro);
+  await pagina.close();
+}
+
+// "R$ 0,00" ao pé de uma emenda de sete milhões lê-se como "nada foi pago" —
+// o oposto do que os dados dizem. Sem valor informado, não se afirma total.
+{
+  const pagina = await abrir({
+    consultaAutomatica: true,
+    funcoes: {
+      consultarFonte: {
+        __fn: `var c = dados.caminho || '';
+        if (c === '/emendas/documentos/202612340000') {
+          if (Number((dados.parametros || {}).pagina || 1) > 1) return { dados: [] };
+          return { dados: [
+            { id: 1, data: '23/04/2026', fase: 'Empenho', codigoDocumentoResumido: '2026NE000001',
+              especieTipo: { descricao: 'Não se aplica' } },
+            { id: 2, data: '02/07/2026', fase: 'Pagamento', codigoDocumentoResumido: '2026OB000002',
+              especieTipo: { descricao: 'Original' } },
+          ] };
+        }
+        return { dados: [] };`,
+      },
+    },
+  });
+
+  await pagina.goto(`${BASE}/#/orcamento/emendas`, { waitUntil: 'domcontentloaded' });
+  await pagina.waitForSelector('.tabela');
+  await pagina.locator('.btn-sanfona').first().click();
+  await pagina.waitForTimeout(1800);
+
+  const dentro = (await pagina.locator('.linha-detalhe').first().innerText()).replace(/\s+/g, ' ');
+  conferir('sem valor informado, o rodapé não afirma total zero',
+    /valores não informados/.test(dentro) && !/R\$ 0,00/.test(dentro), dentro);
+  conferir('a espécie do documento não ocupa a coluna de objeto',
+    !/Não se aplica/.test(dentro), dentro);
+  // A linha existe e prova que houve empenho naquela data; apagá-la para "não
+  // mostrar campo vazio" esconderia execução real.
+  conferir('as fases e datas continuam à vista, que é o que a fonte tem',
+    /Empenho/.test(dentro) && /23\/04\/2026/.test(dentro), dentro);
+  conferir('e a tela explica que falta um nível, em vez de parecer quebrada',
+    /n[íi]vel abaixo/.test(dentro), dentro);
   await pagina.close();
 }
 
