@@ -802,7 +802,15 @@ async function sanfonaDaEmenda(emenda, alvo, recarregar) {
       return;
     }
 
-    const r = await nucleo.emendas.detalharEmenda(emenda.codigo);
+    const r = await nucleo.emendas.detalharEmenda(emenda.codigo, {
+      nomeAutor: nucleo.sessaoMod.sessao.gabinete?.deputado || null,
+    });
+    if (r.motivo === 'codigo-ilegivel') {
+      desenhar([], `Não dá para consultar por este código: "${r.procurado || '(vazio)'}".`
+        + ' O Transferegov procura a emenda pelos doze dígitos — ano, código do'
+        + ' parlamentar e sequencial —, e este não os tem.');
+      return;
+    }
     if (r.amostra) {
       desenhar([], `O Transferegov achou ${r.linhas} plano(s) de ação desta emenda,`
         + ` mas nenhum virou repasse. A primeira linha veio assim → ${r.amostra}`);
@@ -819,11 +827,15 @@ async function sanfonaDaEmenda(emenda, alvo, recarregar) {
         + ' convênio, ficam em outra base e ainda não estão ligadas.');
       return;
     }
+    // Zero linhas não é "esta emenda não é especial": é "ninguém apareceu nesta
+    // consulta". Afirmar a primeira sem ter perguntado pelo nome também já foi
+    // dito aqui, e estava errado. O recado passa a contar o que foi perguntado.
     desenhar(r.transferencias, r.transferencias.length
       ? null
-      : 'O Transferegov não tem plano de ação para esta emenda. Ele publica as'
-        + ' transferências especiais — a emenda que vai direto ao município. As de'
-        + ' finalidade definida, que passam por convênio, ainda não estão ligadas.');
+      : `O Transferegov não devolveu nenhum plano de ação de ${r.ano} para este`
+        + ` gabinete. Procurei por ${r.tentativas.join(' e depois por ')}.`
+        + ' Ou nenhuma emenda deste ano foi por transferência especial, ou o nome do'
+        + ' parlamentar em Acessos → Dados do gabinete não é o que essa base usa.');
   } catch (erro) {
     console.error(erro);
     desenhar([], `Não foi possível detalhar: ${erro.message || erro}`);

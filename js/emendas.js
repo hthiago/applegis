@@ -634,23 +634,50 @@ export function recorteDaLinha(linha, limite = 700) {
  * Os planos de ação de uma emenda só. É a unidade da sanfona: abrir uma linha
  * custa uma consulta, e ela usa as três partes do código para filtrar.
  */
-export async function detalharEmenda(codigo) {
+export async function detalharEmenda(codigo, { nomeAutor = null } = {}) {
   const { consultarFonte } = await import('./fontes.js');
   const partes = partesDoCodigo(codigo);
-  if (!partes) return { transferencias: [], amostra: null, codigosVistos: null, linhas: 0 };
+  if (!partes) {
+    // Código que não tem doze dígitos não vira consulta nenhuma. Sair calado
+    // daqui faz a tela dizer "não tem plano de ação" sem nunca ter perguntado.
+    return {
+      transferencias: [], amostra: null, codigosVistos: null, linhas: 0,
+      motivo: 'codigo-ilegivel', procurado: codigo || null,
+    };
+  }
 
-  // O filtro vai só por ano e parlamentar, e o sequencial é conferido aqui.
-  // Não sei se a base guarda o sequencial como número ou como texto com zeros
-  // à esquerda, e `eq.1` não encontra `0001`. Um ano de emendas de um único
-  // parlamentar são poucas dezenas de linhas — barato de peneirar do lado de cá,
-  // e imune ao formato.
-  const r = await consultarFonte('transferegov-livre', {
+  const buscar = async (filtros) => {
+    const r = await consultarFonte('transferegov-livre',
+      { ...filtros, limit: 1000 }, ESPECIAIS);
+    return Array.isArray(r.dados) ? r.dados : [];
+  };
+
+  // Primeiro pelo código do parlamentar, que é exato. O sequencial fica de fora
+  // do filtro e é conferido aqui: não sei se a base o guarda como número ou como
+  // texto com zeros à esquerda, e `eq.1` não encontra `0001`. Um ano de emendas
+  // de um parlamentar são poucas dezenas de linhas — barato de peneirar do lado
+  // de cá, e imune ao formato.
+  const tentativas = [`código ${partes.parlamentar}`];
+  let lote = await buscar({
     ano_emenda_parlamentar_plano_acao: `eq.${partes.ano}`,
     codigo_parlamentar_emenda_plano_acao: `eq.${partes.parlamentar}`,
-    limit: 1000,
-  }, ESPECIAIS);
+  });
 
-  const lote = Array.isArray(r.dados) ? r.dados : [];
+  // Zero linhas por aqui não prova que a emenda não é especial: prova só que
+  // ninguém com esse código de parlamentar aparece naquele ano. O código de
+  // autor da emenda não é o mesmo em todas as bases nem em todos os anos, então
+  // vale reperguntar pelo nome antes de afirmar que não existe.
+  if (!lote.length && nomeAutor) {
+    for (const grafia of grafiasDoNome(nomeAutor)) {
+      tentativas.push(`nome "${grafia}"`);
+      lote = await buscar({
+        ano_emenda_parlamentar_plano_acao: `eq.${partes.ano}`,
+        nome_parlamentar_emenda_plano_acao: `ilike.*${grafia}*`,
+      });
+      if (lote.length) break;
+    }
+  }
+
   const alvo = normalizarCodigo(codigo);
   const desta = lote.filter((linha) => codigosDoPlano(linha).includes(alvo));
   // Sem peneira de conteúdo: plano de ação sem beneficiário e sem valor ainda é
@@ -673,6 +700,10 @@ export async function detalharEmenda(codigo) {
     linhas: lote.length,
     procurado: alvo,
     ano: partes.ano,
+    // O que foi de fato perguntado. Sem isso, "não encontrei" e "não perguntei
+    // direito" saem com o mesmo texto — e só um dos dois é resposta.
+    tentativas,
+    motivo: lote.length ? null : 'sem-linhas',
   };
 }
 

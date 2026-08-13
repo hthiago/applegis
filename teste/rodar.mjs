@@ -1380,6 +1380,31 @@ console.log('\nPlanilhas de emenda\n');
   await pagina.close();
 }
 
+// Zero linhas não prova que a emenda não é especial: prova que ninguém apareceu
+// naquela consulta. O código de autor não é o mesmo em toda base, então antes de
+// afirmar que não existe é preciso ter perguntado também pelo nome.
+{
+  const pagina = await abrir({
+    consultaAutomatica: true,
+    funcoes: { consultarFonte: { __fn: 'return { dados: [] };' } },
+  });
+
+  await pagina.goto(`${BASE}/#/orcamento/emendas`, { waitUntil: 'domcontentloaded' });
+  await pagina.waitForSelector('.tabela');
+  await pagina.locator('.btn-sanfona').first().click();
+  await pagina.waitForTimeout(900);
+
+  const recado = (await pagina.locator('.sanfona-recado').first().innerText().catch(() => ''))
+    .replace(/\s+/g, ' ');
+  conferir('sem resultado, o recado conta o que foi perguntado antes de concluir',
+    /Procurei por código 1234/.test(recado)
+    && /nome "Deputada Teste"/.test(recado)
+    && /nome "DEPUTADA TESTE"/.test(recado), recado);
+  conferir('e não afirma que a emenda não é transferência especial',
+    !/não é transferência especial/.test(recado), recado);
+  await pagina.close();
+}
+
 // Sem a ponte, a sanfona precisa dizer o que fazer em vez de girar para sempre.
 {
   const pagina = await abrir({ consultaAutomatica: false });
