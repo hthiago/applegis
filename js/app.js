@@ -791,8 +791,9 @@ async function sanfonaDaEmenda(emenda, alvo, recarregar) {
   alvo.appendChild(el('p', { class: 'sanfona-recado', texto: 'Carregando…' }));
 
   try {
+    const mesmoCodigo = (a, b) => nucleo.emendas.normalizarCodigo(a) === nucleo.emendas.normalizarCodigo(b);
     const guardadas = (await nucleo.dados.listar('transferencias'))
-      .filter((t) => String(t.codigoEmenda) === String(emenda.codigo));
+      .filter((t) => mesmoCodigo(t.codigoEmenda, emenda.codigo));
 
     if (guardadas.length) { desenhar(guardadas); return; }
 
@@ -805,6 +806,14 @@ async function sanfonaDaEmenda(emenda, alvo, recarregar) {
     if (r.camposRecebidos) {
       desenhar([], 'O Transferegov respondeu, mas nenhum campo foi reconhecido.'
         + ` Ele mandou: ${r.camposRecebidos.join(', ')}`);
+      return;
+    }
+    // Linha que chegou mas é de outra emenda: o que falta é saber como esta base
+    // escreve o código. Mostrar os que vieram fecha a dúvida numa rodada.
+    if (r.codigosVistos) {
+      desenhar([], `O Transferegov devolveu ${r.linhas} plano(s) de ação do parlamentar`
+        + ` neste ano, mas nenhum com o código ${r.procurado}.`
+        + ` Os códigos que vieram: ${r.codigosVistos.join(', ')}.`);
       return;
     }
     desenhar(r.transferencias, r.transferencias.length

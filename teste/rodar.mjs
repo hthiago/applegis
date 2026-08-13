@@ -891,6 +891,33 @@ console.log('\nPlanilhas de emenda\n');
     em.codigoDaEmenda({ ano: 2025, parlamentar: 1234, sequencial: 1 }));
   conferir('sem ano ou sem parlamentar não há código',
     em.codigoDaEmenda({ ano: 2025 }) === null && em.codigoDaEmenda({ parlamentar: 1234 }) === null);
+  conferir('sequencial ausente não vira zero: código inventado casa com a emenda errada',
+    em.codigoDaEmenda({ ano: 2025, parlamentar: 1234 }) === null
+    && em.codigoDaEmenda({ ano: 2025, parlamentar: 1234, sequencial: 0 }) === '202512340000');
+  conferir('a mesma grafia para comparar código escrito de vários jeitos',
+    em.normalizarCodigo('2025.1234.0001') === '202512340001'
+    && em.normalizarCodigo('12340001') === '000012340001'
+    && em.normalizarCodigo('') === null && em.normalizarCodigo(null) === null,
+    em.normalizarCodigo('2025.1234.0001'));
+  // O Transferegov guarda o código de três formas e não diz qual é a do Portal.
+  conferir('o plano de ação atende pelos códigos que a base publica',
+    JSON.stringify(em.codigosDoPlano({
+      codigo_emenda_parlamentar_formatado_plano_acao: '2025.1234.0009',
+      ano_emenda_parlamentar_plano_acao: 2025,
+      codigo_parlamentar_emenda_plano_acao: 1234,
+      sequencial_emenda_parlamentar_plano_acao: 1,
+      numero_emenda_parlamentar_plano_acao: 9,
+    })) === JSON.stringify(['202512340009', '202512340001']),
+    JSON.stringify(em.codigosDoPlano({
+      codigo_emenda_parlamentar_formatado_plano_acao: '2025.1234.0009',
+      ano_emenda_parlamentar_plano_acao: 2025,
+      codigo_parlamentar_emenda_plano_acao: 1234,
+      sequencial_emenda_parlamentar_plano_acao: 1,
+      numero_emenda_parlamentar_plano_acao: 9,
+    })));
+  conferir('sem sequencial nem número, a linha não atende por código nenhum',
+    em.codigosDoPlano({ ano_emenda_parlamentar_plano_acao: 2025, codigo_parlamentar_emenda_plano_acao: 1234 })
+      .length === 0);
   conferir('o código se desmonta de volta nas três partes',
     JSON.stringify(em.partesDoCodigo('202512340001'))
       === JSON.stringify({ ano: 2025, parlamentar: 1234, sequencial: 1 }),
@@ -1274,6 +1301,39 @@ console.log('\nPlanilhas de emenda\n');
   conferir('clicar de novo fecha a sanfona',
     (await pagina.locator('.linha-detalhe:visible').count()) === 0);
 
+  await pagina.close();
+}
+
+// Linha que chega e não é desta emenda não é "campo não reconhecido". Já disse
+// isso uma vez e mandei procurar no lugar errado; o recado tem que distinguir.
+{
+  const pagina = await abrir({
+    consultaAutomatica: true,
+    funcoes: {
+      consultarFonte: {
+        __fn: `if (dados.caminho !== '/transferenciasespeciais/plano_acao_especial') return { dados: [] };
+        if (Number((dados.parametros || {}).offset || 0) > 0) return { dados: [] };
+        return { dados: [
+          { id_plano_acao: 90, ano_emenda_parlamentar_plano_acao: 2026,
+            codigo_parlamentar_emenda_plano_acao: 1234,
+            sequencial_emenda_parlamentar_plano_acao: 8,
+            nome_beneficiario_plano_acao: 'MUNICIPIO DE VACARIA',
+            valor_custeio_plano_acao: '900000' },
+        ] };`,
+      },
+    },
+  });
+
+  await pagina.goto(`${BASE}/#/orcamento/emendas`, { waitUntil: 'domcontentloaded' });
+  await pagina.waitForSelector('.tabela');
+  await pagina.locator('.btn-sanfona').first().click();
+  await pagina.waitForTimeout(900);
+  const recado = (await pagina.locator('.sanfona-recado').first().innerText().catch(() => ''))
+    .replace(/\s+/g, ' ');
+  conferir('código que não bate vira o diagnóstico do código, não o dos campos',
+    /nenhum com o código 202612340000/.test(recado)
+    && /202612340008/.test(recado)
+    && !/campo/i.test(recado), recado);
   await pagina.close();
 }
 

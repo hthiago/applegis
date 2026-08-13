@@ -467,8 +467,52 @@ const ESPECIAIS = '/transferenciasespeciais/plano_acao_especial';
  */
 export function codigoDaEmenda({ ano, parlamentar, sequencial }) {
   const n = (v, tamanho) => String(v ?? '').replace(/\D/g, '').padStart(tamanho, '0');
-  if (!ano || !parlamentar) return null;
+  // Sequencial ausente não vira "0000": isso inventaria um código, e um código
+  // inventado casa com a emenda errada em vez de simplesmente não casar.
+  if (!ano || !parlamentar || sequencial === null || sequencial === undefined || sequencial === '') {
+    return null;
+  }
   return `${n(ano, 4)}${n(parlamentar, 4)}${n(sequencial, 4)}`;
+}
+
+/**
+ * O mesmo código, escrito do mesmo jeito, para poder comparar.
+ *
+ * Cada base escreve à sua maneira — "2026.4116.0003", "202641160003", com ou
+ * sem zeros à esquerda. Comparar texto cru faz duas grafias do mesmo código
+ * parecerem emendas diferentes.
+ */
+export function normalizarCodigo(codigo) {
+  const digitos = String(codigo ?? '').replace(/\D/g, '');
+  if (!digitos) return null;
+  return digitos.length < 12 ? digitos.padStart(12, '0') : digitos;
+}
+
+/**
+ * Os códigos por que um plano de ação pode atender.
+ *
+ * O Transferegov guarda o código de três formas — pronto em
+ * `codigo_..._formatado`, repartido em ano/parlamentar/sequencial, e ainda com
+ * um `numero_emenda` à parte — e não documenta qual delas corresponde ao código
+ * de doze dígitos do Portal. Aceitar as três resolve sem precisar adivinhar
+ * qual é, e sem casar emenda errada: as três derivam da mesma linha.
+ */
+export function codigosDoPlano(r) {
+  const achados = new Set();
+  const guardar = (v) => { const n = normalizarCodigo(v); if (n) achados.add(n); };
+
+  guardar(r.codigo_emenda_parlamentar_formatado_plano_acao);
+  for (const sequencial of [
+    r.sequencial_emenda_parlamentar_plano_acao,
+    r.numero_emenda_parlamentar_plano_acao,
+  ]) {
+    guardar(codigoDaEmenda({
+      ano: r.ano_emenda_parlamentar_plano_acao,
+      parlamentar: r.codigo_parlamentar_emenda_plano_acao,
+      sequencial,
+    }));
+  }
+  return [...achados];
 }
 
 /** As partes de um código de emenda, para consultar o Transferegov. */
@@ -497,11 +541,14 @@ export function doPlanoAcao(r) {
   const total = (custeio || 0) + (investimento || 0);
 
   return {
-    codigoEmenda: codigoDaEmenda({
-      ano: r.ano_emenda_parlamentar_plano_acao,
-      parlamentar: r.codigo_parlamentar_emenda_plano_acao,
-      sequencial: r.sequencial_emenda_parlamentar_plano_acao,
-    }) || r.codigo_emenda_parlamentar_formatado_plano_acao || null,
+    // O código que a própria base publica vem primeiro; a remontagem a partir
+    // das partes é o reforço para quando ele vier vazio.
+    codigoEmenda: normalizarCodigo(r.codigo_emenda_parlamentar_formatado_plano_acao)
+      || codigoDaEmenda({
+        ano: r.ano_emenda_parlamentar_plano_acao,
+        parlamentar: r.codigo_parlamentar_emenda_plano_acao,
+        sequencial: r.sequencial_emenda_parlamentar_plano_acao,
+      }) || null,
     documento: r.codigo_plano_acao ? `PA ${r.codigo_plano_acao}` : (r.id_plano_acao ? `PA ${r.id_plano_acao}` : null),
     tipo: 'especial',
     ano: Number(r.ano_plano_acao) || Number(r.ano_emenda_parlamentar_plano_acao) || null,
@@ -580,16 +627,23 @@ export async function detalharEmenda(codigo) {
   }, ESPECIAIS);
 
   const lote = Array.isArray(r.dados) ? r.dados : [];
-  const planos = lote
-    .map(doPlanoAcao)
-    .filter((t) => String(t.codigoEmenda) === String(codigo))
-    .filter((t) => t.favorecido || t.valor);
+  const alvo = normalizarCodigo(codigo);
+  const desta = lote.filter((linha) => codigosDoPlano(linha).includes(alvo));
+  const planos = desta.map(doPlanoAcao).filter((t) => t.favorecido || t.valor);
 
   return {
     transferencias: await guardarTransferencias(planos),
-    // Registro que chega e não vira nada aponta nome de campo diferente, não
-    // ausência de dados — e a tela precisa dizer qual dos dois é.
-    camposRecebidos: (lote.length && !planos.length) ? Object.keys(lote[0]) : null,
+    // Três resultados diferentes, três recados diferentes. Confundi-los uma vez
+    // já mandou procurar nome de campo quando o problema era o código: linha que
+    // chega e não vira nada aponta campo com outro nome; linha que chega e não é
+    // desta emenda aponta código escrito de outro jeito. Dizer "campo não
+    // reconhecido" nos dois casos manda olhar no lugar errado.
+    camposRecebidos: (desta.length && !planos.length) ? Object.keys(desta[0]) : null,
+    codigosVistos: (lote.length && !desta.length)
+      ? [...new Set(lote.flatMap(codigosDoPlano))].slice(0, 12)
+      : null,
+    linhas: lote.length,
+    procurado: alvo,
   };
 }
 
