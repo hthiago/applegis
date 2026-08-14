@@ -325,7 +325,7 @@ console.log('\nUso normal, como chefe de gabinete\n');
     ['administrativo', 'Cota parlamentar'],
     ['legislativo', 'Proposições acompanhadas'],
     ['comunicacao', 'Calendário editorial'],
-    ['orcamento', 'Painel de emendas'],
+    ['orcamento', 'Emendas por município'],
   ]) {
     await pagina.goto(`${BASE}/#/${area}`, { waitUntil: 'domcontentloaded' });
     await pagina.waitForSelector('.modulo-topo h1', { timeout: 10000 });
@@ -335,9 +335,14 @@ console.log('\nUso normal, como chefe de gabinete\n');
 
   await pagina.goto(`${BASE}/#/orcamento/painel-emendas`, { waitUntil: 'domcontentloaded' });
   await pagina.waitForSelector('.indicadores');
-  const indicado = await pagina.locator('.indicador').filter({ hasText: 'Indicado' }).first()
+  const destinado = await pagina.locator('.indicador').filter({ hasText: 'Destinado' }).first()
     .locator('.indicador-valor').innerText();
-  conferir('painel de emendas soma o valor indicado', indicado.includes('500'), `leu ${indicado}`);
+  conferir('o painel soma o que foi destinado', destinado.includes('500'), `leu ${destinado}`);
+  // A pergunta que chega ao gabinete é sobre um lugar, não sobre um documento.
+  conferir('e a entrada é o município, com a situação ao lado',
+    (await pagina.locator('.linha-municipio').count()) >= 1
+    && /Erechim/i.test(await pagina.locator('.linha-municipio').first().innerText()),
+    await pagina.locator('.linha-municipio').first().innerText());
 
   await pagina.goto(`${BASE}/#/administrativo/equipe`, { waitUntil: 'domcontentloaded' });
   await pagina.waitForSelector('.tabela');
@@ -1467,6 +1472,89 @@ console.log('\nPlanilhas de emenda\n');
   conferir('página que só repete o que já veio encerra a consulta',
     /1 emendas novas/.test(recado) && /2025: 1/.test(recado),
     recado.replace(/\s+/g, ' '));
+  await pagina.close();
+}
+
+// A pergunta que chega ao gabinete: "quanto foi para Erechim, e já foi pago?".
+// A resposta precisa estar na tela, não ser montada de cabeça a partir de linhas
+// com o formato da fonte.
+{
+  const pagina = await abrir({
+    consultaAutomatica: true,
+    funcoes: {
+      consultarFonte: {
+        __fn: `var c = dados.caminho || '';
+        var par = dados.parametros || {};
+        if (c === '/transferenciasespeciais/plano_acao_especial') {
+          if (Number(par.offset || 0) > 0) return { dados: [] };
+          if (!/Deputada Teste/i.test(String(par.nome_parlamentar_emenda_plano_acao || ''))) return { dados: [] };
+          return { dados: [
+            { id_plano_acao: 701, ano_emenda_parlamentar_plano_acao: 2026,
+              codigo_parlamentar_emenda_plano_acao: 1234,
+              sequencial_emenda_parlamentar_plano_acao: 0,
+              nome_beneficiario_plano_acao: 'MUNICIPIO DE ERECHIM',
+              uf_beneficiario_plano_acao: 'RS', situacao_plano_acao: 'CIENTE',
+              descricao_programacao_orcamentaria_plano_acao: 'Atenção básica',
+              valor_investimento_plano_acao: '400000' },
+            { id_plano_acao: 702, ano_emenda_parlamentar_plano_acao: 2026,
+              codigo_parlamentar_emenda_plano_acao: 1234,
+              sequencial_emenda_parlamentar_plano_acao: 0,
+              nome_beneficiario_plano_acao: 'MUNICIPIO DE ACEGUA',
+              uf_beneficiario_plano_acao: 'RS',
+              situacao_plano_acao: 'IMPEDIDO',
+              motivo_impedimento_plano_acao: 'Dado bancário inválido',
+              valor_investimento_plano_acao: '398000' },
+          ] };
+        }
+        if (c === '/transferenciasespeciais/executor_especial') {
+          if (String(par.id_plano_acao || '') !== 'in.(701,702)') return { dados: [] };
+          return { dados: [{ id_plano_acao: 701, id_executor: 900,
+            nome_executor: 'SECRETARIA DE SAUDE', objeto_executor: 'Aquisição de ambulância',
+            vl_investimento_executor: '400000' }] };
+        }
+        return { dados: [] };`,
+      },
+    },
+  });
+
+  await pagina.goto(`${BASE}/#/orcamento/transferencias`, { waitUntil: 'domcontentloaded' });
+  await pagina.waitForSelector('.modulo-topo');
+  await pagina.getByRole('button', { name: 'Detalhar emendas' }).click();
+  await pagina.waitForTimeout(2200);
+
+  await pagina.goto(`${BASE}/#/orcamento/painel-emendas`, { waitUntil: 'domcontentloaded' });
+  await pagina.waitForSelector('.linha-municipio');
+
+  const busca = pagina.locator('.busca');
+  await busca.fill('erechim');
+  await pagina.waitForTimeout(300);
+  conferir('procurar o município deixa só ele na tela',
+    (await pagina.locator('.linha-municipio').count()) === 1,
+    `${await pagina.locator('.linha-municipio').count()} linhas`);
+
+  const linha = (await pagina.locator('.linha-municipio').first().innerText()).replace(/\s+/g, ' ');
+  conferir('e a linha já responde quanto e em que pé, sem abrir nada',
+    /400\.000/.test(linha) && /sem empenho|sem pagamento|Pago/i.test(linha), linha);
+
+  await pagina.locator('.linha-municipio').first().click();
+  await pagina.waitForTimeout(300);
+  const detalhe = (await pagina.locator('.municipio-detalhe').first().innerText()).replace(/\s+/g, ' ');
+  conferir('abrir mostra emenda por emenda, com o objeto',
+    /202612340000/.test(detalhe) && /Aquisição de ambulância/.test(detalhe), detalhe);
+
+  // O impedimento é a informação mais acionável: é sobre ele que a prefeitura
+  // liga, e ele tem de aparecer sem ninguém precisar procurar.
+  await busca.fill('acegua');
+  await pagina.waitForTimeout(300);
+  const impedida = (await pagina.locator('.linha-municipio').first().innerText()).replace(/\s+/g, ' ');
+  conferir('município com repasse travado é dito como travado na própria linha',
+    /impedimento/i.test(impedida), impedida);
+  await pagina.locator('.linha-municipio').first().click();
+  await pagina.waitForTimeout(300);
+  conferir('e o motivo do travamento aparece ao abrir',
+    /Dado banc/i.test(await pagina.locator('.municipio-trava').first().innerText()),
+    await pagina.locator('.municipio-trava').first().innerText().catch(() => '(sem trava na tela)'));
+
   await pagina.close();
 }
 

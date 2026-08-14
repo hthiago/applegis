@@ -173,50 +173,250 @@ export async function painelChefia(container) {
 
 // ────────────────────────────── orçamento ──────────────────────────────
 
+/**
+ * O dinheiro visto pelo município, que é como o gabinete pensa.
+ *
+ * A pergunta que chega ao gabinete nunca é "o que diz a linha 14 do documento":
+ * é "quanto foi para Erechim e já saiu?". As bases federais respondem em outra
+ * forma — uma linha por documento de execução, com o município escondido no
+ * nome do favorecido — e uma tela com o formato da fonte obriga quem atende o
+ * telefone a fazer a tradução de cabeça, toda vez.
+ *
+ * Aqui a soma é por fase, e não por linha. Um mesmo real aparece na fonte três
+ * vezes — empenhado, liquidado, pago — e somar tudo triplicaria o repasse. Cada
+ * fase tem sua coluna, e a leitura passa a ser a que interessa: quanto foi
+ * destinado, quanto já saiu de fato, e o que travou no caminho.
+ */
+
+const FASE_DA_COLUNA = {
+  empenho: 'empenhado',
+  liquidacao: 'liquidado',
+  pagamento: 'pago',
+};
+
+const IMPEDIDO = /impedi|indefer|cancelad|devolvid/i;
+
+/** Reúne emendas e destinos por município, sem contar o mesmo real duas vezes. */
+export function consolidarPorMunicipio(emendas, transferencias) {
+  const mapa = new Map();
+  const porEmenda = new Map(emendas.map((e) => [String(e.codigo || e.id), e]));
+
+  const lugar = (nome, uf) => {
+    const chave = (nome || 'Sem município identificado').trim();
+    if (!mapa.has(chave)) {
+      mapa.set(chave, {
+        municipio: chave,
+        uf: uf || null,
+        destinado: 0,
+        empenhado: 0,
+        liquidado: 0,
+        pago: 0,
+        impedido: 0,
+        emendas: new Set(),
+        destinos: [],
+      });
+    }
+    const m = mapa.get(chave);
+    if (!m.uf && uf) m.uf = uf;
+    return m;
+  };
+
+  const comDestino = new Set();
+
+  for (const t of transferencias) {
+    const m = lugar(t.municipio || t.favorecido, t.uf);
+    if (t.codigoEmenda) {
+      m.emendas.add(String(t.codigoEmenda));
+      comDestino.add(String(t.codigoEmenda));
+    }
+    const valor = Number(t.valor) || 0;
+    m[FASE_DA_COLUNA[t.tipo] || 'destinado'] += valor;
+    if (IMPEDIDO.test(t.situacao || '')) m.impedido += valor || 0;
+    m.destinos.push(t);
+  }
+
+  // Emenda sem nenhum destino detalhado ainda existe e tem dinheiro. Deixá-la
+  // de fora faria o painel mostrar menos do que o gabinete indicou — e é
+  // justamente a emenda que falta detalhar que precisa aparecer.
+  for (const e of emendas) {
+    const codigo = String(e.codigo || e.id);
+    if (comDestino.has(codigo)) continue;
+    const nome = /m[úu]ltiplo/i.test(e.municipio || '') || !e.municipio
+      ? 'A detalhar (a fonte diz "múltiplo")'
+      : e.municipio;
+    const m = lugar(nome, e.uf);
+    m.emendas.add(codigo);
+    m.destinado += Number(e.valorIndicado) || 0;
+    m.empenhado += Number(e.valorEmpenhado) || 0;
+    m.pago += Number(e.valorPago) || 0;
+    m.semDetalhe = (m.semDetalhe || 0) + 1;
+  }
+
+  return [...mapa.values()]
+    .map((m) => ({ ...m, emendas: [...m.emendas], total: Math.max(m.destinado, m.empenhado, m.pago) }))
+    .sort((a, b) => b.total - a.total || a.municipio.localeCompare(b.municipio, 'pt-BR'));
+}
+
+/** Em que pé está o dinheiro daquele lugar, em uma frase. */
+export function situacaoDoLugar(m) {
+  if (m.impedido) return { texto: 'Com impedimento', cor: 'critico' };
+  if (m.pago && m.pago >= (m.empenhado || m.pago)) return { texto: 'Pago', cor: 'ok' };
+  if (m.pago) return { texto: 'Pago em parte', cor: 'atencao' };
+  if (m.empenhado) return { texto: 'Empenhado, sem pagamento', cor: 'atencao' };
+  if (m.destinado) return { texto: 'Destinado, sem empenho', cor: 'info' };
+  return { texto: 'Sem execução registrada', cor: 'neutro' };
+}
+
+const semAcento = (t) => String(t ?? '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
 export async function painelEmendas(container) {
   limpar(container).appendChild(carregando());
-  const emendas = await listar('emendas', { recarregar: true });
+  const [emendas, transferencias] = await Promise.all([
+    listar('emendas', { recarregar: true }),
+    listar('transferencias', { recarregar: true }).catch(() => []),
+  ]);
 
-  const soma = (k) => emendas.reduce((t, e) => t + (Number(e[k]) || 0), 0);
-  const indicado = soma('valorIndicado');
-  const empenhado = soma('valorEmpenhado');
-  const pago = soma('valorPago');
-
-  const campoFase = porId.emendas.campos.find((c) => c.k === 'fase');
-  const campoArea = porId.emendas.campos.find((c) => c.k === 'areaDestino');
+  const lugares = consolidarPorMunicipio(emendas, transferencias);
+  const total = (k) => lugares.reduce((t, m) => t + m[k], 0);
 
   limpar(container);
   container.appendChild(el('header', { class: 'modulo-topo' }, [
     el('div', { class: 'modulo-titulo' }, [
-      el('h1', { texto: 'Painel de emendas' }),
-      el('p', { texto: 'Onde o recurso foi indicado, quanto saiu do papel e o que ainda depende de cobrança.' }),
+      el('h1', { texto: 'Emendas por município' }),
+      el('p', { texto: 'Quanto foi para cada lugar, em que pé está e o que travou. Clique num município para ver emenda por emenda.' }),
     ]),
   ]));
 
-  if (!emendas.length) {
-    container.appendChild(el('p', { class: 'bloco-vazio', texto: 'Nenhuma emenda cadastrada ainda. Comece pela aba Emendas.' }));
+  if (!emendas.length && !transferencias.length) {
+    container.appendChild(nada('Nada importado ainda. Comece pela aba Emendas: "Consultar Portal" e depois "Detalhar emendas".'));
     return;
   }
 
   container.appendChild(el('div', { class: 'indicadores' }, [
-    indicador('Emendas', String(emendas.length), 'neutro'),
-    indicador('Indicado', fmtDinheiroCurto(indicado), 'info', fmtDinheiro(indicado)),
-    indicador('Empenhado', fmtDinheiroCurto(empenhado), 'atencao',
-      indicado ? `${Math.round((empenhado / indicado) * 100)}% do indicado` : ''),
-    indicador('Pago', fmtDinheiroCurto(pago), 'ok',
-      indicado ? `${Math.round((pago / indicado) * 100)}% do indicado` : ''),
+    indicador('Municípios', String(lugares.length), 'neutro'),
+    indicador('Destinado', fmtDinheiroCurto(total('destinado')), 'info', fmtDinheiro(total('destinado'))),
+    indicador('Empenhado', fmtDinheiroCurto(total('empenhado')), 'atencao', fmtDinheiro(total('empenhado'))),
+    indicador('Pago', fmtDinheiroCurto(total('pago')), 'ok', fmtDinheiro(total('pago'))),
+    total('impedido')
+      ? indicador('Impedido', fmtDinheiroCurto(total('impedido')), 'critico', fmtDinheiro(total('impedido')))
+      : null,
+  ].filter(Boolean)));
+
+  const corpo = el('tbody');
+  const busca = el('input', {
+    type: 'search',
+    class: 'busca',
+    placeholder: 'Buscar município, objeto, beneficiário…',
+    'aria-label': 'Buscar município',
+    oninput: () => desenhar(),
+  });
+
+  container.appendChild(el('div', { class: 'modulo-acoes' }, [busca]));
+  container.appendChild(el('div', { class: 'tabela-rolagem' }, [
+    el('table', { class: 'tabela tabela--municipios' }, [
+      el('thead', {}, [el('tr', {}, [
+        el('th', { texto: 'Município' }),
+        el('th', { texto: 'Emendas' }),
+        el('th', { class: 'num', texto: 'Destinado' }),
+        el('th', { class: 'num', texto: 'Empenhado' }),
+        el('th', { class: 'num', texto: 'Pago' }),
+        el('th', { texto: 'Situação' }),
+      ])]),
+      corpo,
+    ]),
   ]));
 
-  const grade = el('div', { class: 'grade-paineis' });
-  grade.appendChild(bloco('Por fase de execução', null, [barras(agrupar(emendas, 'fase', campoFase), emendas.length)]));
-  grade.appendChild(bloco('Por área de destino', null, [barras(agrupar(emendas, 'areaDestino', campoArea), emendas.length)]));
-  grade.appendChild(bloco('Municípios mais atendidos', null, [
-    barrasValor(agruparValor(emendas, 'municipio'), indicado),
-  ]));
-  grade.appendChild(bloco('Maiores beneficiários', null, [
-    barrasValor(agruparValor(emendas, 'beneficiario'), indicado),
-  ]));
-  container.appendChild(grade);
+  function detalhesDoLugar(m) {
+    if (!m.destinos.length) {
+      return el('p', { class: 'sanfona-recado', texto: `${m.emendas.length} emenda(s) sem detalhamento ainda. Use "Detalhar emendas" na aba Emendas.` });
+    }
+    // Por emenda, e dentro dela por fase: é a leitura de quem vai atender uma
+    // ligação da prefeitura perguntando "e a minha ambulância?".
+    const porCodigo = new Map();
+    m.destinos.forEach((t) => {
+      const c = t.codigoEmenda || 'sem código';
+      if (!porCodigo.has(c)) porCodigo.set(c, []);
+      porCodigo.get(c).push(t);
+    });
+
+    return el('div', { class: 'municipio-detalhe' }, [...porCodigo.entries()].map(([codigo, linhas]) => {
+      const objetos = [...new Set(linhas.map((t) => t.objeto).filter(Boolean))];
+      const metas = [...new Set(linhas.map((t) => t.metas).filter(Boolean))];
+      const pago = linhas.filter((t) => t.tipo === 'pagamento')
+        .reduce((s, t) => s + (Number(t.valor) || 0), 0);
+      const empenhado = linhas.filter((t) => t.tipo === 'empenho')
+        .reduce((s, t) => s + (Number(t.valor) || 0), 0);
+      const destinado = linhas.filter((t) => !FASE_DA_COLUNA[t.tipo])
+        .reduce((s, t) => s + (Number(t.valor) || 0), 0);
+      const travas = [...new Set(linhas.map((t) => t.situacao).filter((x) => IMPEDIDO.test(x || '')))];
+      const ultima = linhas.map((t) => t.data).filter(Boolean).sort().pop();
+
+      return el('article', { class: 'municipio-emenda' }, [
+        el('header', {}, [
+          el('strong', { texto: codigo }),
+          ultima ? el('span', { class: 'topo-sub', texto: `último movimento em ${fmtData(ultima)}` }) : null,
+        ]),
+        objetos.length
+          ? el('p', { class: 'municipio-objeto', texto: objetos.join(' · ') })
+          : el('p', { class: 'municipio-objeto municipio-objeto--vazio', texto: 'Objeto não informado pela fonte' }),
+        metas.length ? el('p', { class: 'campo-dica', texto: metas.join(' · ') }) : null,
+        el('p', { class: 'municipio-numeros' }, [
+          destinado ? el('span', { texto: `Destinado ${fmtDinheiro(destinado)}` }) : null,
+          empenhado ? el('span', { texto: `Empenhado ${fmtDinheiro(empenhado)}` }) : null,
+          el('span', { class: pago ? 'municipio-pago' : null, texto: `Pago ${fmtDinheiro(pago)}` }),
+        ].filter(Boolean)),
+        ...travas.map((t) => el('p', { class: 'municipio-trava', texto: t })),
+      ]);
+    }));
+  }
+
+  function desenhar() {
+    const termos = semAcento(busca.value).split(/\s+/).filter(Boolean);
+    const visiveis = lugares.filter((m) => {
+      if (!termos.length) return true;
+      const texto = semAcento([
+        m.municipio, m.uf, ...m.emendas,
+        ...m.destinos.map((t) => `${t.objeto || ''} ${t.favorecido || ''} ${t.metas || ''}`),
+      ].join(' '));
+      return termos.every((t) => texto.includes(t));
+    });
+
+    limpar(corpo);
+    if (!visiveis.length) {
+      corpo.appendChild(el('tr', {}, [el('td', { colspan: '6' }, [nada('Nenhum município encontrado.')])]));
+      return;
+    }
+
+    visiveis.forEach((m) => {
+      const situacao = situacaoDoLugar(m);
+      const detalhe = el('tr', { class: 'linha-detalhe', hidden: true }, [
+        el('td', { colspan: '6' }, [detalhesDoLugar(m)]),
+      ]);
+      const linha = el('tr', {
+        class: 'linha-municipio',
+        tabindex: '0',
+        role: 'button',
+        onclick: () => { detalhe.hidden = !detalhe.hidden; },
+        onkeydown: (e) => {
+          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); detalhe.hidden = !detalhe.hidden; }
+        },
+      }, [
+        el('td', {}, [
+          el('strong', { texto: m.municipio }),
+          m.uf ? el('span', { class: 'topo-sub', texto: m.uf }) : null,
+        ]),
+        el('td', { texto: String(m.emendas.length) }),
+        el('td', { class: 'num', texto: m.destinado ? fmtDinheiro(m.destinado) : '—' }),
+        el('td', { class: 'num', texto: m.empenhado ? fmtDinheiro(m.empenhado) : '—' }),
+        el('td', { class: 'num', texto: m.pago ? fmtDinheiro(m.pago) : '—' }),
+        el('td', {}, [etiqueta(situacao.texto, situacao.cor)]),
+      ]);
+      corpo.appendChild(linha);
+      corpo.appendChild(detalhe);
+    });
+  }
+
+  desenhar();
 }
 
 function agrupar(itens, chave, campo) {

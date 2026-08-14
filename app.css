@@ -1075,3 +1075,33 @@ input:focus, select:focus, textarea:focus { border-color: var(--verde); outline:
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; }
 }
+
+/* ── emendas por município ───────────────────────────────────────────────
+   A leitura é de cima para baixo: o lugar, quanto, em que pé. O detalhe abre
+   embaixo sem tirar o município da lista, porque comparar cidades é metade da
+   pergunta de quem atende o telefone no gabinete. */
+.linha-municipio { cursor: pointer; }
+.linha-municipio:hover td,
+.linha-municipio:focus-visible td { background: rgba(0, 0, 0, .035); }
+.linha-municipio td:first-child { display: flex; flex-direction: column; gap: .1rem; }
+
+.municipio-detalhe {
+  display: grid;
+  gap: .9rem;
+  grid-template-columns: repeat(auto-fill, minmax(24rem, 1fr));
+  padding: .6rem 0;
+}
+.municipio-emenda {
+  border-left: 3px solid rgba(0, 0, 0, .12);
+  padding: .35rem 0 .35rem .8rem;
+}
+.municipio-emenda header { display: flex; gap: .5rem; align-items: baseline; flex-wrap: wrap; }
+.municipio-objeto { margin: .3rem 0; }
+.municipio-objeto--vazio { opacity: .55; font-style: italic; }
+.municipio-numeros {
+  display: flex; gap: 1rem; flex-wrap: wrap;
+  font-variant-numeric: tabular-nums; margin: .3rem 0 0;
+}
+.municipio-pago { font-weight: 600; }
+/* O impedimento é o que trava o repasse: é sobre ele que a prefeitura liga. */
+.municipio-trava { color: #a4262c; margin: .3rem 0 0; font-size: .92em; }
