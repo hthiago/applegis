@@ -1121,6 +1121,49 @@ console.log('\nPlanilhas de emenda\n');
     && em.grafiasDoNome('').length === 0,
     JSON.stringify(em.grafiasDoNome('José Medeiros')));
 
+  // ── consolidação entre a planilha do gabinete e o Portal ──
+  //
+  // A planilha tem especificações que o Portal não publica; o Portal tem a
+  // execução real. A regra vale nos dois sentidos, e discordância se registra
+  // em vez de se engolir: número trocado em silêncio não pode mais ser
+  // auditado.
+  const jaConferida = {
+    consultadoEm: '2026-08-01', valorEmpenhado: 1720227, municipio: 'ERECHIM', uf: 'RS',
+  };
+  const daPlanilha = {
+    valorEmpenhado: 1700000, municipio: 'ERECHIM',
+    objeto: 'Ambulância', beneficiario: 'Hospital São Vicente',
+    detalhesDaPlanilha: 'Responsável: Fulano',
+  };
+
+  const juncao = em.consolidar(jaConferida, daPlanilha);
+  conferir('o que só a planilha tem entra inteiro — é o motivo de consolidar',
+    juncao.dados.objeto === 'Ambulância'
+    && juncao.dados.beneficiario === 'Hospital São Vicente'
+    && juncao.dados.detalhesDaPlanilha === 'Responsável: Fulano',
+    JSON.stringify(juncao.dados));
+  conferir('valor que o Portal já publicou não é sobrescrito pela planilha',
+    juncao.dados.valorEmpenhado === undefined, String(juncao.dados.valorEmpenhado));
+  conferir('e a discordância fica registrada, com os dois números',
+    juncao.divergencias.length === 1
+    && /valorEmpenhado/.test(juncao.divergencias[0])
+    && /1\.700\.000,00/.test(juncao.divergencias[0])
+    && /1\.720\.227,00/.test(juncao.divergencias[0]),
+    JSON.stringify(juncao.divergencias));
+  conferir('valor igual em formatos diferentes não é divergência',
+    em.consolidar({ consultadoEm: '2026-08-01', valorPago: 1000 },
+      { valorPago: '1.000,00' }).divergencias.length === 0);
+  conferir('campo que o Portal deixou vazio a planilha preenche',
+    em.consolidar({ consultadoEm: '2026-08-01', municipio: null },
+      { municipio: 'GRAMADO' }).dados.municipio === 'GRAMADO');
+  conferir('sem consulta prévia ao Portal, a planilha escreve tudo',
+    em.consolidar({}, daPlanilha).dados.valorEmpenhado === 1700000);
+  conferir('a consulta ao Portal escreve por cima e não acusa divergência',
+    em.consolidar(jaConferida, { valorEmpenhado: 1800000 }, { autoritativa: true })
+      .dados.valorEmpenhado === 1800000
+    && em.consolidar(jaConferida, { valorEmpenhado: 1800000 }, { autoritativa: true })
+      .divergencias.length === 0);
+
   conferir('a chave concilia pelo código e ano',
     em.chaveDaLinha({ codigo: '202512340001', ano: 2025 }) === '2025-202512340001');
   conferir('sem código, a proposta serve de chave',
@@ -1347,6 +1390,59 @@ console.log('\nPlanilhas de emenda\n');
   conferir('página que só repete o que já veio encerra a consulta',
     /1 emendas novas/.test(recado) && /2025: 1/.test(recado),
     recado.replace(/\s+/g, ' '));
+  await pagina.close();
+}
+
+// Consolidação pela tela: consultar o Portal e depois importar a planilha de
+// controle. A planilha acrescenta o que só ela tem, não apaga o que o Portal
+// publicou, e a discordância aparece em vez de sumir.
+{
+  const pagina = await abrir({
+    consultaAutomatica: true,
+    funcoes: {
+      consultarFonte: {
+        __fn: `var par = dados.parametros || {};
+        if (dados.fonte !== 'portal-emendas' && dados.caminho !== '/emendas') return { dados: [] };
+        if (Number(par.pagina || 1) > 1) return { dados: [] };
+        if (par.ano && String(par.ano) !== '2025') return { dados: [] };
+        return { dados: [{ codigoEmenda: '202512340001', ano: '2025',
+          nomeAutor: 'DEPUTADA TESTE', tipoEmenda: 'Emenda Individual',
+          localidadeDoGasto: 'ERECHIM - RS', funcao: 'Saúde',
+          valorEmpenhado: '1.720.227,00', valorPago: '1.720.227,00' }] };`,
+      },
+    },
+  });
+
+  await pagina.goto(`${BASE}/#/orcamento/emendas`, { waitUntil: 'domcontentloaded' });
+  await pagina.waitForSelector('.modulo-topo');
+  await pagina.getByRole('button', { name: 'Consultar Portal' }).click();
+  await pagina.waitForTimeout(1500);
+
+  // A planilha do gabinete: o mesmo código, um valor desatualizado e três
+  // colunas que o Portal não publica.
+  const planilha = [
+    'Código da Emenda;Ano;Autor;Valor Empenhado;Objeto;Convenente;Responsável no gabinete',
+    '202512340001;2025;DEPUTADA TESTE;"1.700.000,00";Ambulância tipo A;HOSPITAL SAO VICENTE;Fulano',
+  ].join('\n');
+  await pagina.setInputFiles('.importador input[type=file]', {
+    name: 'controle.csv', mimeType: 'text/csv', buffer: Buffer.from(planilha, 'utf8'),
+  });
+  await pagina.waitForTimeout(1500);
+
+  const recado = (await pagina.locator('.aviso').last().innerText().catch(() => ''))
+    .replace(/\s+/g, ' ');
+  conferir('a importação relata quantas divergem e que o Portal prevaleceu',
+    /1 divergem do Portal/.test(recado) && /mantive o Portal/i.test(recado), recado);
+  conferir('e relata as colunas próprias da planilha que foram guardadas',
+    /colunas próprias da planilha/.test(recado)
+    && /Responsável no gabinete/.test(recado), recado);
+
+  const tabela = (await pagina.locator('.tabela tbody').innerText()).replace(/\s+/g, ' ');
+  conferir('o valor exibido continua sendo o do Portal',
+    /1\.720\.227/.test(tabela) && !/1\.700\.000/.test(tabela), tabela);
+  conferir('e a emenda fica marcada como divergente, para virar lista de trabalho',
+    /Divergente/.test(tabela), tabela);
+
   await pagina.close();
 }
 

@@ -709,6 +709,9 @@ export const MODULOS = [
       { campo: 'tipo', l: 'Tipo' },
       { campo: 'ano', l: 'Ano', ordem: 'valor-desc' },
       { campo: 'fase', l: 'Fase' },
+      // Onde a planilha do gabinete e o Portal discordam. É a lista de trabalho
+      // de quem mantém a planilha.
+      { campo: 'temDivergencia', l: 'Divergência' },
       { campo: 'uf', l: 'UF' },
     ],
     campos: [
@@ -752,6 +755,19 @@ export const MODULOS = [
         { v: 'concluida', l: 'Concluída', cor: 'ok' },
         { v: 'cancelada', l: 'Cancelada', cor: 'critico' },
       ] },
+      // A consolidação entre a planilha do gabinete e o Portal. Onde as duas
+      // discordam, prevalece o Portal — e a discordância fica registrada em vez
+      // de sobrescrita calada: um número substituído em silêncio não pode mais
+      // ser auditado, e é justamente ele que precisa voltar para a planilha.
+      { k: 'temDivergencia', l: 'Confere com o Portal', t: 'select', lista: true, op: [
+        { v: 'sim', l: 'Divergente', cor: 'atencao' },
+        { v: 'nao', l: 'Confere', cor: 'ok' },
+      ] },
+      { k: 'divergencias', l: 'O que diverge da planilha', t: 'area' },
+      // As colunas da planilha que o sistema não reconhece — as especificações
+      // que só existem lá, e que são a razão de consolidar.
+      { k: 'detalhesDaPlanilha', l: 'Especificações da planilha', t: 'area' },
+      { k: 'consultadoEm', l: 'Conferido no Portal em', t: 'data' },
       { k: 'contato', l: 'Quem pediu', t: 'ref', ref: 'contatos', rotulo: 'nome',
         dica: 'Cadastre a liderança ou prefeitura em Contatos para ligar a emenda a ela.' },
       { k: 'responsavel', l: 'Responsável no gabinete', t: 'ref', ref: 'equipe', rotulo: 'nome' },

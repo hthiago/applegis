@@ -128,6 +128,78 @@ export function chaveDaLinha({ codigo, ano, proposta, instrumento }) {
 }
 
 /**
+ * Os campos em que o Portal da Transparência manda, e a planilha não.
+ *
+ * São os que a execução orçamentária define e que o Portal publica direto do
+ * SIAFI: valores, classificação e identificação da emenda. Uma planilha de
+ * controle é trabalho humano — ela atrasa, arredonda, herda erro de digitação —
+ * e por isso não sobrescreve nenhum destes.
+ *
+ * Fora desta lista está o que só a planilha tem: objeto negociado, beneficiário
+ * pretendido, número da proposta, situação junto ao órgão, anotações do
+ * gabinete. É justamente por isso que a consolidação existe.
+ */
+export const CAMPOS_DO_PORTAL = [
+  'ano', 'tipo', 'autorNaFonte', 'municipio', 'uf', 'funcao', 'subfuncao',
+  'valorEmpenhado', 'valorLiquidado', 'valorPago',
+  'restosInscritos', 'restosPagos', 'restosCancelados',
+];
+
+/** Comparação tolerante ao formato: 1000 e "1.000,00" são o mesmo número. */
+function mesmoValor(a, b) {
+  const x = numeroBr(a);
+  const y = numeroBr(b);
+  if (x !== null && y !== null) return Math.abs(x - y) < 0.005;
+  return String(a ?? '').trim().toLowerCase() === String(b ?? '').trim().toLowerCase();
+}
+
+function mostrar(v) {
+  const n = numeroBr(v);
+  return n !== null && typeof v !== 'string'
+    ? n.toLocaleString('pt-BR', { minimumFractionDigits: 2 })
+    : String(v);
+}
+
+/**
+ * Junta o que a planilha sabe com o que o Portal sabe, sem deixar um apagar o
+ * outro.
+ *
+ * A regra é uma só e vale nos dois sentidos: o Portal manda nos campos de
+ * execução; a planilha manda em tudo que o Portal não publica. Onde os dois
+ * falam e discordam, fica o Portal — e a discordância é registrada, não
+ * engolida. Sobrescrever calado transformaria um erro de planilha em um número
+ * que ninguém mais consegue auditar, e é exatamente o tipo de divergência que o
+ * gabinete precisa ver para corrigir a planilha.
+ */
+export function consolidar(existente, entrada, { autoritativa = false } = {}) {
+  const dados = {};
+  const divergencias = [];
+  const anterior = existente || {};
+  const temPortal = Boolean(anterior.consultadoEm);
+
+  for (const [campo, valor] of Object.entries(entrada)) {
+    if (valor === null || valor === undefined || valor === '') continue;
+
+    // A consulta ao Portal é a fonte: ela escreve tudo o que traz.
+    if (autoritativa || !CAMPOS_DO_PORTAL.includes(campo) || !temPortal) {
+      dados[campo] = valor;
+      continue;
+    }
+
+    const atual = anterior[campo];
+    if (atual === null || atual === undefined || atual === '') {
+      dados[campo] = valor;
+      continue;
+    }
+    if (!mesmoValor(atual, valor)) {
+      divergencias.push(`${campo}: planilha ${mostrar(valor)} · Portal ${mostrar(atual)}`);
+    }
+  }
+
+  return { dados, divergencias };
+}
+
+/**
  * Grava uma leva de emendas já normalizadas, conciliando com o que existe.
  *
  * É o mesmo caminho para a planilha e para a consulta automática. Duas entradas
@@ -135,15 +207,16 @@ export function chaveDaLinha({ codigo, ano, proposta, instrumento }) {
  * caminhos diferentes — e a divergência só apareceria meses depois, num número
  * somado em dobro no painel.
  */
-async function conciliar(brutas, funil) {
+async function conciliar(brutas, funil, { autoritativa = false } = {}) {
   const { salvarEmLote, listar } = await import('./dados.js');
 
-  const existentes = new Set(
-    (await listar('emendas', { recarregar: true })).map((e) => e.id),
+  const existentes = new Map(
+    (await listar('emendas', { recarregar: true })).map((e) => [e.id, e]),
   );
 
   const registros = [];
   const vistos = new Set();
+  const hoje = new Date().toISOString().slice(0, 10);
 
   for (const bruta of brutas) {
     const id = chaveDaLinha(bruta);
@@ -151,13 +224,23 @@ async function conciliar(brutas, funil) {
     if (vistos.has(id)) continue;
     vistos.add(id);
 
-    const dados = {};
-    for (const [campo, valor] of Object.entries(bruta)) comValor(dados, campo, valor);
-    dados.importadoEm = new Date().toISOString().slice(0, 10);
+    const anterior = existentes.get(id);
+    const { dados, divergencias } = consolidar(anterior, bruta, { autoritativa });
+    dados.importadoEm = hoje;
+    if (autoritativa) dados.consultadoEm = hoje;
+
+    // A divergência é reescrita a cada consolidação, não acumulada: ela
+    // descreve o estado de agora entre as duas fontes, e uma lista que só cresce
+    // continuaria acusando o que já foi corrigido.
+    if (!autoritativa) {
+      dados.divergencias = divergencias.join('\n') || null;
+      dados.temDivergencia = divergencias.length ? 'sim' : 'nao';
+      if (divergencias.length) funil.divergentes = (funil.divergentes || 0) + 1;
+    }
 
     // A fase é juízo do gabinete e nenhuma fonte a conhece; só se dá um ponto
     // de partida ao registro que está nascendo agora.
-    if (!existentes.has(id)) {
+    if (!anterior) {
       dados.fase = dados.valorPago > 0 ? 'execucao' : (dados.valorEmpenhado > 0 ? 'empenhada' : 'indicada');
       funil.novas += 1;
     } else {
@@ -203,12 +286,31 @@ export async function importarPlanilha(arquivo, { nomeAutor = null } = {}) {
     semChave: 0,
     novas: 0,
     atualizadas: 0,
+    divergentes: 0,
+    colunasExtras: [],
     temColunaAutor: mapa.autor !== undefined,
     nomeUsado: nomeAutor || null,
   };
 
   const campo = (linha, nome) => (mapa[nome] === undefined ? null : String(linha[mapa[nome]] ?? '').trim());
   const brutas = [];
+
+  // As colunas que o sistema não reconhece são exatamente as especificações que
+  // só existem na planilha — e são a razão de consolidar. Descartá-las por não
+  // ter campo próprio jogaria fora o motivo da importação.
+  const usadas = new Set(Object.values(mapa));
+  const naoMapeadas = cabecalho
+    .map((rotulo, i) => ({ rotulo, i }))
+    .filter(({ rotulo, i }) => !usadas.has(i) && String(rotulo).trim());
+  funil.colunasExtras = naoMapeadas.map(({ rotulo }) => rotulo);
+
+  const extrasDa = (linha) => naoMapeadas
+    .map(({ rotulo, i }) => {
+      const v = String(linha[i] ?? '').trim();
+      return v ? `${rotulo}: ${v}` : null;
+    })
+    .filter(Boolean)
+    .join('\n') || null;
 
   for (const linha of linhas) {
     if (mapa.autor !== undefined && nomeAutor && !mesmoNome(campo(linha, 'autor'), nomeAutor)) {
@@ -238,6 +340,7 @@ export async function importarPlanilha(arquivo, { nomeAutor = null } = {}) {
       restosPagos: numeroBr(campo(linha, 'restosPagos')),
       restosCancelados: numeroBr(campo(linha, 'restosCancelados')),
       atualizadoNaFonte: dataBr(campo(linha, 'atualizadoNaFonte')),
+      detalhesDaPlanilha: extrasDa(linha),
       fonte: origem,
     });
   }
@@ -443,7 +546,7 @@ export async function consultarPortal({ nomeAutor, aoProgredir = () => {} }) {
     }
   }
 
-  return conciliar(brutas, funil);
+  return conciliar(brutas, funil, { autoritativa: true });
 }
 
 // ───────────────────── a emenda discriminada ─────────────────────

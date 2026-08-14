@@ -505,6 +505,14 @@ function extrasDasEmendas() {
               : null,
             !r.temColunaAutor ? 'a planilha não traz coluna de autor, então importei tudo' : null,
             r.semChave ? `${r.semChave} linhas sem código, proposta ou convênio` : null,
+            // A consolidação é o ponto: o que a planilha acrescenta e onde ela
+            // discorda. Sem esses dois números, importar parece sobrescrever.
+            r.colunasExtras?.length
+              ? `${r.colunasExtras.length} colunas próprias da planilha guardadas (${r.colunasExtras.slice(0, 4).join(', ')}${r.colunasExtras.length > 4 ? '…' : ''})`
+              : null,
+            r.divergentes
+              ? `${r.divergentes} divergem do Portal — mantive o Portal; filtre por "Divergente" para ver`
+              : null,
           ].filter(Boolean).join(' · '), (r.novas + r.atualizadas) ? 'ok' : 'erro');
           recarregar();
         } catch (erro) {
