@@ -1054,9 +1054,14 @@ console.log('\nPlanilhas de emenda\n');
     ufFavorecido: 'RS', valor: '1.720.227,00',
   }, '202041160001');
   conferir('o documento detalhado traz o objeto, o favorecido e o valor',
-    detalhe.objeto === 'EMPENHO PARA ATENDER A PORTARIA 706 DE 08/04/2020'
+    detalhe.objeto === 'PORTARIA 706 DE 08/04/2020'
     && detalhe.favorecido === 'MUNICIPIO DE ERECHIM' && detalhe.valor === 1720227
     && detalhe.uf === 'RS', JSON.stringify(detalhe));
+  // "EMPENHO PARA ATENDER A…" repete o que a coluna Fase já diz, e some da
+  // frente do objeto — numa lista de vinte e sete linhas, isso é uma parede de
+  // texto idêntico escondendo a única parte que distingue uma linha da outra.
+  conferir('o preâmbulo que repete a fase sai da frente do objeto',
+    !/^EMPENHO/.test(detalhe.objeto), detalhe.objeto);
   conferir('o município sai do nome do favorecido, que é onde ele está',
     detalhe.municipio === 'ERECHIM', String(detalhe.municipio));
   conferir('a classificação funcional diz por qual programa o dinheiro saiu',
@@ -1080,6 +1085,57 @@ console.log('\nPlanilhas de emenda\n');
   conferir('a descrição sobrevive à limpeza, sem os identificadores em volta',
     descritivo.objeto === 'AQUISICAO DE EQUIPAMENTOS PARA UNIDADE DE SAUDE',
     String(descritivo.objeto));
+
+  // A frase real de um pagamento de saúde, com todo o ruído grudado nela.
+  const real = em.objetoDaObservacao(
+    'PAGAMENTO DE 65058-INCREMENTO TEMPORARIO AO CUSTEIO DOS SERVICOS DE ATENCAO'
+    + ' BASICA EM SAUDE PARCELA UNICA MUNICIPAL - PROCESSO 25000075166202062 UF RS',
+  );
+  conferir('o objeto sai limpo do preâmbulo, do processo e da UF grudados',
+    real.objeto === 'INCREMENTO TEMPORARIO AO CUSTEIO DOS SERVICOS DE ATENCAO BASICA'
+      + ' EM SAUDE PARCELA UNICA MUNICIPAL', real.objeto);
+  conferir('e o número do processo é guardado em vez de descartado',
+    real.processo === '25000075166202062', String(real.processo));
+
+  // Uma versão anterior gravou a espécie do documento na coluna de objeto. Os
+  // registros continuam lá; reconhecê-los limpa o que já foi salvo errado.
+  conferir('espécie gravada como objeto por versão antiga é reconhecida e some',
+    em.objetoDaObservacao('ORIGINAL').objeto === null
+    && em.objetoDaObservacao('Não se aplica').objeto === null);
+
+  // "-14 - Múltiplo · -14 - Múltiplo" é a mesma informação escrita duas vezes,
+  // e "Múltiplo" é o que a fonte diz quando não há um valor só.
+  conferir('ação orçamentária não repete a si mesma nem enche a coluna de "Múltiplo"',
+    em.acaoOrcamentaria('-14 - Múltiplo', '-14 - Múltiplo') === null
+    && em.acaoOrcamentaria('5019 - ATENCAO', '5019 - ATENCAO') === '5019 - ATENCAO'
+    && em.acaoOrcamentaria('5019 - ATENCAO', '2E89 - INCREMENTO')
+      === '5019 - ATENCAO · 2E89 - INCREMENTO');
+
+  // Numa transferência a município, o favorecido do documento é o banco que
+  // operacionaliza o repasse. Quem recebeu está um nível abaixo.
+  const repartido = em.repartirEntreFinais(
+    { favorecido: 'BANCO DO BRASIL SA', valor: 7000, idDocumento: 9, tipo: 'pagamento' },
+    [
+      { nomeFavorecidoFinal: 'MUNICIPIO DE ACEGUA', ufFavorecido: 'RS', valor: '4.000,00' },
+      { nomeFavorecidoFinal: 'MUNICIPIO DE VACARIA', ufFavorecido: 'RS', valor: '3.000,00' },
+    ],
+  );
+  conferir('o pagamento ao banco vira um destino por município que recebeu',
+    repartido.length === 2
+    && repartido[0].municipio === 'ACEGUA' && repartido[0].valor === 4000
+    && repartido[1].municipio === 'VACARIA'
+    && repartido[0].favorecidoIntermediario === 'BANCO DO BRASIL SA',
+    JSON.stringify(repartido));
+  // Sem valor por parte, somar as partes daria um total diferente do documento.
+  conferir('sem valor por parte não se reparte: a tabela mentiria para detalhar mais',
+    em.repartirEntreFinais({ favorecido: 'BANCO DO BRASIL SA', valor: 7000 },
+      [{ nomeFavorecidoFinal: 'MUNICIPIO DE ACEGUA' }]).length === 1);
+  conferir('mas já se sabe para quem foi, ao lado do intermediário',
+    em.repartirEntreFinais({ favorecido: 'BANCO DO BRASIL SA', valor: 7000 },
+      [{ nomeFavorecidoFinal: 'MUNICIPIO DE ACEGUA' }])[0].favorecidoFinal
+      === 'MUNICIPIO DE ACEGUA');
+  conferir('documento sem favorecido final continua inteiro',
+    em.repartirEntreFinais({ favorecido: 'X', valor: 1 }, []).length === 1);
 
   // O pagamento é a prova de que o dinheiro chegou e não pode sumir da lista.
   // Mas ele não descreve objeto — e o empenho da mesma emenda descreve.
@@ -1830,7 +1886,7 @@ console.log('\nPlanilhas de emenda\n');
   conferir('o detalhe do documento traz para quem foi',
     /MUNICIPIO DE ERECHIM/.test(dentro) && /MUNICIPIO DE GRAMADO/.test(dentro), dentro);
   conferir('e para qual objeto',
-    /EMPENHO PARA ATENDER A PORTARIA 706/.test(dentro), dentro);
+    /PORTARIA 706/.test(dentro), dentro);
   conferir('e quanto, agora com total de verdade',
     /4\.000\.000/.test(dentro) && /7\.000\.000/.test(dentro)
     && !/valores não informados/.test(dentro), dentro);
@@ -1841,8 +1897,65 @@ console.log('\nPlanilhas de emenda\n');
   conferir('a linha de pagamento permanece e herda o objeto do empenho',
     /Pagamento/.test(dentro)
     && !/PAGAMENTO DA PROPOSTA/.test(dentro)
-    && (dentro.match(/EMPENHO PARA ATENDER A PORTARIA 706/g) || []).length === 2,
+    && (dentro.match(/PORTARIA 706/g) || []).length === 2,
     dentro);
+  await pagina.close();
+}
+
+// Bastava UMA linha ter dado para as outras vinte e seis ficarem congeladas
+// vazias para sempre. A conta tem de ser por linha.
+{
+  const pagina = await abrir({
+    consultaAutomatica: true,
+    funcoes: {
+      consultarFonte: {
+        __fn: `var c = dados.caminho || '';
+        if (c === '/emendas/documentos/202612340000') {
+          if (Number((dados.parametros || {}).pagina || 1) > 1) return { dados: [] };
+          return { dados: [
+            { id: 1, data: '08/04/2026', fase: 'Empenho',
+              codigoDocumento: 'AAA1', codigoDocumentoResumido: '2026NE0001' },
+            { id: 2, data: '09/04/2026', fase: 'Liquidação',
+              codigoDocumento: 'BBB2', codigoDocumentoResumido: '2026NS0002' },
+          ] };
+        }
+        // Só o primeiro documento responde na primeira rodada; o segundo passa a
+        // responder depois, como se a consulta anterior tivesse falhado nele.
+        if (c === '/despesas/documentos/AAA1') {
+          return { dados: { documento: 'AAA1', data: '08/04/2026', fase: 'Empenho',
+            observacao: 'AQUISICAO DE AMBULANCIA', nomeFavorecido: 'MUNICIPIO DE ERECHIM',
+            valor: '1.000,00' } };
+        }
+        if (c === '/despesas/documentos/BBB2' && globalThis.__SEGUNDA_RODADA) {
+          return { dados: { documento: 'BBB2', data: '09/04/2026', fase: 'Liquidação',
+            observacao: 'AQUISICAO DE AMBULANCIA', nomeFavorecido: 'MUNICIPIO DE GRAMADO',
+            valor: '900,00' } };
+        }
+        return { dados: [] };`,
+      },
+    },
+  });
+
+  await pagina.goto(`${BASE}/#/orcamento/emendas`, { waitUntil: 'domcontentloaded' });
+  await pagina.waitForSelector('.tabela');
+  await pagina.locator('.btn-sanfona').first().click();
+  await pagina.waitForTimeout(2000);
+
+  const primeira = (await pagina.locator('.linha-detalhe').first().innerText()).replace(/\s+/g, ' ');
+  conferir('uma linha completa e outra não é o estado que precisa ser destravado',
+    /MUNICIPIO DE ERECHIM/.test(primeira) && !/MUNICIPIO DE GRAMADO/.test(primeira), primeira);
+
+  // Fecha, libera o segundo documento e reabre: o guardado tem uma linha cheia
+  // e uma vazia — exatamente o caso em que a versão antiga desistia.
+  await pagina.evaluate(() => { globalThis.__SEGUNDA_RODADA = true; });
+  await pagina.locator('.btn-sanfona').first().click();
+  await pagina.waitForTimeout(300);
+  await pagina.locator('.btn-sanfona').first().click();
+  await pagina.waitForTimeout(2500);
+
+  const segunda = (await pagina.locator('.linha-detalhe').first().innerText()).replace(/\s+/g, ' ');
+  conferir('reabrir completa a linha que faltava, sem refazer a que já estava',
+    /MUNICIPIO DE ERECHIM/.test(segunda) && /MUNICIPIO DE GRAMADO/.test(segunda), segunda);
   await pagina.close();
 }
 

@@ -732,10 +732,39 @@ const RUIDO_NA_OBSERVACAO = [
   /^pagamento\s+da\s+proposta\b/i,
   /^proposta\s*n?[ºo]?\s*[\d./-]*$/i,
   /^proposta\s+[\d./-]+/i,
+  /^processo\s+[\d./-]+/i,
   /^uf\s+[a-z]{2}$/i,
   /^emenda\s*:/i,
   /^\(?\d{6,}\)?$/,
 ];
+
+/**
+ * Ruído colado à frase, que não se separa por hífen.
+ *
+ * "PAGAMENTO DE 65058-INCREMENTO TEMPORARIO AO CUSTEIO…" diz duas coisas: que é
+ * um pagamento, o que a coluna Fase já mostra, e qual é o objeto. Só a segunda
+ * pertence à coluna de objeto. O mesmo vale para o número do processo e a UF
+ * grudados no fim, que a tabela já traz em colunas próprias.
+ */
+const PREFIXOS_DE_RUIDO = [
+  /^pagamento\s+de\s+\d+\s*-\s*/i,
+  /^empenho\s+(?:para\s+atender\s+)?(?:a\s+|ao\s+)?/i,
+  /^valor\s+referente\s+a\s+/i,
+];
+
+const SUFIXOS_DE_RUIDO = [
+  /\s*-?\s*processo\s+[\d./-]+\s*(?:uf\s+[a-z]{2})?\s*$/i,
+  /\s*-?\s*uf\s+[a-z]{2}\s*$/i,
+];
+
+/**
+ * Palavras que descrevem a espécie do documento, não o gasto.
+ *
+ * Uma versão anterior escreveu "Original", "ORIGINAL" e "Não se aplica" na
+ * coluna de objeto, e esses registros continuam guardados. Reconhecê-los aqui
+ * limpa o que já foi salvo errado, sem precisar apagar nada.
+ */
+const SO_ESPECIE = /^(original|reforço|reforco|anulação|anulacao|estorno|não se aplica|nao se aplica)$/i;
 
 /**
  * Separa a observação em objeto e identificadores.
@@ -747,20 +776,48 @@ const RUIDO_NA_OBSERVACAO = [
  */
 export function objetoDaObservacao(texto) {
   const bruto = String(texto ?? '').trim();
-  if (!bruto) return { objeto: null, proposta: null };
+  if (!bruto || SO_ESPECIE.test(bruto)) return { objeto: null, proposta: null, processo: null };
 
-  // O número da proposta é o elo com o convênio no Transferegov — vale guardar
-  // justamente o que se está tirando da frente.
+  // O número da proposta é o elo com o convênio no Transferegov, e o do processo
+  // identifica o expediente no ministério. Vale guardar justamente o que se está
+  // tirando da frente.
   const proposta = (/proposta\s*n?[ºo]?\s*([\d./-]{6,})/i.exec(bruto) || [])[1] || null;
+  const processo = (/processo\s*n?[ºo]?\s*([\d./-]{6,})/i.exec(bruto) || [])[1] || null;
 
-  const uteis = bruto
+  let objeto = bruto
     .split(/\s+-\s+/)
     .map((p) => p.trim())
     .filter(Boolean)
-    .filter((p) => !RUIDO_NA_OBSERVACAO.some((re) => re.test(p)));
+    .filter((p) => !RUIDO_NA_OBSERVACAO.some((re) => re.test(p)))
+    .join(' - ')
+    .trim();
 
-  const objeto = uteis.join(' - ').trim();
-  return { objeto: objeto.length >= 8 ? objeto : null, proposta };
+  for (const re of SUFIXOS_DE_RUIDO) objeto = objeto.replace(re, '').trim();
+  for (const re of PREFIXOS_DE_RUIDO) objeto = objeto.replace(re, '').trim();
+  objeto = objeto.replace(/\s*-\s*$/, '').trim();
+
+  return {
+    objeto: objeto.length >= 8 && !SO_ESPECIE.test(objeto) ? objeto : null,
+    proposta,
+    processo,
+  };
+}
+
+/**
+ * A ação orçamentária, sem repetir o que já é a mesma coisa.
+ *
+ * Programa e ação vêm separados e às vezes são idênticos — "-14 - Múltiplo ·
+ * -14 - Múltiplo" é uma informação escrita duas vezes. E "Múltiplo" é o que a
+ * fonte diz quando não há um só valor: repetido em toda linha, ocupa uma coluna
+ * inteira sem distinguir nada.
+ */
+export function acaoOrcamentaria(programa, acao) {
+  const limpo = (v) => {
+    const t = String(v ?? '').trim();
+    return !t || /^-?\d*\s*-?\s*m[úu]ltiplo$/i.test(t) ? null : t;
+  };
+  const partes = [...new Set([limpo(programa), limpo(acao)].filter(Boolean))];
+  return partes.join(' · ') || null;
 }
 
 export function doDocumentoDaEmenda(r, codigoEmenda) {
@@ -799,6 +856,7 @@ export function doDocumentoDaEmenda(r, codigoEmenda) {
     // O objeto de verdade é a observação do empenho: "EMPENHO PARA ATENDER A
     // PORTARIA 706 DE 08/04/2020". Ela só existe no documento detalhado.
     objeto: objetoDaObservacao(texto(pegar('observacao', 'objeto', 'descricao'))).objeto,
+    processo: objetoDaObservacao(texto(pegar('observacao'))).processo,
     // A frase inteira, como a fonte a escreveu. O objeto é a leitura dela; o
     // histórico é a prova, e some da lista sem sumir do registro.
     historico: texto(pegar('observacao', 'objeto', 'descricao')),
@@ -808,7 +866,7 @@ export function doDocumentoDaEmenda(r, codigoEmenda) {
     // e a ação orçamentária diz o programa concreto que o executou.
     area: texto(pegar('funcao')),
     subfuncao: texto(pegar('subfuncao')),
-    acao: [texto(pegar('programa')), texto(pegar('acao'))].filter(Boolean).join(' · ') || null,
+    acao: acaoOrcamentaria(texto(pegar('programa')), texto(pegar('acao'))),
     localizador: texto(pegar('localizadorGasto', 'subTitulo')),
     orgao: texto(pegar('orgao', 'unidadeGestora', 'ug')),
     valor: numeroBr(pegar('valor', 'valorDocumento', 'valorEmpenhado')),
@@ -847,21 +905,28 @@ export async function documentosDaEmenda(codigo, {
   // Vale quando alguém abriu aquela emenda para olhar; não vale multiplicado por
   // todas as emendas do mandato numa varredura.
   let completados = 0;
+  let repartidos = [];
   if (completar && linhas.length) {
     const POR_LEVA = 5;
     for (let i = 0; i < linhas.length; i += POR_LEVA) {
       const leva = linhas.slice(i, i + POR_LEVA);
       // eslint-disable-next-line no-await-in-loop
       const prontos = await Promise.all(leva.map(detalharDocumento));
+      // Quem recebeu de verdade está um nível abaixo quando o documento paga a
+      // um banco. É a diferença entre "BANCO DO BRASIL SA" e o município.
+      // eslint-disable-next-line no-await-in-loop
+      const finais = await Promise.all(prontos.map((d) => favorecidosFinais(d.codigoDocumento)));
       prontos.forEach((completo, j) => {
         if (completo.favorecido || completo.valor) completados += 1;
-        linhas[i + j] = completo;
+        repartidos.push(...repartirEntreFinais(completo, finais[j] || []));
       });
       aoProgredir({ feitos: Math.min(i + POR_LEVA, linhas.length), total: linhas.length, completados });
     }
+  } else {
+    repartidos = linhas;
   }
 
-  return { linhas: herdarObjeto(linhas), paginas, completados };
+  return { linhas: herdarObjeto(repartidos), paginas, completados };
 }
 
 /**
@@ -927,7 +992,129 @@ export async function detalharDocumento(documento) {
     if (valor !== null && valor !== undefined && valor !== '') junto[campo] = valor;
   }
   junto.idDocumento = documento.idDocumento ?? completo.idDocumento;
+
+  // O objeto e a ação podem ter sido gravados errados por uma versão anterior.
+  // São leitura, não dado bruto: recalculá-los aqui conserta o que está guardado
+  // sem precisar apagar registro nenhum.
+  junto.objeto = completo.objeto ?? null;
+  junto.acao = completo.acao ?? null;
   return junto;
+}
+
+/**
+ * Completa o que já está guardado mas veio pela metade.
+ *
+ * O cache antes bastava que UMA linha tivesse dado para considerar a emenda
+ * inteira resolvida — e as outras vinte e seis ficavam congeladas vazias para
+ * sempre, porque a versão que sabia completá-las nunca chegava a rodar. Aqui a
+ * conta é por linha: completa-se o que falta e deixa-se em paz o que já está.
+ */
+export async function completarGuardadas(guardadas, { aoProgredir = () => {} } = {}) {
+  const faltando = guardadas.filter(
+    (t) => t.codigoDocumento && !t.favorecido && !t.valor,
+  );
+  if (!faltando.length) return { linhas: guardadas, completados: 0 };
+
+  const prontas = new Map();
+  let completados = 0;
+  const POR_LEVA = 5;
+
+  for (let i = 0; i < faltando.length; i += POR_LEVA) {
+    const leva = faltando.slice(i, i + POR_LEVA);
+    // eslint-disable-next-line no-await-in-loop
+    const detalhes = await Promise.all(leva.map(detalharDocumento));
+    // eslint-disable-next-line no-await-in-loop
+    const finais = await Promise.all(detalhes.map((d) => favorecidosFinais(d.codigoDocumento)));
+    detalhes.forEach((d, j) => {
+      if (d.favorecido || d.valor) completados += 1;
+      prontas.set(leva[j].id, repartirEntreFinais(d, finais[j] || []));
+    });
+    aoProgredir({ feitos: Math.min(i + POR_LEVA, faltando.length), total: faltando.length });
+  }
+
+  const linhas = guardadas.flatMap((t) => prontas.get(t.id) || [t]);
+  if (completados) await guardarTransferencias(linhas);
+  return { linhas: herdarObjeto(linhas), completados };
+}
+
+/**
+ * Reparte um documento entre quem de fato recebeu.
+ *
+ * Um pagamento ao banco que se divide entre doze municípios é uma linha na
+ * fonte e doze destinos na realidade. Só se reparte quando os favorecidos finais
+ * trazem valor: sem valor, somar as partes daria um total diferente do
+ * documento, e a tabela passaria a mentir para ficar mais detalhada.
+ */
+export function repartirEntreFinais(documento, finais) {
+  const partes = finais.map(doFavorecidoFinal).filter((f) => f.favorecido);
+  if (!partes.length) return [documento];
+
+  const comValor = partes.filter((p) => p.valor);
+  if (!comValor.length) {
+    // Sem valor por parte, o documento continua um só — mas já se sabe para
+    // quem ele foi, e isso cabe ao lado do favorecido intermediário.
+    return [{
+      ...documento,
+      favorecidoFinal: partes.map((p) => p.favorecido).join(' | '),
+      municipio: documento.municipio
+        || (partes.length === 1 ? partes[0].municipio : null),
+    }];
+  }
+
+  return comValor.map((p, i) => ({
+    ...documento,
+    favorecido: p.favorecido,
+    favorecidoDoc: p.favorecidoDoc || null,
+    municipio: p.municipio,
+    uf: p.uf || documento.uf,
+    valor: p.valor,
+    favorecidoIntermediario: documento.favorecido || null,
+    idDocumento: documento.idDocumento ? `${documento.idDocumento}-f${i + 1}` : null,
+  }));
+}
+
+/**
+ * Quem de fato recebeu, quando o documento paga a um intermediário.
+ *
+ * Numa transferência a município, o favorecido do documento no SIAFI é o banco
+ * — "BANCO DO BRASIL SA" — porque é ele que operacionaliza o repasse. O
+ * destinatário real está um nível abaixo, em `favorecidos-finais-por-documento`,
+ * que a documentação da API declara e que é justamente a coluna "município" que
+ * faltava.
+ */
+export async function favorecidosFinais(codigoDocumento) {
+  const { consultarFonte } = await import('./fontes.js');
+  if (!codigoDocumento) return [];
+
+  try {
+    const r = await consultarFonte('portal-livre',
+      { codigoDocumento, pagina: 1 }, '/despesas/favorecidos-finais-por-documento');
+    return Array.isArray(r.dados) ? r.dados : [].concat(r.dados).filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
+/** Traduz um favorecido final para os campos que a tabela mostra. */
+export function doFavorecidoFinal(r) {
+  const pegar = (...nomes) => {
+    for (const n of nomes) {
+      const v = r[n];
+      if (v !== undefined && v !== null && v !== '') return v;
+    }
+    return null;
+  };
+  const texto = (v) => (v && typeof v === 'object' ? (v.descricao || v.nome || null) : v);
+  const nome = texto(pegar('nomeFavorecidoFinal', 'nomeFavorecido', 'favorecidoFinal', 'favorecido', 'nome'));
+  const local = separarLocalidade(texto(pegar('municipio', 'municipioFavorecido', 'localidade')));
+
+  return {
+    favorecido: nome,
+    favorecidoDoc: pegar('codigoFavorecidoFinal', 'codigoFavorecido', 'cpfCnpj') || null,
+    municipio: local.municipio || (nome ? municipioDoBeneficiario(nome) : null),
+    uf: local.uf || texto(pegar('ufFavorecido', 'uf')),
+    valor: numeroBr(pegar('valor', 'valorRecebido')),
+  };
 }
 
 /** A chave de uma transferência: o plano de ação identifica sozinho. */

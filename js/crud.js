@@ -715,8 +715,12 @@ export async function renderModulo(container, modulo, {
             detalhe.hidden = aberto;
             abrir.textContent = aberto ? '▸' : '▾';
             abrir.setAttribute('aria-expanded', aberto ? 'false' : 'true');
-            if (!aberto && !detalhe.dataset.carregado) {
-              detalhe.dataset.carregado = '1';
+            // Recarrega a cada abertura, e não uma vez por desenho da lista.
+            // O detalhamento lê primeiro o que está guardado e só busca o que
+            // falta; travar na primeira tentativa deixava sem saída a linha que
+            // veio incompleta — reabrir não fazia nada, e só recarregar a página
+            // inteira tentava de novo.
+            if (!aberto) {
               const alvo = detalhe.querySelector('.sanfona-conteudo');
               sanfona(item, alvo, recarregar);
             }

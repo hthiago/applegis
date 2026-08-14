@@ -861,13 +861,26 @@ async function sanfonaDaEmenda(emenda, alvo, recarregar) {
     const guardadas = (await nucleo.dados.listar('transferencias'))
       .filter((t) => mesmoCodigo(t.codigoEmenda, emenda.codigo));
 
-    // Guardado não é o mesmo que completo. Vinte e sete linhas sem quem recebeu
-    // e sem valor foram salvas por uma versão que ainda não sabia buscar esse
-    // nível — e, por estarem salvas, faziam a versão que sabe nunca rodar. O
-    // cache serve para não repetir consulta, não para congelar uma resposta
-    // incompleta.
-    const util = guardadas.some((t) => t.favorecido || t.valor);
-    if (guardadas.length && util) { desenhar(guardadas); return; }
+    // Guardado não é o mesmo que completo, e a conta tem de ser por linha. Bastar
+    // que UMA tivesse dado deixava as outras vinte e seis congeladas vazias para
+    // sempre: a versão que sabia completá-las nunca chegava a rodar. O cache
+    // serve para não repetir consulta, não para preservar buracos.
+    if (guardadas.length && nucleo.fontes.disponivel()) {
+      desenhar(guardadas);
+      const r = await nucleo.emendas.completarGuardadas(guardadas, {
+        aoProgredir: (p) => {
+          const nota = alvo.querySelector('.sanfona-recado');
+          const texto = `Completando ${p.feitos} de ${p.total} documentos…`;
+          if (nota) nota.textContent = texto;
+          else alvo.insertBefore(el('p', { class: 'sanfona-recado', texto }), alvo.firstChild);
+        },
+      });
+      // Sem redesenhar a lista: recarregar aqui fecharia a própria sanfona que
+      // acabou de ser preenchida, e o que mudou não aparece na linha de fora.
+      desenhar(r.linhas);
+      return;
+    }
+    if (guardadas.length) { desenhar(guardadas); return; }
 
     if (!nucleo.fontes.disponivel()) {
       desenhar([], 'Nada detalhado ainda. A consulta automática está desligada — use "Importar planilha" ou ligue as Cloud Functions.');
