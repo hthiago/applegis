@@ -700,7 +700,20 @@ export const MODULOS = [
     singular: 'emenda',
     descricao: 'Emendas do mandato — individuais, de bancada e de comissão — com a execução conferida contra a planilha oficial.',
     ordenar: { campo: 'ano', dir: 'desc' },
-    busca: ['codigo', 'beneficiario', 'municipio', 'objeto', 'proposta'],
+    // A busca alcança o que identifica a emenda, o que ela é e para onde foi —
+    // inclusive o que está nos destinos pendurados nela, que é onde moram o
+    // município de cada parcela e o objeto de cada executor.
+    busca: ['codigo', 'numeroNaFonte', 'ano', 'tipo', 'beneficiario', 'municipio', 'uf',
+      'objeto', 'funcao', 'subfuncao', 'areaDestino', 'proposta', 'instrumento',
+      'autorNaFonte', 'situacaoNaFonte', 'observacoes', 'detalhesDaPlanilha', 'fase'],
+    buscaDica: 'município, objeto, número da emenda, categoria, beneficiário, proposta',
+    buscaEmFilhos: {
+      colecao: 'transferencias',
+      campoPai: 'codigo',
+      campoFilho: 'codigoEmenda',
+      campos: ['municipio', 'favorecido', 'objeto', 'metas', 'acao', 'situacao',
+        'documento', 'localizador', 'area'],
+    },
     importaEmendas: true,
     // Uma emenda que se reparte entre municípios aparece como "MÚLTIPLO" na
     // fonte. A sanfona abre a repartição sem tirar ninguém da lista.

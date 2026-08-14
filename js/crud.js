@@ -35,6 +35,67 @@ function textoDe(campo, item, refs) {
   }
 }
 
+/**
+ * Como o texto é comparado na busca: minúsculo e sem acento.
+ *
+ * As bases federais gravam em caixa alta sem acento e a planilha do gabinete
+ * escreve com acento. Quem digita "ambulância" não deve deixar de achar
+ * "AMBULANCIA", nem o contrário.
+ */
+function paraBusca(texto) {
+  return String(texto ?? '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+}
+
+/**
+ * O texto de um registro que a busca enxerga, incluindo o dos filhos.
+ *
+ * Um módulo pode declarar `buscaEmFilhos`: a emenda não guarda o município nem
+ * o objeto de cada destino — quem os guarda é a transferência pendurada nela.
+ * Procurar "Acegua" ou "videomonitoramento" na lista de emendas só encontra
+ * alguma coisa se a busca descer até ali.
+ */
+function textoBuscavel(item, modulo, refs, porPai) {
+  const proprio = (modulo.busca || []).map((k) => {
+    const campo = modulo.campos.find((c) => c.k === k);
+    return campo ? textoDe(campo, item, refs) : String(item[k] ?? '');
+  });
+
+  const ligacao = modulo.buscaEmFilhos;
+  const dosFilhos = ligacao ? porPai?.get(chaveDeLigacao(item[ligacao.campoPai])) : null;
+  return paraBusca([...proprio, dosFilhos || ''].join('  '));
+}
+
+/**
+ * Junta, por registro-pai, o texto dos filhos que a busca deve enxergar.
+ *
+ * Uma leitura só da coleção filha, feita uma vez por desenho da lista. Consultar
+ * por linha seriam centenas de idas ao banco para responder a cada tecla
+ * digitada.
+ */
+async function indiceDosFilhos(modulo) {
+  const ligacao = modulo.buscaEmFilhos;
+  if (!ligacao) return null;
+
+  const filhos = await listar(ligacao.colecao).catch(() => []);
+  const porPai = new Map();
+  for (const filho of filhos) {
+    const chave = chaveDeLigacao(filho[ligacao.campoFilho]);
+    if (!chave) continue;
+    const texto = ligacao.campos.map((k) => filho[k]).filter(Boolean).join(' ');
+    if (!texto) continue;
+    porPai.set(chave, porPai.has(chave) ? `${porPai.get(chave)}  ${texto}` : texto);
+  }
+  return porPai;
+}
+
+/** A mesma forma dos dois lados da ligação, para o par se encontrar. */
+function chaveDeLigacao(valor) {
+  return String(valor ?? '').trim().replace(/[^\w]/g, '').toUpperCase() || null;
+}
+
 function dataCurta(iso) {
   const [a, m, d] = String(iso || '').slice(0, 10).split('-');
   return d ? `${d}/${m}/${a.slice(2)}` : '';
@@ -391,8 +452,10 @@ export async function renderModulo(container, modulo, {
 
   let itens;
   let refs;
+  let porPai = null;
   try {
     [itens, refs] = await Promise.all([listar(modulo.id, { recarregar: true }), carregarReferencias(modulo)]);
+    porPai = await indiceDosFilhos(modulo);
   } catch (erro) {
     console.error(erro);
     limpar(container).appendChild(vazio('Não foi possível carregar os dados. Recarregue a página.'));
@@ -403,7 +466,7 @@ export async function renderModulo(container, modulo, {
   const campoStatus = modulo.campos.find((c) => c.t === 'select' && ['status', 'situacao', 'fase'].includes(c.k));
 
   const estado = {
-    termo: '',
+    termos: [],
     filtro: '',
     segmento: modulo.segmentos ? modulo.segmentos.op[0].v : null,
     facetas: facetasIniciais(modulo, itens),
@@ -429,9 +492,20 @@ export async function renderModulo(container, modulo, {
   const busca = el('input', {
     type: 'search',
     class: 'busca',
-    placeholder: `Buscar em ${modulo.nome.toLowerCase()}…`,
+    placeholder: modulo.buscaDica
+      ? `Buscar por ${modulo.buscaDica}…`
+      : `Buscar em ${modulo.nome.toLowerCase()}…`,
     'aria-label': 'Buscar',
-    oninput: (e) => { estado.termo = e.target.value.toLowerCase(); atualizar(); },
+    // Uma busca que alcança dezoito campos e ainda desce aos destinos não se
+    // anuncia sozinha: sem dizer o que aceita, continua sendo usada como se
+    // aceitasse só o código.
+    title: modulo.buscaDica
+      ? `Aceita vários termos ao mesmo tempo. Procura em: ${modulo.buscaDica}.`
+      : null,
+    oninput: (e) => {
+      estado.termos = paraBusca(e.target.value).split(/\s+/).filter(Boolean);
+      atualizar();
+    },
   });
 
   const filtro = campoStatus ? el('select', {
@@ -503,12 +577,12 @@ export async function renderModulo(container, modulo, {
       for (const f of (modulo.facetas || [])) {
         if (f.campo !== ignorar && !passaNaFaceta(i, f, estado.facetas[f.campo])) return false;
       }
-      if (!estado.termo) return true;
-      return (modulo.busca || []).some((k) => {
-        const campo = modulo.campos.find((c) => c.k === k);
-        const texto = campo ? textoDe(campo, i, refs) : String(i[k] ?? '');
-        return texto.toLowerCase().includes(estado.termo);
-      });
+      if (!estado.termos.length) return true;
+      // Todos os termos precisam aparecer, em qualquer campo: "acegua camera"
+      // acha a emenda que foi para Acegua e comprou câmeras, sem exigir que as
+      // duas palavras estejam juntas no mesmo campo.
+      const texto = textoBuscavel(i, modulo, refs, porPai);
+      return estado.termos.every((t) => texto.includes(t));
     }).sort(ordenador(modulo));
   }
 
@@ -767,7 +841,7 @@ export async function renderModulo(container, modulo, {
         type: 'button',
         texto: 'ver todos',
         onclick: () => {
-          estado.termo = '';
+          estado.termos = [];
           estado.filtro = '';
           estado.facetas = {};
           busca.value = '';

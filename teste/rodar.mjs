@@ -884,6 +884,27 @@ console.log('\nPlanilhas de emenda\n');
   conferir('localidade só com UF não vira nome de município',
     em.separarLocalidade('RS').municipio === null && em.separarLocalidade('RS').uf === 'RS');
 
+  // Acento é a diferença entre a planilha do gabinete e as bases federais, que
+  // gravam em caixa alta sem acento. Quem digita "ambulância" tem de achar
+  // "AMBULANCIA", e o contrário também.
+  {
+    const mod = await import('../js/modulos.js');
+    const emendas = mod.porId.emendas;
+    conferir('a busca em emendas alcança município, categoria, número e proposta',
+      ['codigo', 'numeroNaFonte', 'municipio', 'funcao', 'subfuncao', 'proposta', 'objeto']
+        .every((k) => emendas.busca.includes(k)),
+      emendas.busca.join(', '));
+    conferir('e desce aos destinos, onde moram o município e o objeto de cada parcela',
+      emendas.buscaEmFilhos?.colecao === 'transferencias'
+      && emendas.buscaEmFilhos.campoPai === 'codigo'
+      && emendas.buscaEmFilhos.campoFilho === 'codigoEmenda'
+      && emendas.buscaEmFilhos.campos.includes('metas'),
+      JSON.stringify(emendas.buscaEmFilhos));
+    conferir('todo campo buscável existe no módulo — nome errado busca em nada',
+      emendas.busca.every((k) => emendas.campos.some((c) => c.k === k)),
+      emendas.busca.filter((k) => !emendas.campos.some((c) => c.k === k)).join(', ') || 'todos existem');
+  }
+
   conferir('nome vai para a base como ela o guarda: caixa alta, sem acento',
     pl.nomeParaBusca('Marcel van Hattem') === 'MARCEL VAN HATTEM'
     && pl.nomeParaBusca('Vinícius Gurgel') === 'VINICIUS GURGEL'
@@ -1390,6 +1411,77 @@ console.log('\nPlanilhas de emenda\n');
   conferir('página que só repete o que já veio encerra a consulta',
     /1 emendas novas/.test(recado) && /2025: 1/.test(recado),
     recado.replace(/\s+/g, ' '));
+  await pagina.close();
+}
+
+// A busca em emendas. O gabinete procura por município, por objeto, pelo número
+// — e o município de cada parcela não está na emenda: está no destino pendurado
+// nela. Uma busca que não desce até ali não acha nada do que se procura.
+{
+  const pagina = await abrir({
+    consultaAutomatica: true,
+    funcoes: {
+      consultarFonte: {
+        __fn: `var c = dados.caminho || '';
+        if (c === '/transferenciasespeciais/plano_acao_especial') {
+          if (Number((dados.parametros || {}).offset || 0) > 0) return { dados: [] };
+          if (!/Deputada Teste/i.test(String((dados.parametros || {}).nome_parlamentar_emenda_plano_acao || ''))) return { dados: [] };
+          return { dados: [{ id_plano_acao: 501, ano_emenda_parlamentar_plano_acao: 2026,
+            codigo_parlamentar_emenda_plano_acao: 1234,
+            sequencial_emenda_parlamentar_plano_acao: 0,
+            nome_beneficiario_plano_acao: 'MUNICIPIO DE ACEGUA',
+            uf_beneficiario_plano_acao: 'RS',
+            descricao_programacao_orcamentaria_plano_acao: 'Videomonitoramento urbano',
+            valor_investimento_plano_acao: '398000' }] };
+        }
+        return { dados: [] };`,
+      },
+    },
+  });
+
+  // Traz o destino, para a busca ter em que descer.
+  await pagina.goto(`${BASE}/#/orcamento/transferencias`, { waitUntil: 'domcontentloaded' });
+  await pagina.waitForSelector('.modulo-topo');
+  await pagina.getByRole('button', { name: 'Detalhar emendas' }).click();
+  await pagina.waitForTimeout(2000);
+
+  await pagina.goto(`${BASE}/#/orcamento/emendas`, { waitUntil: 'domcontentloaded' });
+  await pagina.waitForSelector('.tabela');
+  const busca = pagina.locator('.busca');
+  const linhas = async () => pagina.locator('.tabela tbody tr:not(.linha-detalhe)').count();
+
+  conferir('a busca anuncia o que aceita, em vez de parecer só por código',
+    /munic[íi]pio/i.test(await busca.getAttribute('placeholder') || ''),
+    await busca.getAttribute('placeholder'));
+
+  // O município está na transferência, não na emenda.
+  await busca.fill('acegua');
+  await pagina.waitForTimeout(300);
+  conferir('busca por município acha a emenda pelo destino pendurado nela',
+    (await linhas()) === 1, `${await linhas()} linhas`);
+
+  // Sem acento de um lado, com acento do outro.
+  await busca.fill('videomonitoramento');
+  await pagina.waitForTimeout(300);
+  conferir('busca pelo objeto do destino também acha',
+    (await linhas()) === 1, `${await linhas()} linhas`);
+
+  await busca.fill('2026');
+  await pagina.waitForTimeout(300);
+  conferir('busca pelo número da emenda continua funcionando',
+    (await linhas()) >= 1, `${await linhas()} linhas`);
+
+  // Dois termos que moram em lugares diferentes: um na emenda, outro no destino.
+  await busca.fill('acegua 2026');
+  await pagina.waitForTimeout(300);
+  conferir('vários termos se somam, mesmo vindo de campos diferentes',
+    (await linhas()) === 1, `${await linhas()} linhas`);
+
+  await busca.fill('acegua tratores');
+  await pagina.waitForTimeout(300);
+  conferir('e termo que não existe reduz a nada, em vez de ser ignorado',
+    (await linhas()) === 0, `${await linhas()} linhas`);
+
   await pagina.close();
 }
 
