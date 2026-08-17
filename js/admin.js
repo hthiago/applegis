@@ -174,6 +174,7 @@ function blocoGabinete(aoConcluir) {
   const linhas = [
     ['Nome', g.nome || '—'],
     ['Parlamentar', g.deputado || '—'],
+    ['Partido', g.partido || '—'],
     ['UF', g.uf || '—'],
     ['ID na Câmara', g.idDeputadoCamara || 'não informado'],
     ['WhatsApp do parlamentar', g.whatsappParlamentar || 'não informado'],
@@ -209,12 +210,14 @@ function formGabineteAtual(aoConcluir) {
   const form = el('form', { class: 'form' });
   const nome = el('input', { type: 'text', required: true });
   const deputado = el('input', { type: 'text' });
+  const partido = el('input', { type: 'text', placeholder: 'NOVO' });
   const uf = el('input', { type: 'text', maxlength: '2' });
   const idCamara = el('input', { type: 'number', inputmode: 'numeric' });
   const cota = el('input', { type: 'number', inputmode: 'decimal', step: '0.01', min: '0' });
   const whatsapp = el('input', { type: 'tel', placeholder: '(54) 99999-0000' });
   nome.value = g.nome || '';
   deputado.value = g.deputado || '';
+  partido.value = g.partido || '';
   uf.value = g.uf || '';
   idCamara.value = g.idDeputadoCamara || '';
   cota.value = g.cotaMensal ?? '';
@@ -223,6 +226,13 @@ function formGabineteAtual(aoConcluir) {
   form.append(
     el('div', { class: 'campo' }, [el('label', { texto: 'Nome do gabinete *' }), nome]),
     el('div', { class: 'campo' }, [el('label', { texto: 'Parlamentar' }), deputado]),
+    // É por ele que a importação de candidaturas separa, entre os quinze
+    // eleitos de cada Câmara, quais são os vereadores aliados.
+    el('div', { class: 'campo' }, [
+      el('label', { texto: 'Partido' }),
+      partido,
+      el('p', { class: 'campo-dica', texto: 'A sigla como o TSE escreve. Sem ela, a importação de candidaturas traz prefeito e vice, mas não sabe quais vereadores são do partido.' }),
+    ]),
     el('div', { class: 'linha-campos' }, [
       el('div', { class: 'campo' }, [el('label', { texto: 'UF' }), uf]),
       el('div', { class: 'campo' }, [el('label', { texto: 'ID na Câmara' }), idCamara]),
@@ -266,6 +276,7 @@ function formGabineteAtual(aoConcluir) {
     const dados = {
       nome: nome.value.trim(),
       deputado: deputado.value.trim() || null,
+      partido: partido.value.trim().toUpperCase() || null,
       uf: uf.value.trim().toUpperCase() || null,
       idDeputadoCamara: idCamara.value ? Number(idCamara.value) : null,
       whatsappParlamentar: whatsapp.value.trim() || null,

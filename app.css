@@ -1158,6 +1158,9 @@ input:focus, select:focus, textarea:focus { border-color: var(--verde); outline:
 .ficha-resumo { margin: 0; padding-left: 1.1rem; }
 .ficha-resumo li { margin: .15rem 0; }
 .ficha-resumo-texto { margin: .5rem 0 0; }
+/* De onde veio o número. Numa folha levada a uma reunião, o dado sem fonte é
+   o dado que alguém contesta e ninguém consegue defender. */
+.ficha-fonte { margin: .4rem 0 0; font-size: .78em; opacity: .6; }
 .ficha-mensagem { width: 100%; font-family: inherit; font-size: .9rem; }
 
 /* ── minimapa: onde a cidade fica no estado ──────────────────────────────

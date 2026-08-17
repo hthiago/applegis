@@ -298,6 +298,7 @@ export const MODULOS = [
       // Vereadores do partido ou aliados: é com eles que o gabinete fala antes
       // de qualquer visita.
       { k: 'vereadores', l: 'Vereadores aliados', t: 'tags', lista: true },
+      { k: 'anoEleicaoMunicipal', l: 'Eleição municipal de', t: 'numero' },
       // A votação do parlamentar naquela cidade. Sem ela a ficha não diz se
       // aquele é um reduto ou um lugar a conquistar — que muda a conversa
       // inteira.
@@ -313,8 +314,14 @@ export const MODULOS = [
       { k: 'rendaMedia', l: 'Renda média mensal', t: 'dinheiro' },
       { k: 'populacao', l: 'População', t: 'numero' },
       { k: 'observacoes', l: 'Observações do gabinete', t: 'area', inline: true },
-      { k: 'fonte', l: 'Origem do dado', t: 'texto' },
-      { k: 'atualizadoNaFonte', l: 'Atualizado em', t: 'data' },
+      // Cada importação tem sua própria origem: votação vem do TSE de um ano,
+      // prefeito e vereadores de outro, e a economia do IBGE. Um campo só de
+      // "fonte" faria a última importação mentir sobre as outras duas.
+      { k: 'fonte', l: 'Origem da votação', t: 'texto' },
+      { k: 'atualizadoNaFonte', l: 'Votação atualizada em', t: 'data' },
+      { k: 'fonteGoverno', l: 'Origem de prefeito e vereadores', t: 'texto' },
+      { k: 'fonteEconomia', l: 'Origem dos dados econômicos', t: 'texto' },
+      { k: 'atualizadoEconomia', l: 'Economia atualizada em', t: 'data' },
     ],
   },
   {

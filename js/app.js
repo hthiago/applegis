@@ -717,50 +717,118 @@ function extrasDosContatos() {
 }
 
 /**
- * Importação da votação por município, do arquivo do TSE.
+ * Municípios: três importações, três fontes oficiais, nenhuma digitação.
  *
- * É o único jeito de a ficha de apresentação dizer se aquela cidade é um reduto
- * ou um lugar a conquistar. Só os campos de votação são escritos: prefeito,
- * vereadores e o resumo econômico foram preenchidos por gente, e uma importação
- * de votos não tem por que apagá-los.
+ * Preencher 497 cidades à mão é trabalho de semanas que envelhece sozinho. O
+ * TSE publica quem governa e quanto votou; o IBGE publica renda, PIB e de onde
+ * vem a riqueza. Cada importação escreve só os seus campos — as três convivem
+ * no mesmo registro sem se apagarem, e o que é do gabinete (presidente da
+ * Câmara, "o que importa nesta cidade", observações) nenhuma delas toca.
  */
 function extrasDosMunicipios() {
+  const importador = (rotulo, titulo, executar) => (recarregar) => {
+    const escolher = el('input', { type: 'file', accept: '.csv,.txt,text/csv', class: 'oculto-visual' });
+    const btn = el('button', {
+      class: 'btn btn--fantasma', texto: rotulo, title: titulo, onclick: () => escolher.click(),
+    });
+
+    escolher.addEventListener('change', async () => {
+      const arquivo = escolher.files?.[0];
+      if (!arquivo) return;
+      btn.disabled = true;
+      btn.textContent = 'Lendo…';
+      try {
+        await executar(arquivo);
+        recarregar();
+      } catch (erro) {
+        console.error(erro);
+        aviso(erro.message || 'Não foi possível importar.', 'erro');
+      } finally {
+        escolher.value = '';
+        btn.disabled = false;
+        btn.textContent = rotulo;
+      }
+    });
+
+    return el('span', { class: 'importador' }, [btn, escolher]);
+  };
+
   return [
+    // Quem governa: prefeito, vice e os vereadores do partido, para o estado
+    // inteiro de uma vez.
+    importador(
+      'Importar candidaturas (TSE)',
+      'O arquivo "consulta_cand" da eleição municipal: traz prefeito, vice e os vereadores eleitos do partido',
+      async (arquivo) => {
+        const tse = await import('./tse.js');
+        const g = nucleo.sessaoMod.sessao.gabinete;
+        const r = await tse.importarCandidatos(arquivo, { partidoAliado: g?.partido || null });
+        aviso([
+          `${r.municipios} municípios (${r.novos} novos, ${r.atualizados} atualizados)`,
+          `${r.prefeitos} prefeitos e ${r.vices} vices`,
+          r.partidoAliado
+            ? `${r.aliados} vereadores do ${r.partidoAliado}, de ${r.vereadores} eleitos`
+            // Dito, e não silenciado: sem o partido a coluna de aliados fica
+            // vazia e alguém acharia que o arquivo estava incompleto.
+            : `${r.vereadores} vereadores lidos, nenhum guardado — informe o partido em Acessos → Dados do gabinete`,
+        ].join(' · '), r.partidoAliado ? 'ok' : 'erro');
+      },
+    ),
+    // Quanto votou: o que diz se aquilo é um reduto ou um lugar a conquistar.
+    importador(
+      'Importar votação (TSE)',
+      'O arquivo de votação por município do repositório de dados eleitorais do TSE',
+      async (arquivo) => {
+        const tse = await import('./tse.js');
+        const g = nucleo.sessaoMod.sessao.gabinete;
+        const r = await tse.importarVotacao(arquivo, { nomeAutor: g?.deputado || null });
+        aviso([
+          `${r.municipios} municípios (${r.novos} novos, ${r.atualizados} atualizados)`,
+          `${r.votos.toLocaleString('pt-BR')} votos em ${r.linhas} linhas lidas`,
+          r.melhores.length ? `maiores: ${r.melhores.join(', ')}` : null,
+        ].filter(Boolean).join(' · '), 'ok');
+      },
+    ),
+    // Renda e produção: sem arquivo, direto da API do IBGE.
     (recarregar) => {
-      const escolher = el('input', { type: 'file', accept: '.csv,.txt,text/csv', class: 'oculto-visual' });
+      const rotulo = 'Atualizar economia (IBGE)';
       const btn = el('button', {
         class: 'btn btn--fantasma',
-        texto: 'Importar votação (TSE)',
-        title: 'O arquivo de votação por município do repositório de dados eleitorais do TSE',
-        onclick: () => escolher.click(),
+        texto: rotulo,
+        title: 'Busca PIB per capita, renda e a repartição da produção de cada município cadastrado',
+        onclick: async () => {
+          btn.disabled = true;
+          btn.textContent = 'Consultando o IBGE…';
+          try {
+            const [ibge, dados] = await Promise.all([import('./ibge.js'), import('./dados.js')]);
+            const municipios = await dados.listar('municipios', { recarregar: true });
+            if (!municipios.length) {
+              aviso('Nenhum município cadastrado ainda. Importe as candidaturas do TSE primeiro — elas criam as cidades do estado.', 'erro');
+              return;
+            }
+            const g = nucleo.sessaoMod.sessao.gabinete;
+            const r = await ibge.atualizarEconomia(municipios, {
+              uf: g?.uf || null,
+              aoAndar: (feitos, total) => { btn.textContent = `IBGE ${feitos}/${total}…`; },
+            });
+            aviso([
+              `${r.preenchidos} municípios preenchidos de ${r.comCodigo}`,
+              r.preservados ? `${r.preservados} campos preservados por já estarem preenchidos` : null,
+              r.semDado ? `${r.semDado} sem dado publicado` : null,
+              r.semCodigo ? `${r.semCodigo} não reconhecidos no IBGE` : null,
+              r.tabelas.length ? `tabelas: ${r.tabelas.join('; ')}` : null,
+            ].filter(Boolean).join(' · '), r.preenchidos ? 'ok' : 'erro');
+            recarregar();
+          } catch (erro) {
+            console.error(erro);
+            aviso(erro.message || 'O IBGE não respondeu.', 'erro');
+          } finally {
+            btn.disabled = false;
+            btn.textContent = rotulo;
+          }
+        },
       });
-
-      escolher.addEventListener('change', async () => {
-        const arquivo = escolher.files?.[0];
-        if (!arquivo) return;
-        btn.disabled = true;
-        btn.textContent = 'Apurando…';
-        try {
-          const tse = await import('./tse.js');
-          const g = nucleo.sessaoMod.sessao.gabinete;
-          const r = await tse.importarVotacao(arquivo, { nomeAutor: g?.deputado || null });
-          aviso([
-            `${r.municipios} municípios (${r.novos} novos, ${r.atualizados} atualizados)`,
-            `${r.votos.toLocaleString('pt-BR')} votos em ${r.linhas} linhas lidas`,
-            r.melhores.length ? `maiores: ${r.melhores.join(', ')}` : null,
-          ].filter(Boolean).join(' · '), 'ok');
-          recarregar();
-        } catch (erro) {
-          console.error(erro);
-          aviso(erro.message || 'Não foi possível importar a votação.', 'erro');
-        } finally {
-          escolher.value = '';
-          btn.disabled = false;
-          btn.textContent = 'Importar votação (TSE)';
-        }
-      });
-
-      return el('span', { class: 'importador' }, [btn, escolher]);
+      return btn;
     },
   ];
 }

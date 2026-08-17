@@ -156,12 +156,31 @@ camadas: *Emendas* traz o consolidado por emenda — empenhado, liquidado, pago 
 restos —, e *Transferências* traz a emenda discriminada, uma linha por documento
 de execução, com quem recebeu, para quê e em que fase.
 
-**Votação por município** (ativa, sem cadastro). Em *Administrativo › Municípios*, o
-botão **Importar votação (TSE)** lê o arquivo de votação por município do repositório
-de dados eleitorais do TSE, casa o nome de urna com o nome do parlamentar cadastrado,
-soma os votos por cidade e calcula a colocação e o percentual. Só os campos de votação
-são escritos: prefeito, vereadores e o resumo econômico foram preenchidos por gente, e
-uma importação de votos não os apaga.
+**Municípios: três importações, três fontes** (ativas, sem cadastro). Em
+*Administrativo › Municípios*, o cadastro que alimenta a ficha de apresentação se
+preenche sozinho para o estado inteiro. Cada botão escreve só os seus campos, então as
+três convivem no mesmo registro sem se apagarem, e nenhuma delas toca no que é do
+gabinete.
+
+| Botão | Arquivo / fonte | Preenche |
+|---|---|---|
+| **Importar candidaturas (TSE)** | `consulta_cand_<ano>_<UF>.csv` da eleição **municipal** (2024), em [dadosabertos.tse.jus.br](https://dadosabertos.tse.jus.br) | Prefeito, partido, vice e os vereadores eleitos **do partido do parlamentar** |
+| **Importar votação (TSE)** | `votacao_candidato_munzona_<ano>_<UF>.csv` da eleição **geral** (2022) | Votos na cidade, votos válidos, colocação e percentual |
+| **Atualizar economia (IBGE)** | API do IBGE, sem arquivo | PIB per capita, renda média e de onde vem a produção ("agropecuária 40%, serviços 30%…") |
+
+Para os vereadores aliados, informe o **partido** em *Acessos › Dados do gabinete* — sem
+ele a importação traz prefeito e vice, e diz na tela que não guardou vereador nenhum.
+
+A varredura do IBGE **não sobrescreve o que já está preenchido**: alguém pode ter
+corrigido um número à mão por saber de coisa que a tabela não sabe. Ela também não
+adivinha os códigos das tabelas do SIDRA — lê o catálogo que o próprio IBGE publica,
+acha a tabela e as variáveis pelo nome, e diz quando não acha. Número de tabela errado
+devolve resposta vazia sem erro nenhum, que é o pior modo de falhar.
+
+**O que continua sendo do gabinete**, e nenhuma base pública tem: o **presidente da
+Câmara** (eleito pelos vereadores em sessão que o TSE não registra) e **"o que importa
+nesta cidade"**, que é leitura política. A ficha diz isso na tela em vez de deixar o
+campo vazio parecendo defeito.
 
 **Ficha de apresentação** (ativa). Em *Administrativo › Ficha de apresentação*, o
 município em uma folha: população e região (IBGE), um minimapa mostrando onde a cidade

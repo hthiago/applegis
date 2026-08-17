@@ -1885,6 +1885,118 @@ console.log('\nPlanilhas de emenda\n');
     apurado.find((m) => m.nome === 'Aceguá').colocacao === 1);
   conferir('a chave do município é a mesma da base do gabinete',
     tse.chaveDoMunicipio('Santa Maria do Herval', 'RS') === 'santa-maria-do-herval-rs');
+
+  // ── quem governa a cidade, do arquivo de candidaturas ──
+  //
+  // Preencher prefeito, vice e Câmara de 497 cidades à mão é trabalho de
+  // semanas que envelhece sozinho. O TSE publica os três.
+  const cabCand = ['ANO_ELEICAO', 'SG_UF', 'SG_UE', 'NM_UE', 'CD_CARGO', 'DS_CARGO', 'NR_CANDIDATO', 'NM_CANDIDATO', 'NM_URNA_CANDIDATO', 'SG_PARTIDO', 'DS_SIT_TOT_TURNO'];
+  const mapaCand = tse.mapearColunasDoTse(cabCand);
+  const cand = [
+    ['2024', 'RS', '88013', 'ERECHIM', '11', 'PREFEITO', '15', 'PAULO DA SILVA PREFEITO', 'PAULO PREFEITO', 'NOVO', 'ELEITO'],
+    ['2024', 'RS', '88013', 'ERECHIM', '12', 'VICE-PREFEITO', '15', 'VERA MARIA VICE', 'VERA VICE', 'NOVO', 'ELEITO'],
+    ['2024', 'RS', '88013', 'ERECHIM', '13', 'VEREADOR', '1511', 'ANA DE SOUZA', 'ANA VEREADORA', 'NOVO', 'ELEITO POR QP'],
+    ['2024', 'RS', '88013', 'ERECHIM', '13', 'VEREADOR', '1512', 'BRUNO LIMA', 'BRUNO VEREADOR', 'NOVO', 'ELEITO POR MÉDIA'],
+    ['2024', 'RS', '88013', 'ERECHIM', '13', 'VEREADOR', '4444', 'CARLOS DE OUTRO', 'CARLOS OUTRO', 'UNIÃO', 'ELEITO'],
+    // A armadilha: "NÃO ELEITO" contém "ELEITO". Um includes aqui daria a
+    // prefeitura ao perdedor, em todas as cidades, sem erro na tela.
+    ['2024', 'RS', '88013', 'ERECHIM', '11', 'PREFEITO', '44', 'PERDEDOR SILVA', 'PERDEDOR', 'UNIÃO', 'NÃO ELEITO'],
+    ['2024', 'RS', '88013', 'ERECHIM', '13', 'VEREADOR', '1599', 'SUPLENTE SOUZA', 'SUPLENTE', 'NOVO', 'SUPLENTE'],
+  ];
+
+  conferir('"NÃO ELEITO" não passa por eleito, apesar de conter a palavra',
+    tse.foiEleito('ELEITO') && tse.foiEleito('ELEITO POR QP') && tse.foiEleito('ELEITO POR MÉDIA')
+    && !tse.foiEleito('NÃO ELEITO') && !tse.foiEleito('SUPLENTE') && !tse.foiEleito('2º TURNO'));
+  conferir('os três cargos municipais são reconhecidos, e só eles',
+    tse.papelDoCargo('PREFEITO') === 'prefeito'
+    && tse.papelDoCargo('VICE-PREFEITO') === 'vice'
+    && tse.papelDoCargo('VEREADOR') === 'vereador'
+    && tse.papelDoCargo('DEPUTADO FEDERAL') === null);
+
+  const eleitos = tse.apurarEleitos(cand, mapaCand, { partidoAliado: 'NOVO' });
+  const cidade = eleitos.municipios[0];
+  conferir('prefeito e vice saem do arquivo, pelo nome de urna',
+    cidade.prefeito === 'Paulo Prefeito' && cidade.vicePrefeito === 'Vera Vice'
+    && cidade.partidoPrefeito === 'NOVO', JSON.stringify(cidade));
+  // O campo na ficha é "vereadores aliados": despejar os quinze eleitos de cada
+  // Câmara faria uma lista que ninguém lê.
+  conferir('só os vereadores do partido do parlamentar são guardados',
+    cidade.vereadores.join(', ') === 'Ana Vereadora, Bruno Vereador',
+    JSON.stringify(cidade.vereadores));
+  conferir('o perdedor não vira prefeito e o suplente não vira vereador',
+    !/Perdedor|Suplente/.test(JSON.stringify(cidade)), JSON.stringify(cidade));
+  conferir('e o funil conta o que veio de cada cargo',
+    eleitos.funil.prefeitos === 1 && eleitos.funil.vereadores === 3 && eleitos.funil.aliados === 2,
+    JSON.stringify(eleitos.funil));
+}
+
+// ── renda e produção, do IBGE ──
+//
+// As tabelas do SIDRA são identificadas por número, e um número errado devolve
+// resposta vazia sem erro nenhum. Por isso o módulo descobre a tabela e as
+// variáveis pelo nome — e é essa descoberta que se testa aqui.
+{
+  const ibge = await import('../js/ibge.js');
+
+  const achatado = ibge.achatarCatalogo([
+    { nome: 'Produto Interno Bruto dos Municípios', agregados: [{ id: '5938', nome: 'Produto interno bruto a preços correntes e valor adicionado bruto por atividade econômica' }] },
+    { nome: 'Censo Demográfico', agregados: [{ id: '9999', nome: 'Rendimento nominal mensal domiciliar per capita' }] },
+  ]);
+  // O nome do agregado sozinho não diz que é municipal; quem diz é o da
+  // pesquisa. Guardar os dois juntos é o que permite achar a tabela certa.
+  conferir('o catálogo é achatado com o nome da pesquisa junto',
+    ibge.acharAgregado(achatado, /produto interno bruto.*munic/i)?.id === '5938',
+    JSON.stringify(achatado.map((a) => a.id)));
+  conferir('tabela que não chega ao município é descartada',
+    ibge.atendeMunicipio({ nivelTerritorial: { Administrativo: ['N1', 'N3', 'N6'] } })
+    && !ibge.atendeMunicipio({ nivelTerritorial: { Administrativo: ['N1', 'N3'] } }));
+
+  const meta = { variaveis: [
+    { id: 37, nome: 'PIB a preços correntes', unidade: 'Mil Reais' },
+    { id: 513, nome: 'Valor adicionado bruto da Agropecuária, a preços correntes', unidade: 'Mil Reais' },
+    { id: 517, nome: 'Valor adicionado bruto da Indústria, a preços correntes', unidade: 'Mil Reais' },
+    { id: 6575, nome: 'Valor adicionado bruto dos Serviços, a preços correntes - exceto Administração, defesa, educação e saúde públicas e seguridade social', unidade: 'Mil Reais' },
+    { id: 6576, nome: 'Valor adicionado bruto da Administração, defesa, educação e saúde públicas e seguridade social, a preços correntes', unidade: 'Mil Reais' },
+    { id: 6543, nome: 'PIB per capita', unidade: 'Reais' },
+  ] };
+  const achadas = ibge.acharVariaveis(meta, [
+    { chave: 'perCapita', re: /per capita/i },
+    { chave: 'administracao', re: /valor adicionado.*administra[çc]/i, nao: /exceto/i },
+    { chave: 'agropecuaria', re: /valor adicionado.*agropecu/i },
+    { chave: 'industria', re: /valor adicionado.*ind[úu]stria/i },
+    { chave: 'servicos', re: /valor adicionado.*servi[çc]os/i },
+  ]);
+  // O nome da variável de serviços contém "exceto Administração": sem a
+  // exclusão os dois setores viriam com o mesmo número e serviços viria vazio.
+  conferir('serviços não é confundido com administração pela cláusula "exceto"',
+    achadas.servicos?.id === '6575' && achadas.administracao?.id === '6576',
+    JSON.stringify(Object.fromEntries(Object.entries(achadas).map(([k, v]) => [k, v.id]))));
+  conferir('e o per capita é achado com a unidade dele, que não é a das demais',
+    achadas.perCapita?.id === '6543' && achadas.perCapita.unidade === 'Reais');
+
+  conferir('"..." e "-" são ausência de dado, não zero',
+    ibge.valorIbge('45123') === 45123 && ibge.valorIbge('...') === null
+    && ibge.valorIbge('-') === null && ibge.valorIbge('') === null);
+
+  // Listar um setor de 3% ao lado de um de 60% dá aos dois a mesma importância
+  // para quem passa o olho na folha.
+  conferir('a atividade econômica sai da repartição do valor adicionado',
+    ibge.atividadesDoVab({ agropecuaria: 400, industria: 250, servicos: 300, administracao: 50 })
+    === 'agropecuária (40%), serviços (30%) e indústria (25%)');
+  conferir('setor irrelevante não entra na frase',
+    ibge.atividadesDoVab({ agropecuaria: 950, industria: 20, servicos: 30 }) === 'agropecuária (95%)');
+  conferir('sem valor adicionado, a frase não é inventada',
+    ibge.atividadesDoVab({ agropecuaria: 0, industria: 0 }) === null);
+
+  const dados = ibge.economiaDoMunicipio(
+    { ano: '2021', perCapita: 45000, agropecuaria: 400, industria: 250, servicos: 300, administracao: 50 },
+    { ano: '2022', rendaMedia: 2100 },
+    { pib: { nome: 'PIB dos Municípios' }, renda: { nome: 'Censo' } },
+  );
+  conferir('o registro do município cita de onde veio cada número',
+    dados.pibPerCapita === 45000 && dados.rendaMedia === 2100
+    && /PIB dos Municípios \(2021\)/.test(dados.fonteEconomia)
+    && /Censo \(2022\)/.test(dados.fonteEconomia), JSON.stringify(dados));
 }
 
 /**

@@ -183,6 +183,7 @@ export function resumoEconomico(cadastro, retrato) {
     // O texto do gabinete vem inteiro e separado: é a leitura de quem conhece a
     // cidade, e resumi-la seria justamente perder o que ela tem de melhor.
     doGabinete: cadastro?.resumo || null,
+    fonte: cadastro?.fonteEconomia || null,
     vazio: !linhas.length && !cadastro?.resumo,
   };
 }
@@ -209,6 +210,7 @@ export function dadosDaFicha({ nome, uf, lugar, retrato, cadastro, contatos }) {
     vicePrefeito: cadastro?.vicePrefeito || null,
     presidenteCamara: cadastro?.presidenteCamara || null,
     vereadores: [].concat(cadastro?.vereadores || []).filter(Boolean),
+    fonteGoverno: cadastro?.fonteGoverno || null,
     votacao: votacaoDoMunicipio(cadastro),
     economia: resumoEconomico(cadastro, retrato),
     emendas: lugar ? {
@@ -508,13 +510,20 @@ export async function painelFicha(container) {
         ? el('dl', { class: 'ficha-dados' }, politicos.flatMap(([r, v]) => [
           el('dt', { texto: r }), el('dd', { texto: v }),
         ]))
-        : el('p', { class: 'campo-dica', texto: 'Prefeito e Câmara ainda não cadastrados. Preencha em Municípios — nenhuma base pública entrega isso pronto.' }),
+        : el('p', { class: 'campo-dica', texto: 'Prefeito e Câmara ainda não cadastrados. Em Municípios, use "Importar candidaturas (TSE)" — o arquivo da eleição municipal traz prefeito, vice e os vereadores do partido para o estado inteiro de uma vez.' }),
       f.vereadores.length
         ? el('div', { class: 'ficha-vereadores' }, [
           el('h4', { texto: 'Vereadores aliados' }),
           el('div', { class: 'etiquetas' }, f.vereadores.map((v) => etiqueta(v, 'neutro'))),
         ])
         : null,
+      // O presidente da Câmara é eleito pelos pares, em sessão que o TSE não
+      // registra: é a única linha desta seção que continua sendo de quem
+      // conhece a cidade. Dizer isso evita procurar defeito onde não há.
+      f.prefeito && !f.presidenteCamara
+        ? el('p', { class: 'campo-dica', texto: 'O presidente da Câmara não vem do TSE — é eleito pelos vereadores. Preencha em Municípios.' })
+        : null,
+      f.fonteGoverno ? el('p', { class: 'ficha-fonte', texto: f.fonteGoverno }) : null,
     ].filter(Boolean)));
 
     // ── votação ──
@@ -540,7 +549,7 @@ export async function painelFicha(container) {
     folha.appendChild(el('div', { class: 'ficha-secao' }, [
       el('h3', { texto: 'Renda, produção e o que importa' }),
       f.economia.vazio
-        ? el('p', { class: 'campo-dica', texto: 'Nada preenchido ainda. Em Municípios há campos para atividades econômicas, renda média, PIB per capita e o que importa nesta cidade — é o que o parlamentar lê a caminho.' })
+        ? el('p', { class: 'campo-dica', texto: 'Nada preenchido ainda. Em Municípios, "Atualizar economia (IBGE)" traz PIB per capita, renda e de onde vem a produção de todas as cidades cadastradas. "O que importa nesta cidade" continua sendo do gabinete — é a leitura que o parlamentar lê a caminho.' })
         : el('div', {}, [
           f.economia.linhas.length
             ? el('ul', { class: 'ficha-resumo' }, f.economia.linhas.map((t) => el('li', { texto: t })))
@@ -548,6 +557,7 @@ export async function painelFicha(container) {
           f.economia.doGabinete
             ? el('p', { class: 'ficha-resumo-texto', texto: f.economia.doGabinete })
             : null,
+          f.economia.fonte ? el('p', { class: 'ficha-fonte', texto: f.economia.fonte }) : null,
         ].filter(Boolean)),
     ]));
 

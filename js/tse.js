@@ -20,9 +20,13 @@ const COLUNAS = {
   municipio: ['nm municipio', 'nome municipio', 'municipio', 'nm ue'],
   uf: ['sg uf', 'uf', 'sigla uf'],
   candidato: ['nm votavel', 'nm candidato', 'nome candidato', 'nm urna candidato', 'nome urna'],
+  // O nome de urna à parte do nome de registro: numa ficha de apresentação vale
+  // o nome pelo qual a cidade conhece a pessoa, não o que está na certidão.
+  urna: ['nm urna candidato', 'nome urna', 'nm urna'],
   numero: ['nr votavel', 'nr candidato', 'numero candidato'],
   partido: ['sg partido', 'sigla partido', 'partido'],
   cargo: ['ds cargo', 'cargo', 'descricao cargo'],
+  situacao: ['ds sit tot turno', 'situacao totalizacao', 'ds sit totalizacao', 'sit tot turno'],
   votos: ['qt votos', 'qtde votos', 'quantidade votos', 'qt voto', 'votos'],
   ano: ['ano eleicao', 'ano'],
 };
@@ -122,6 +126,156 @@ export function apurarPorMunicipio(linhas, mapa, { nomeAutor, numero = null, car
       };
     })
     .sort((a, b) => b.votosParlamentar - a.votosParlamentar);
+}
+
+/**
+ * Eleito ou não.
+ *
+ * "NÃO ELEITO" contém "ELEITO": um `includes` aqui marcaria como prefeito quem
+ * perdeu a eleição, em todas as cidades, sem erro nenhum na tela. Por isso a
+ * comparação é pelo começo da frase — ELEITO, ELEITO POR QP e ELEITO POR MÉDIA
+ * começam com ela; NAO ELEITO, SUPLENTE e 2º TURNO não.
+ */
+export function foiEleito(situacao) {
+  return /^ELEIT/.test(semAcento(situacao));
+}
+
+const CARGOS = [
+  { re: /^PREFEITO/, papel: 'prefeito' },
+  { re: /^VICE.?PREFEITO/, papel: 'vice' },
+  { re: /^VEREADOR/, papel: 'vereador' },
+];
+
+/** Qual dos três cargos municipais é este, se for algum. */
+export function papelDoCargo(cargo) {
+  const t = semAcento(cargo);
+  return (CARGOS.find((c) => c.re.test(t)) || {}).papel || null;
+}
+
+/**
+ * Lê o arquivo de candidaturas e monta quem governa cada cidade.
+ *
+ * O TSE publica, junto com os votos, o resultado de cada candidatura. É de lá
+ * que saem prefeito, vice e a Câmara inteira — de graça, oficial, e para as 497
+ * cidades de uma vez. Preencher isso à mão, cidade por cidade, é trabalho de
+ * semanas que envelhece sozinho.
+ *
+ * Os vereadores guardados são os do partido do parlamentar, porque o campo na
+ * ficha é "vereadores aliados": despejar os quinze eleitos de cada Câmara faria
+ * uma lista que ninguém lê.
+ *
+ * O que continua humano, e não tem como não ser: o presidente da Câmara, eleito
+ * pelos pares em sessão que o TSE não registra.
+ */
+export function apurarEleitos(linhas, mapa, { partidoAliado = null } = {}) {
+  const campo = (linha, nome) => (mapa[nome] === undefined ? '' : String(linha[mapa[nome]] ?? '').trim());
+  const porMunicipio = new Map();
+  const funil = { eleitos: 0, prefeitos: 0, vices: 0, vereadores: 0, aliados: 0 };
+
+  for (const linha of linhas) {
+    const papel = papelDoCargo(campo(linha, 'cargo'));
+    if (!papel) continue;
+    if (!foiEleito(campo(linha, 'situacao'))) continue;
+
+    const cidade = campo(linha, 'municipio');
+    if (!cidade) continue;
+
+    const chave = semAcento(cidade);
+    if (!porMunicipio.has(chave)) {
+      porMunicipio.set(chave, {
+        nome: nomePadrao(cidade),
+        uf: campo(linha, 'uf') || null,
+        ano: numeroBr(campo(linha, 'ano')) || null,
+        prefeito: null,
+        partidoPrefeito: null,
+        vicePrefeito: null,
+        vereadores: [],
+      });
+    }
+    const m = porMunicipio.get(chave);
+    const nome = nomePadrao(campo(linha, 'urna') || campo(linha, 'candidato'));
+    const partido = campo(linha, 'partido') || null;
+    if (!nome) continue;
+    funil.eleitos += 1;
+
+    if (papel === 'prefeito') {
+      m.prefeito = nome;
+      m.partidoPrefeito = partido;
+      funil.prefeitos += 1;
+    } else if (papel === 'vice') {
+      m.vicePrefeito = nome;
+      funil.vices += 1;
+    } else {
+      funil.vereadores += 1;
+      if (partidoAliado && semAcento(partido) === semAcento(partidoAliado)) {
+        m.vereadores.push(nome);
+        funil.aliados += 1;
+      }
+    }
+  }
+
+  for (const m of porMunicipio.values()) m.vereadores.sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  return { municipios: [...porMunicipio.values()], funil };
+}
+
+/**
+ * Grava quem governa cada cidade.
+ *
+ * Escreve só os campos que vieram do TSE. O presidente da Câmara, o resumo
+ * econômico e as observações do gabinete continuam onde estavam: foram
+ * escritos por gente, e uma importação não tem por que apagá-los.
+ */
+export async function importarCandidatos(arquivo, { partidoAliado = null } = {}) {
+  const texto = decodificar(await arquivo.arrayBuffer());
+  const { cabecalho, linhas } = lerCsv(texto);
+  if (!cabecalho.length) throw new Error('O arquivo está vazio ou não é uma planilha de texto.');
+
+  const mapa = mapearColunasDoTse(cabecalho);
+  if (mapa.municipio === undefined || mapa.cargo === undefined || mapa.situacao === undefined) {
+    throw new Error(`Não reconheci o formato de candidaturas do TSE em "${cabecalho.slice(0, 6).join(', ')}…". O arquivo precisa ter município, cargo e o resultado da candidatura (DS_SIT_TOT_TURNO) — é o "consulta_cand" da eleição municipal, não o de votação.`);
+  }
+
+  const { municipios, funil } = apurarEleitos(linhas, mapa, { partidoAliado });
+  if (!municipios.length) {
+    throw new Error('Nenhum eleito encontrado neste arquivo. Confira se é o arquivo de candidaturas (consulta_cand) de uma eleição municipal.');
+  }
+
+  const { salvarEmLote, listar } = await import('./dados.js');
+  const existentes = new Set((await listar('municipios', { recarregar: true })).map((m) => m.id));
+
+  let novos = 0;
+  let atualizados = 0;
+  const registros = municipios.map((m) => {
+    const id = chaveDoMunicipio(m.nome, m.uf);
+    if (existentes.has(id)) atualizados += 1; else novos += 1;
+    return {
+      id,
+      dados: {
+        nome: m.nome,
+        uf: m.uf,
+        prefeito: m.prefeito,
+        partidoPrefeito: m.partidoPrefeito,
+        vicePrefeito: m.vicePrefeito,
+        // Sem partido aliado informado a lista sai vazia — e vazia é melhor que
+        // uma lista velha de outro partido que sobreviveria à importação.
+        vereadores: m.vereadores,
+        anoEleicaoMunicipal: m.ano,
+        fonteGoverno: `TSE — candidaturas ${m.ano || ''}`.trim(),
+      },
+    };
+  }).filter((r) => r.id);
+
+  const gravacao = await salvarEmLote('municipios', registros);
+  if (gravacao.falhas.length) throw gravacao.falhas[0];
+
+  return {
+    linhas: linhas.length,
+    municipios: registros.length,
+    novos,
+    atualizados,
+    partidoAliado,
+    ...funil,
+  };
 }
 
 /** A chave de um município na base do gabinete: nome sem acento, mais UF. */
