@@ -278,6 +278,61 @@ export function situacaoDoLugar(m) {
   return { texto: 'Sem execução registrada', cor: 'neutro' };
 }
 
+/**
+ * Emenda por emenda de um município.
+ *
+ * A mesma leitura serve às duas telas — a lista por município e o dashboard —, e
+ * é a de quem vai atender uma ligação da prefeitura perguntando "e a minha
+ * ambulância?": o que era, quanto foi, quanto saiu e o que travou.
+ */
+export function detalhesDeUmLugar(m) {
+  if (!m.destinos.length) {
+    return el('p', { class: 'sanfona-recado', texto: `${m.emendas.length} emenda(s) sem detalhamento ainda. Use "Detalhar emendas" na aba Emendas.` });
+  }
+  // Por emenda, e dentro dela por fase: é a leitura de quem vai atender uma
+  // ligação da prefeitura perguntando "e a minha ambulância?".
+  const porCodigo = new Map();
+  m.destinos.forEach((t) => {
+    const c = t.codigoEmenda || 'sem código';
+    if (!porCodigo.has(c)) porCodigo.set(c, []);
+    porCodigo.get(c).push(t);
+  });
+
+  return el('div', { class: 'municipio-detalhe' }, [...porCodigo.entries()].map(([codigo, linhas]) => {
+    const objetos = [...new Set(linhas.map((t) => t.objeto).filter(Boolean))];
+    const metas = [...new Set(linhas.map((t) => t.metas).filter(Boolean))];
+    const fase = (coluna, tipo) => linhas.reduce((s, t) => {
+      if (t[coluna] != null) return s + (Number(t[coluna]) || 0);
+      return t.tipo === tipo ? s + (Number(t.valor) || 0) : s;
+    }, 0);
+    const pago = fase('valorPago', 'pagamento');
+    const empenhado = fase('valorEmpenhado', 'empenho');
+    const destinado = linhas.reduce((s, t) => {
+      if (t.valorDestinado != null) return s + (Number(t.valorDestinado) || 0);
+      return FASE_DA_COLUNA[t.tipo] ? s : s + (Number(t.valor) || 0);
+    }, 0);
+    const travas = [...new Set(linhas.map((t) => t.situacao).filter((x) => IMPEDIDO.test(x || '')))];
+    const ultima = linhas.map((t) => t.data).filter(Boolean).sort().pop();
+
+    return el('article', { class: 'municipio-emenda' }, [
+      el('header', {}, [
+        el('strong', { texto: codigo }),
+        ultima ? el('span', { class: 'topo-sub', texto: `último movimento em ${fmtData(ultima)}` }) : null,
+      ]),
+      objetos.length
+        ? el('p', { class: 'municipio-objeto', texto: objetos.join(' · ') })
+        : el('p', { class: 'municipio-objeto municipio-objeto--vazio', texto: 'Objeto não informado pela fonte' }),
+      metas.length ? el('p', { class: 'campo-dica', texto: metas.join(' · ') }) : null,
+      el('p', { class: 'municipio-numeros' }, [
+        destinado ? el('span', { texto: `Destinado ${fmtDinheiro(destinado)}` }) : null,
+        empenhado ? el('span', { texto: `Empenhado ${fmtDinheiro(empenhado)}` }) : null,
+        el('span', { class: pago ? 'municipio-pago' : null, texto: `Pago ${fmtDinheiro(pago)}` }),
+      ].filter(Boolean)),
+      ...travas.map((t) => el('p', { class: 'municipio-trava', texto: t })),
+    ]);
+  }));
+}
+
 const semAcento = (t) => String(t ?? '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 
 export async function painelEmendas(container) {
@@ -337,53 +392,7 @@ export async function painelEmendas(container) {
     ]),
   ]));
 
-  function detalhesDoLugar(m) {
-    if (!m.destinos.length) {
-      return el('p', { class: 'sanfona-recado', texto: `${m.emendas.length} emenda(s) sem detalhamento ainda. Use "Detalhar emendas" na aba Emendas.` });
-    }
-    // Por emenda, e dentro dela por fase: é a leitura de quem vai atender uma
-    // ligação da prefeitura perguntando "e a minha ambulância?".
-    const porCodigo = new Map();
-    m.destinos.forEach((t) => {
-      const c = t.codigoEmenda || 'sem código';
-      if (!porCodigo.has(c)) porCodigo.set(c, []);
-      porCodigo.get(c).push(t);
-    });
-
-    return el('div', { class: 'municipio-detalhe' }, [...porCodigo.entries()].map(([codigo, linhas]) => {
-      const objetos = [...new Set(linhas.map((t) => t.objeto).filter(Boolean))];
-      const metas = [...new Set(linhas.map((t) => t.metas).filter(Boolean))];
-      const fase = (coluna, tipo) => linhas.reduce((s, t) => {
-        if (t[coluna] != null) return s + (Number(t[coluna]) || 0);
-        return t.tipo === tipo ? s + (Number(t.valor) || 0) : s;
-      }, 0);
-      const pago = fase('valorPago', 'pagamento');
-      const empenhado = fase('valorEmpenhado', 'empenho');
-      const destinado = linhas.reduce((s, t) => {
-        if (t.valorDestinado != null) return s + (Number(t.valorDestinado) || 0);
-        return FASE_DA_COLUNA[t.tipo] ? s : s + (Number(t.valor) || 0);
-      }, 0);
-      const travas = [...new Set(linhas.map((t) => t.situacao).filter((x) => IMPEDIDO.test(x || '')))];
-      const ultima = linhas.map((t) => t.data).filter(Boolean).sort().pop();
-
-      return el('article', { class: 'municipio-emenda' }, [
-        el('header', {}, [
-          el('strong', { texto: codigo }),
-          ultima ? el('span', { class: 'topo-sub', texto: `último movimento em ${fmtData(ultima)}` }) : null,
-        ]),
-        objetos.length
-          ? el('p', { class: 'municipio-objeto', texto: objetos.join(' · ') })
-          : el('p', { class: 'municipio-objeto municipio-objeto--vazio', texto: 'Objeto não informado pela fonte' }),
-        metas.length ? el('p', { class: 'campo-dica', texto: metas.join(' · ') }) : null,
-        el('p', { class: 'municipio-numeros' }, [
-          destinado ? el('span', { texto: `Destinado ${fmtDinheiro(destinado)}` }) : null,
-          empenhado ? el('span', { texto: `Empenhado ${fmtDinheiro(empenhado)}` }) : null,
-          el('span', { class: pago ? 'municipio-pago' : null, texto: `Pago ${fmtDinheiro(pago)}` }),
-        ].filter(Boolean)),
-        ...travas.map((t) => el('p', { class: 'municipio-trava', texto: t })),
-      ]);
-    }));
-  }
+  const detalhesDoLugar = detalhesDeUmLugar;
 
   function desenhar() {
     const termos = semAcento(busca.value).split(/\s+/).filter(Boolean);
@@ -432,6 +441,141 @@ export async function painelEmendas(container) {
   }
 
   desenhar();
+}
+
+/**
+ * O dashboard: o estado inteiro de uma vez, e o município a um clique.
+ *
+ * O painel por município responde "quanto foi para Erechim" para quem já sabe
+ * que é Erechim. Esta tela responde a outra pergunta, que o gabinete faz com a
+ * mesma frequência: onde o mandato chegou e onde não chegou. Um mapa responde
+ * isso num olhar; uma tabela de quatrocentas linhas, não.
+ *
+ * O mapa não é obrigatório. Se a malha do IBGE não vier, a mesma leitura aparece
+ * em lista ordenada — a resposta não pode depender de um serviço externo estar
+ * de pé.
+ */
+export async function painelDashboard(container) {
+  limpar(container).appendChild(carregando());
+
+  const { sessao } = await import('./sessao.js');
+  const [emendas, transferencias] = await Promise.all([
+    listar('emendas', { recarregar: true }),
+    listar('transferencias', { recarregar: true }).catch(() => []),
+  ]);
+
+  const lugares = consolidarPorMunicipio(emendas, transferencias);
+  const uf = sessao.gabinete?.uf || null;
+
+  limpar(container);
+  container.appendChild(el('header', { class: 'modulo-topo' }, [
+    el('div', { class: 'modulo-titulo' }, [
+      el('h1', { texto: 'Dashboard' }),
+      el('p', { texto: 'Onde o mandato chegou. Clique num município para ver as emendas dele.' }),
+    ]),
+  ]));
+
+  if (!lugares.length) {
+    container.appendChild(nada('Nada importado ainda. Comece pela aba Emendas: "Consultar Portal" e depois "Detalhar emendas".'));
+    return;
+  }
+
+  const soma = (k) => lugares.reduce((t, m) => t + m[k], 0);
+  const atendidos = lugares.filter((m) => m.municipio && !/^A detalhar/.test(m.municipio));
+
+  container.appendChild(el('div', { class: 'indicadores' }, [
+    indicador('Municípios atendidos', String(atendidos.length), 'ok'),
+    indicador('Destinado', fmtDinheiroCurto(soma('destinado')), 'info', fmtDinheiro(soma('destinado'))),
+    indicador('Pago', fmtDinheiroCurto(soma('pago')), 'ok', fmtDinheiro(soma('pago'))),
+    soma('impedido')
+      ? indicador('Impedido', fmtDinheiroCurto(soma('impedido')), 'critico', fmtDinheiro(soma('impedido')))
+      : null,
+  ].filter(Boolean)));
+
+  const detalhe = el('section', { class: 'bloco bloco--detalhe-mapa' });
+  const mostrarLugar = (nome) => {
+    const { semAcento } = mapaMod;
+    const achado = lugares.find((m) => semAcento(m.municipio) === semAcento(nome));
+    limpar(detalhe);
+    if (!achado) {
+      detalhe.appendChild(el('h2', { texto: nome }));
+      detalhe.appendChild(nada('Sem emenda registrada para este município.'));
+      return;
+    }
+    const sit = situacaoDoLugar(achado);
+    detalhe.appendChild(el('header', { class: 'bloco-topo' }, [
+      el('h2', { texto: `${achado.municipio}${achado.uf ? ` · ${achado.uf}` : ''}` }),
+      etiqueta(sit.texto, sit.cor),
+    ]));
+    detalhe.appendChild(el('p', { class: 'municipio-numeros' }, [
+      achado.destinado ? el('span', { texto: `Destinado ${fmtDinheiro(achado.destinado)}` }) : null,
+      achado.empenhado ? el('span', { texto: `Empenhado ${fmtDinheiro(achado.empenhado)}` }) : null,
+      el('span', { class: achado.pago ? 'municipio-pago' : null, texto: `Pago ${fmtDinheiro(achado.pago)}` }),
+      el('span', { texto: `${achado.emendas.length} emenda(s)` }),
+    ].filter(Boolean)));
+    detalhe.appendChild(detalhesDeUmLugar(achado));
+  };
+
+  let mapaMod;
+  try {
+    mapaMod = await import('./mapa.js');
+  } catch (erro) {
+    console.error(erro);
+    mapaMod = null;
+  }
+
+  const valores = new Map();
+  if (mapaMod) {
+    for (const m of lugares) {
+      if (!m.municipio) continue;
+      const chave = mapaMod.semAcento(m.municipio);
+      valores.set(chave, (valores.get(chave) || 0) + (m.destinado || m.empenhado || m.pago));
+    }
+  }
+
+  const caixaMapa = el('section', { class: 'bloco' }, [
+    el('header', { class: 'bloco-topo' }, [
+      el('h2', { texto: uf ? `Distribuição em ${uf}` : 'Distribuição' }),
+    ]),
+    el('p', { class: 'campo-dica', texto: 'Carregando a malha municipal do IBGE…' }),
+  ]);
+  container.appendChild(caixaMapa);
+  container.appendChild(detalhe);
+
+  const malha = mapaMod && uf ? await mapaMod.malhaDoEstado(uf) : null;
+  const desenho = malha ? mapaMod.desenharMalha(malha, { valores, aoClicar: mostrarLugar }) : null;
+
+  limpar(caixaMapa).appendChild(el('header', { class: 'bloco-topo' }, [
+    el('h2', { texto: uf ? `Distribuição em ${uf}` : 'Distribuição' }),
+    el('span', { class: 'bloco-contagem', texto: `${atendidos.length} atendidos` }),
+  ]));
+
+  if (desenho) {
+    caixaMapa.appendChild(el('div', { class: 'mapa-caixa' }, [desenho.svg]));
+    caixaMapa.appendChild(legendaDoMapa(desenho.cortes, mapaMod.TONS));
+  } else {
+    // Um mapa que não carrega não pode levar embora a resposta.
+    caixaMapa.appendChild(el('p', { class: 'campo-dica', texto: uf
+      ? 'A malha municipal do IBGE não respondeu agora. A distribuição está abaixo, em lista.'
+      : 'Informe a UF do gabinete em Acessos → Dados do gabinete para desenhar o mapa. Por ora, a distribuição em lista.' }));
+    caixaMapa.appendChild(barrasValor(
+      atendidos.slice(0, 25).map((m) => ({ rotulo: m.municipio, valor: m.total })),
+      atendidos[0]?.total || 0,
+    ));
+  }
+
+  mostrarLugar(atendidos[0]?.municipio || lugares[0].municipio);
+}
+
+function legendaDoMapa(cortes, tons) {
+  return el('div', { class: 'mapa-legenda' }, [
+    el('span', { class: 'campo-dica', texto: 'menos' }),
+    ...tons.map((cor) => el('i', { class: 'mapa-tom', style: `background:${cor}` })),
+    el('span', { class: 'campo-dica', texto: 'mais' }),
+    cortes.length
+      ? el('span', { class: 'campo-dica', texto: `faixas em ${cortes.map(fmtDinheiroCurto).join(' · ')}` })
+      : null,
+  ].filter(Boolean));
 }
 
 function agrupar(itens, chave, campo) {

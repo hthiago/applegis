@@ -325,7 +325,7 @@ console.log('\nUso normal, como chefe de gabinete\n');
     ['administrativo', 'Cota parlamentar'],
     ['legislativo', 'Proposições acompanhadas'],
     ['comunicacao', 'Calendário editorial'],
-    ['orcamento', 'Emendas por município'],
+    ['orcamento', 'Dashboard'],
   ]) {
     await pagina.goto(`${BASE}/#/${area}`, { waitUntil: 'domcontentloaded' });
     await pagina.waitForSelector('.modulo-topo h1', { timeout: 10000 });
@@ -1472,6 +1472,83 @@ console.log('\nPlanilhas de emenda\n');
   conferir('página que só repete o que já veio encerra a consulta',
     /1 emendas novas/.test(recado) && /2025: 1/.test(recado),
     recado.replace(/\s+/g, ' '));
+  await pagina.close();
+}
+
+// ── o dashboard: onde o mandato chegou, e onde não chegou ──
+//
+// Duas malhas de mentira, uma que responde e outra que não. O mapa é o caminho
+// bom; a lista é o que garante que uma indisponibilidade do IBGE não leve embora
+// a resposta.
+{
+  const malhaFalsa = {
+    type: 'FeatureCollection',
+    features: [
+      { properties: { codarea: '4306957' }, geometry: { type: 'Polygon', coordinates: [[[-52, -27], [-51, -27], [-51, -28], [-52, -28], [-52, -27]]] } },
+      { properties: { codarea: '4300034' }, geometry: { type: 'Polygon', coordinates: [[[-54, -31], [-53, -31], [-53, -32], [-54, -32], [-54, -31]]] } },
+      { properties: { codarea: '4309050' }, geometry: { type: 'Polygon', coordinates: [[[-51, -29], [-50, -29], [-50, -30], [-51, -30], [-51, -29]]] } },
+    ],
+  };
+  const nomesFalsos = [
+    { id: 4306957, nome: 'Erechim' },
+    { id: 4300034, nome: 'Aceguá' },
+    { id: 4309050, nome: 'Gramado' },
+  ];
+
+  const pagina = await abrir();
+  await pagina.route(/servicodados\.ibge\.gov\.br.*malhas/, (r) => r.fulfill({
+    status: 200,
+    contentType: 'application/geo+json',
+    headers: { 'Access-Control-Allow-Origin': '*' },
+    body: JSON.stringify(malhaFalsa),
+  }));
+  await pagina.route(/servicodados\.ibge\.gov\.br.*municipios/, (r) => r.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    headers: { 'Access-Control-Allow-Origin': '*' },
+    body: JSON.stringify(nomesFalsos),
+  }));
+
+  await pagina.goto(`${BASE}/#/orcamento/dashboard`, { waitUntil: 'domcontentloaded' });
+  await pagina.waitForSelector('.mapa', { timeout: 15000 });
+
+  conferir('o mapa desenha um polígono por município do estado',
+    (await pagina.locator('.mapa-municipio').count()) === 3,
+    `${await pagina.locator('.mapa-municipio').count()} polígonos`);
+  // Só o município atendido é clicável: um mapa em que tudo responde a clique
+  // promete resposta onde não há dado.
+  conferir('só quem tem emenda é clicável, e vem pintado',
+    (await pagina.locator('.mapa-municipio--com-emenda').count()) === 1,
+    `${await pagina.locator('.mapa-municipio--com-emenda').count()} com emenda`);
+  // "4306957" ao passar o mouse não responde pergunta nenhuma.
+  conferir('e o município se identifica pelo nome, não pelo código do IBGE',
+    /Erechim/.test(await pagina.locator('.mapa-municipio--com-emenda title').first().innerText()
+      .catch(async () => pagina.locator('.mapa-municipio--com-emenda title').first().textContent())),
+    await pagina.locator('.mapa-municipio--com-emenda title').first().textContent());
+
+  await pagina.locator('.mapa-municipio--com-emenda').first().click();
+  await pagina.waitForTimeout(400);
+  const detalhe = (await pagina.locator('.bloco--detalhe-mapa').innerText()).replace(/\s+/g, ' ');
+  conferir('clicar no município mostra as emendas dele',
+    /Erechim/i.test(detalhe) && /emenda/i.test(detalhe), detalhe.slice(0, 200));
+
+  await pagina.close();
+}
+
+// Um mapa que não carrega não pode levar embora a resposta.
+{
+  const pagina = await abrir();
+  await pagina.route(/servicodados\.ibge\.gov\.br/, (r) => r.abort());
+  await pagina.goto(`${BASE}/#/orcamento/dashboard`, { waitUntil: 'domcontentloaded' });
+  await pagina.waitForSelector('.indicadores', { timeout: 15000 });
+  await pagina.waitForTimeout(900);
+
+  conferir('sem o IBGE, a distribuição vai em lista e a tela diz por quê',
+    (await pagina.locator('.mapa').count()) === 0
+    && /IBGE não respondeu/.test(await pagina.locator('.bloco').first().innerText()),
+    (await pagina.locator('.bloco').first().innerText()).replace(/\s+/g, ' ').slice(0, 160));
+  conferir('e o município continua a um clique de distância',
+    (await pagina.locator('.bloco--detalhe-mapa').innerText()).length > 10);
   await pagina.close();
 }
 

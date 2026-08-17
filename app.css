@@ -1105,3 +1105,25 @@ input:focus, select:focus, textarea:focus { border-color: var(--verde); outline:
 .municipio-pago { font-weight: 600; }
 /* O impedimento é o que trava o repasse: é sobre ele que a prefeitura liga. */
 .municipio-trava { color: #a4262c; margin: .3rem 0 0; font-size: .92em; }
+
+/* ── mapa municipal ──────────────────────────────────────────────────────
+   Sem biblioteca de mapas e sem tiles de terceiros: a malha do IBGE desenhada
+   em SVG basta para apontar e clicar, que é o que a pergunta pede. */
+.mapa-caixa { overflow-x: auto; }
+.mapa { width: 100%; height: auto; display: block; }
+.mapa-municipio {
+  stroke: rgba(255, 255, 255, .7);
+  stroke-width: .6;
+  transition: fill .12s ease;
+}
+.mapa-municipio--com-emenda { cursor: pointer; }
+.mapa-municipio--com-emenda:hover,
+.mapa-municipio--com-emenda:focus-visible {
+  fill: #1f5f7e;
+  stroke: #12384a;
+  stroke-width: 1.2;
+  outline: none;
+}
+.mapa-legenda { display: flex; align-items: center; gap: .35rem; margin-top: .6rem; flex-wrap: wrap; }
+.mapa-tom { width: 1.6rem; height: .7rem; display: inline-block; border-radius: 2px; }
+.bloco--detalhe-mapa { margin-top: 1rem; }
