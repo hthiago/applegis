@@ -176,6 +176,9 @@ function blocoGabinete(aoConcluir) {
     ['Parlamentar', g.deputado || '—'],
     ['UF', g.uf || '—'],
     ['ID na Câmara', g.idDeputadoCamara || 'não informado'],
+    ['Cota mensal (CEAP)', g.cotaMensal
+      ? g.cotaMensal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+      : 'não informada'],
   ];
 
   return el('section', { class: 'bloco' }, [
@@ -207,10 +210,12 @@ function formGabineteAtual(aoConcluir) {
   const deputado = el('input', { type: 'text' });
   const uf = el('input', { type: 'text', maxlength: '2' });
   const idCamara = el('input', { type: 'number', inputmode: 'numeric' });
+  const cota = el('input', { type: 'number', inputmode: 'decimal', step: '0.01', min: '0' });
   nome.value = g.nome || '';
   deputado.value = g.deputado || '';
   uf.value = g.uf || '';
   idCamara.value = g.idDeputadoCamara || '';
+  cota.value = g.cotaMensal ?? '';
 
   form.append(
     el('div', { class: 'campo' }, [el('label', { texto: 'Nome do gabinete *' }), nome]),
@@ -218,6 +223,17 @@ function formGabineteAtual(aoConcluir) {
     el('div', { class: 'linha-campos' }, [
       el('div', { class: 'campo' }, [el('label', { texto: 'UF' }), uf]),
       el('div', { class: 'campo' }, [el('label', { texto: 'ID na Câmara' }), idCamara]),
+    ]),
+    // O teto da CEAP varia por UF e é fixado por ato da Mesa; a base aberta não
+    // o publica. Sem esse número não há como falar de economia — só de gasto —,
+    // e é por isso que ele é pedido aqui em vez de estimado.
+    el('div', { class: 'campo' }, [
+      el('label', { texto: 'Cota mensal da CEAP (R$)' }),
+      cota,
+      el('p', {
+        class: 'campo-dica',
+        texto: 'O valor do seu estado, fixado por ato da Mesa. É o que permite calcular quanto do teto foi usado e quanto foi devolvido.',
+      }),
     ]),
     el('p', {
       class: 'campo-dica',
@@ -241,6 +257,7 @@ function formGabineteAtual(aoConcluir) {
       deputado: deputado.value.trim() || null,
       uf: uf.value.trim().toUpperCase() || null,
       idDeputadoCamara: idCamara.value ? Number(idCamara.value) : null,
+      cotaMensal: cota.value ? Number(cota.value) : null,
       atualizadoEm: serverTimestamp(),
       atualizadoPor: sessao.membro.email,
     };

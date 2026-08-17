@@ -16,6 +16,15 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const RAIZ = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+
+/**
+ * O que a base da Câmara responde em /despesas neste caso de teste.
+ *
+ * Fica aqui, e não numa rota registrada depois, porque rota nova não vence a
+ * rota ampla do duble — e um duble que não responde faz o teste acusar a
+ * importação quando o problema é a ordem das rotas.
+ */
+let despesasDoTeste = null;
 const PORTA = 8123;
 const BASE = `http://localhost:${PORTA}`;
 const stub = fs.readFileSync(path.join(RAIZ, 'teste', 'stub-firebase.js'), 'utf8');
@@ -117,6 +126,19 @@ async function abrir({
     const url = rota.request().url();
     const idProposicao = (/\/proposicoes\/(\d+)/.exec(url) || [])[1];
     let dados;
+
+    // A cota entra por aqui, e não por uma rota própria: rota registrada depois
+    // não vence esta, e um duble que não responde faz o teste acusar a
+    // importação quando o problema é a ordem das rotas.
+    if (/\/despesas/.test(url)) {
+      dados = despesasDoTeste ? despesasDoTeste(url) : [];
+      return rota.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        headers: { 'Access-Control-Allow-Origin': '*' },
+        body: JSON.stringify({ dados }),
+      });
+    }
 
     if (/idDeputadoAutor/.test(url)) {
       // Só a primeira página tem resultado; a segunda encerra a paginação.
@@ -1472,6 +1494,100 @@ console.log('\nPlanilhas de emenda\n');
   conferir('página que só repete o que já veio encerra a consulta',
     /1 emendas novas/.test(recado) && /2025: 1/.test(recado),
     recado.replace(/\s+/g, ' '));
+  await pagina.close();
+}
+
+// ── cota parlamentar, conferida contra a base da Câmara ──
+//
+// A CEAP é publicada lançamento por lançamento. Digitar isso à mão era
+// transcrever base pública: erra, atrasa e não acrescenta nada.
+{
+  const camara = await import('../js/ceap.js');
+
+  // A Câmara nomeia as rubricas por extenso; o sistema filtra por uma lista
+  // curta. Treze grafias da mesma rubrica no filtro não filtram nada.
+  const rubricas = [
+    ['PASSAGENS AÉREAS', 'passagens'],
+    ['MANUTENÇÃO DE ESCRITÓRIO DE APOIO À ATIVIDADE PARLAMENTAR', 'escritorio'],
+    ['COMBUSTÍVEIS E LUBRIFICANTES.', 'combustivel'],
+    ['LOCAÇÃO OU FRETAMENTO DE VEÍCULOS AUTOMOTORES', 'veiculos'],
+    ['DIVULGAÇÃO DA ATIVIDADE PARLAMENTAR', 'divulgacao'],
+    // Plural: a regra no singular jogava a rubrica inteira no balde "outro".
+    ['SERVIÇOS POSTAIS', 'postal'],
+    ['CONSULTORIAS, PESQUISAS E TRABALHOS TÉCNICOS', 'consultoria'],
+    ['ASSINATURA DE PUBLICAÇÕES', 'material'],
+  ];
+  const fora = rubricas.filter(([texto, esperado]) => camara.rubricaDe(texto) !== esperado);
+  conferir('cada rubrica da Câmara cai na categoria certa do sistema',
+    fora.length === 0,
+    fora.map(([t]) => `${t} → ${camara.rubricaDe(t)}`).join(' | '));
+  conferir('rubrica nova não quebra: cai em "outro" e aparece no filtro',
+    camara.rubricaDe('ALGUMA RUBRICA QUE AINDA NÃO EXISTE') === 'outro');
+
+  const gasto = camara.doGastoDaCamara({
+    ano: 2025, mes: 3, tipoDespesa: 'PASSAGENS AÉREAS', codDocumento: 7654321,
+    tipoDocumento: 'Nota Fiscal', dataDocumento: '2025-03-12T00:00:00', numDocumento: '123',
+    valorDocumento: 1500.5, valorLiquido: 1450.5, valorGlosa: 50,
+    nomeFornecedor: 'GOL LINHAS AEREAS', cnpjCpfFornecedor: '07575651000159',
+    urlDocumento: 'https://camara.leg.br/nota/1',
+  });
+  // O líquido é o que sai da cota; o valor do documento inclui a glosa, que a
+  // Câmara não paga. Usar o bruto inflaria o gasto do gabinete.
+  conferir('o lançamento usa o valor líquido, não o do documento',
+    gasto.valor === 1450.5 && gasto.valorGlosa === 50, JSON.stringify(gasto));
+  conferir('e guarda o link da nota, que é o que fecha a conferência',
+    gasto.urlDocumento === 'https://camara.leg.br/nota/1'
+    && gasto.fornecedorDoc === '07575651000159');
+  conferir('o código do documento é a chave: reimportar não duplica',
+    camara.chaveDoGasto({ codDocumento: 7654321 }) === 'cd-7654321');
+  conferir('sem código, a combinação que distingue serve de chave',
+    camara.chaveDoGasto({
+      dataDocumento: '2025-03-12', cnpjCpfFornecedor: '075', numDocumento: '1', valorLiquido: 10,
+    }) === 'g-2025-03-12-075-1-1000');
+}
+
+// A cota pela tela: buscar na Câmara, e a leitura que ela produz.
+{
+  const pagina = await abrir();
+  despesasDoTeste = (url) => {
+    const ano = (/ano=(\d+)/.exec(url) || [])[1];
+    const pag = Number((/pagina=(\d+)/.exec(url) || [])[1] || 1);
+    if (pag > 1 || ano !== '2026') return [];
+    return [
+      { ano: 2026, mes: 3, tipoDespesa: 'PASSAGENS AÉREAS', codDocumento: 1,
+        dataDocumento: '2026-03-10', numDocumento: 'A1', valorLiquido: 4000,
+        nomeFornecedor: 'GOL LINHAS AEREAS', cnpjCpfFornecedor: '075',
+        urlDocumento: 'https://camara.leg.br/nota/1' },
+      { ano: 2026, mes: 3, tipoDespesa: 'SERVIÇOS POSTAIS', codDocumento: 2,
+        dataDocumento: '2026-03-11', numDocumento: 'A2', valorLiquido: 600,
+        nomeFornecedor: 'CORREIOS', cnpjCpfFornecedor: '341' },
+    ];
+  };
+
+  await pagina.goto(`${BASE}/#/administrativo/resumo-cota`, { waitUntil: 'domcontentloaded' });
+  await pagina.waitForSelector('.modulo-topo', { timeout: 15000 });
+  await pagina.getByRole('button', { name: 'Buscar na Câmara' }).click();
+  await pagina.waitForTimeout(2500);
+
+  const recado = (await pagina.locator('.aviso').last().innerText().catch(() => '')).replace(/\s+/g, ' ');
+  conferir('a cota vem da Câmara e o aviso diz quanto veio de cada ano',
+    /2 lançamentos novos/.test(recado) && /2026: 2/.test(recado),
+    recado);
+
+  const tela = (await pagina.locator('.grade-paineis').innerText()).replace(/\s+/g, ' ');
+  conferir('as rubricas aparecem com o nome que a pessoa reconhece',
+    /Passagens aéreas/.test(tela) && /Serviços postais/i.test(tela), tela.slice(0, 300));
+  conferir('e os fornecedores, para saber para quem o dinheiro foi',
+    /GOL LINHAS AEREAS/.test(tela), tela.slice(0, 400));
+  // A soma anual esconde o mês em que quase estourou.
+  conferir('o gráfico mês a mês tem doze colunas',
+    (await pagina.locator('.coluna-mes').count()) === 12);
+  // Sem o teto informado não se afirma economia: chamar gasto baixo de economia
+  // sem saber o limite seria inventar o número.
+  conferir('sem o teto cadastrado, a tela pede o teto em vez de afirmar economia',
+    /Informe a cota mensal/.test(await pagina.locator('.campo-dica').first().innerText()),
+    await pagina.locator('.campo-dica').first().innerText().catch(() => ''));
+
   await pagina.close();
 }
 

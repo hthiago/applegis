@@ -1,4 +1,6 @@
-import { el, limpar, fmtData, fmtDataHora, fmtDinheiro, fmtDinheiroCurto, diasAte, carregando, etiqueta } from './ui.js';
+import {
+  el, limpar, fmtData, fmtDataHora, fmtDinheiro, fmtDinheiroCurto, diasAte, carregando, etiqueta, aviso,
+} from './ui.js';
 import { listar } from './dados.js';
 import { porId } from './modulos.js';
 
@@ -593,16 +595,27 @@ function agrupar(itens, chave, campo) {
     .sort((a, b) => b.n - a.n);
 }
 
-function agruparValor(itens, chave) {
+/**
+ * Soma por categoria, com o rótulo que a pessoa reconhece.
+ *
+ * O campo de valor é parâmetro porque cada módulo chama o dinheiro de outra
+ * coisa — a emenda tem `valorIndicado`, a cota tem `valor` —, e um agrupador que
+ * conhecesse só um deles somaria zero no outro sem reclamar. `campo` traduz a
+ * chave interna no rótulo oficial: "passagens" na tela é "Passagens aéreas".
+ */
+function agruparValor(itens, chave, campo = null, valorEm = 'valorIndicado') {
   const mapa = new Map();
   itens.forEach((i) => {
-    const v = i[chave] || 'Não informado';
-    mapa.set(v, (mapa.get(v) || 0) + (Number(i.valorIndicado) || 0));
+    const bruto = i[chave];
+    const rotulo = campo?.op?.find((o) => o.v === bruto)?.l
+      || (bruto === null || bruto === undefined || bruto === '' ? 'Não informado' : String(bruto));
+    mapa.set(rotulo, (mapa.get(rotulo) || 0) + (Number(i[valorEm]) || 0));
   });
   return [...mapa.entries()]
     .map(([rotulo, total]) => ({ rotulo, total }))
+    .filter((d) => d.total)
     .sort((a, b) => b.total - a.total)
-    .slice(0, 7);
+    .slice(0, 8);
 }
 
 function barras(dados, total) {
@@ -634,54 +647,192 @@ function barrasValor(dados, total) {
 
 // ───────────────────────── administrativo: cota ─────────────────────────
 
+/**
+ * A cota parlamentar, conferida contra a base da Câmara.
+ *
+ * A CEAP é a única despesa do mandato publicada lançamento por lançamento, com
+ * fornecedor, documento e valor. Digitar isso à mão era transcrever base pública
+ * — trabalho que erra, atrasa e não acrescenta nada. O que o gabinete tem a fazer
+ * com esses números é conferir, comparar e explicar, e é isso que esta tela faz.
+ *
+ * Três leituras, nesta ordem, porque é a ordem em que as perguntas chegam:
+ * quanto do teto foi usado neste mês; em que as rubricas se concentram; e para
+ * quem o dinheiro foi.
+ */
 export async function painelCota(container) {
   limpar(container).appendChild(carregando());
+
+  const { sessao } = await import('./sessao.js');
   const lancamentos = await listar('ceap', { recarregar: true });
   const campoCategoria = porId.ceap.campos.find((c) => c.k === 'categoria');
+  const g = sessao.gabinete || {};
+
   const ano = new Date().getFullYear();
   const mes = new Date().toISOString().slice(0, 7);
-
   const doAno = lancamentos.filter((l) => String(l.data || '').startsWith(String(ano)));
   const doMes = lancamentos.filter((l) => String(l.data || '').startsWith(mes));
-  const total = (lista) => lista.reduce((t, l) => t + (Number(l.valor) || 0), 0);
-  const glosados = doAno.filter((l) => l.situacao === 'glosado');
+  const soma = (lista) => lista.reduce((t, l) => t + (Number(l.valor) || 0), 0);
+
+  const gastoAno = soma(doAno);
+  const gastoMes = soma(doMes);
+  const mesesCorridos = new Date().getMonth() + 1;
+  const teto = Number(g.cotaMensal) || null;
+  const tetoAno = teto ? teto * mesesCorridos : null;
+  // Economia é o que sobrou do teto e voltou ao caixa da Câmara — não é sobra de
+  // caixa do gabinete. Sem o teto informado não se afirma economia nenhuma:
+  // chamar "gasto baixo" de economia sem saber o limite seria inventar o número.
+  const economia = tetoAno ? tetoAno - gastoAno : null;
 
   limpar(container);
   container.appendChild(el('header', { class: 'modulo-topo' }, [
     el('div', { class: 'modulo-titulo' }, [
       el('h1', { texto: 'Cota parlamentar' }),
-      el('p', { texto: 'Lançamentos do gabinete. O reembolso oficial aparece na base da Câmara com atraso, então este número anda na frente dela.' }),
+      el('p', { texto: 'Conferida contra os dados abertos da Câmara: em que se gastou, com quem, e quanto do teto sobrou.' }),
     ]),
+    el('div', { class: 'modulo-acoes' }, [botaoImportarCeap(container)]),
   ]));
+
+  if (!lancamentos.length) {
+    container.appendChild(nada(g.idDeputadoCamara
+      ? 'Nenhum lançamento ainda. Use "Buscar na Câmara" para trazer a cota do mandato — ela vem completa, ano a ano.'
+      : 'Informe o ID do deputado na Câmara em Acessos → Dados do gabinete para buscar a cota automaticamente.'));
+    return;
+  }
 
   container.appendChild(el('div', { class: 'indicadores' }, [
-    indicador('Gasto no mês', fmtDinheiro(total(doMes)), 'info', `${doMes.length} lançamentos`),
-    indicador(`Gasto em ${ano}`, fmtDinheiro(total(doAno)), 'neutro', `${doAno.length} lançamentos`),
-    indicador('Aguardando reembolso', fmtDinheiro(total(doAno.filter((l) => l.situacao !== 'reembolsado' && l.situacao !== 'glosado'))), 'atencao'),
-    indicador('Glosado', fmtDinheiro(total(glosados)), glosados.length ? 'critico' : 'ok', `${glosados.length} lançamentos`),
-  ]));
+    indicador('Gasto no mês', fmtDinheiroCurto(gastoMes), 'info', fmtDinheiro(gastoMes)),
+    indicador('Gasto em ' + ano, fmtDinheiroCurto(gastoAno), 'atencao', fmtDinheiro(gastoAno)),
+    teto
+      ? indicador('Teto do mês', fmtDinheiroCurto(teto),
+        gastoMes > teto ? 'critico' : 'neutro',
+        `${Math.round((gastoMes / teto) * 100)}% usado`)
+      : null,
+    economia !== null
+      ? indicador('Devolvido ao erário', fmtDinheiroCurto(Math.max(0, economia)), 'ok',
+        `${Math.round((Math.max(0, economia) / tetoAno) * 100)}% do teto de ${mesesCorridos} meses`)
+      : null,
+    indicador('Lançamentos', String(lancamentos.length), 'neutro'),
+  ].filter(Boolean)));
+
+  if (!teto) {
+    container.appendChild(el('p', {
+      class: 'campo-dica',
+      texto: 'Informe a cota mensal do seu estado em Acessos → Dados do gabinete para ver quanto do teto foi usado e quanto foi devolvido. O teto é fixado por ato da Mesa e a base aberta não o publica — sem ele, só há gasto, não economia.',
+    }));
+  }
 
   const grade = el('div', { class: 'grade-paineis' });
-  const porCategoria = new Map();
-  doAno.forEach((l) => {
-    const v = l.categoria || 'outro';
-    porCategoria.set(v, (porCategoria.get(v) || 0) + (Number(l.valor) || 0));
-  });
-  const dados = [...porCategoria.entries()]
-    .map(([v, t]) => ({ rotulo: campoCategoria.op.find((o) => o.v === v)?.l || v, total: t }))
-    .sort((a, b) => b.total - a.total);
-
-  grade.appendChild(bloco(`Categorias em ${ano}`, null, [barrasValor(dados, total(doAno))]));
-
-  const ultimos = [...lancamentos].sort((a, b) => String(b.data).localeCompare(String(a.data))).slice(0, 8);
-  grade.appendChild(bloco('Últimos lançamentos', null, [
-    ultimos.length
-      ? el('ul', { class: 'lista' }, ultimos.map((l) => linha(
-        l.fornecedor || campoCategoria.op.find((o) => o.v === l.categoria)?.l || 'Lançamento',
-        `${fmtData(l.data)} · ${fmtDinheiro(l.valor)}`,
-      )))
-      : nada('Nenhum lançamento.'),
+  grade.appendChild(bloco('Por rubrica, no ano', fmtDinheiro(gastoAno), [
+    barrasValor(agruparValor(doAno, 'categoria', campoCategoria, 'valor'), gastoAno),
   ]));
-
+  grade.appendChild(bloco('Mês a mês', `${ano}`, [colunasMensais(doAno, ano, teto)]));
+  grade.appendChild(bloco('Maiores fornecedores no ano', null, [
+    barrasValor(agruparValor(doAno, 'fornecedor', null, 'valor'), gastoAno),
+  ]));
+  grade.appendChild(bloco('Rubricas como a Câmara as nomeia', null, [
+    // A lista curta serve para filtrar; a nomenclatura oficial é a que aparece
+    // na prestação de contas, e é por ela que a Câmara questiona.
+    barrasValor(agruparValor(doAno, 'rubricaNaFonte', null, 'valor'), gastoAno),
+  ]));
   container.appendChild(grade);
+
+  container.appendChild(bloco('Últimos lançamentos', String(Math.min(30, lancamentos.length)), [
+    tabelaDeLancamentos(lancamentos.slice(0, 30), campoCategoria),
+  ]));
+}
+
+function botaoImportarCeap(container) {
+  return el('button', {
+    class: 'btn btn--fantasma',
+    type: 'button',
+    texto: 'Buscar na Câmara',
+    title: 'Traz a cota do mandato inteiro, ano a ano, direto dos dados abertos',
+    onclick: async (e) => {
+      const btn = e.currentTarget;
+      const { sessao } = await import('./sessao.js');
+      const id = sessao.gabinete?.idDeputadoCamara;
+      if (!id) {
+        aviso('Informe o ID do deputado na Câmara em Acessos → Dados do gabinete.', 'erro');
+        return;
+      }
+      btn.disabled = true;
+      try {
+        const camara = await import('./camara.js');
+        const r = await camara.importarCeap(id, {
+          aoProgredir: (p) => { btn.textContent = `${p.anos} ano(s) · ${p.lancamentos} lançamentos`; },
+        });
+        aviso([
+          `${r.novos} lançamentos novos, ${r.atualizados} conferidos`,
+          `${fmtDinheiro(r.total)} no total`,
+          Object.entries(r.porAno).filter(([, n]) => n).map(([a, n]) => `${a}: ${n}`).join(' · '),
+        ].filter(Boolean).join(' · '), r.lancamentos ? 'ok' : 'erro');
+        await painelCota(container);
+      } catch (erro) {
+        console.error(erro);
+        aviso(erro.message || 'Não foi possível buscar a cota na Câmara.', 'erro');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Buscar na Câmara';
+      }
+    },
+  });
+}
+
+/**
+ * Doze colunas, uma por mês, com a linha do teto atravessada.
+ *
+ * A pergunta que essa forma responde e a tabela não: em que meses o gabinete
+ * passou perto do limite. Uma soma anual esconde o mês em que quase estourou.
+ */
+function colunasMensais(doAno, ano, teto) {
+  const porMes = Array.from({ length: 12 }, () => 0);
+  doAno.forEach((l) => {
+    const m = Number(String(l.data || '').slice(5, 7));
+    if (m >= 1 && m <= 12) porMes[m - 1] += Number(l.valor) || 0;
+  });
+  const maior = Math.max(teto || 0, ...porMes) || 1;
+  const nomes = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+
+  return el('div', { class: 'colunas-mes' }, porMes.map((v, i) => el('div', {
+    class: 'coluna-mes',
+    title: `${nomes[i]}/${ano}: ${fmtDinheiro(v)}${teto ? ` · teto ${fmtDinheiro(teto)}` : ''}`,
+  }, [
+    el('div', { class: 'coluna-trilho' }, [
+      teto ? el('i', { class: 'coluna-teto', style: `bottom:${(teto / maior) * 100}%` }) : null,
+      el('i', {
+        class: `coluna-barra${teto && v > teto ? ' coluna-barra--estourou' : ''}`,
+        style: `height:${(v / maior) * 100}%`,
+      }),
+    ].filter(Boolean)),
+    el('span', { class: 'coluna-rotulo', texto: nomes[i] }),
+  ])));
+}
+
+function tabelaDeLancamentos(lista, campoCategoria) {
+  const rotulo = (v) => campoCategoria?.op.find((o) => o.v === v)?.l || v || '—';
+  return el('div', { class: 'tabela-rolagem' }, [
+    el('table', { class: 'tabela' }, [
+      el('thead', {}, [el('tr', {}, [
+        el('th', { texto: 'Data' }),
+        el('th', { texto: 'Rubrica' }),
+        el('th', { texto: 'Fornecedor' }),
+        el('th', { texto: 'Documento' }),
+        el('th', { class: 'num', texto: 'Valor' }),
+      ])]),
+      el('tbody', {}, lista.map((l) => el('tr', {}, [
+        el('td', { texto: fmtData(l.data) }),
+        el('td', { texto: rotulo(l.categoria) }),
+        el('td', {}, [
+          el('span', { texto: l.fornecedor || '—' }),
+          l.fornecedorDoc ? el('span', { class: 'topo-sub', texto: l.fornecedorDoc }) : null,
+        ].filter(Boolean)),
+        // O link para o documento é o que fecha a conferência: leva à nota fiscal
+        // que a Câmara publicou, sem passar por nenhum sistema no meio.
+        el('td', {}, [l.urlDocumento
+          ? el('a', { href: l.urlDocumento, target: '_blank', rel: 'noopener', texto: l.notaFiscal || 'ver nota' })
+          : el('span', { texto: l.notaFiscal || '—' })]),
+        el('td', { class: 'num', texto: fmtDinheiro(l.valor) }),
+      ]))),
+    ]),
+  ]);
 }

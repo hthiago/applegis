@@ -1,6 +1,9 @@
 import { el, aviso, limpar } from './ui.js';
 import { salvar, salvarEmLote, listar } from './dados.js';
 import { naturezaDe, ehMerito, votoDe, sentidoDo, resumoDo, seguiuOrientacao } from './votos.js';
+import { doGastoDaCamara, chaveDoGasto } from './ceap.js';
+
+export { rubricaDe, doGastoDaCamara, chaveDoGasto } from './ceap.js';
 
 /**
  * Integração com os dados abertos da Câmara dos Deputados.
@@ -427,6 +430,75 @@ function comoData(d) {
  * Cada item entra com a orientação em branco — a decisão é do gabinete, não da
  * importação. O que a Câmara fornece é o que está em pauta, não o que fazer.
  */
+/**
+ * A cota parlamentar, direto da Câmara.
+ *
+ * A CEAP é a única despesa do mandato que a Câmara publica lançamento por
+ * lançamento, com fornecedor, CNPJ, documento e valor. Digitar isso à mão era
+ * transcrever uma base pública — trabalho que erra, atrasa e não acrescenta
+ * nada. O que o gabinete tem a fazer com esses dados é conferir e explicar, não
+ * copiar.
+ *
+ * A categoria vem da Câmara como texto longo ("PASSAGENS AÉREAS", "MANUTENÇÃO DE
+ * ESCRITÓRIO DE APOIO À ATIVIDADE PARLAMENTAR"). O sistema tem uma lista curta,
+ * porque é por ela que se filtra e se soma — traduzir na entrada evita treze
+ * grafias diferentes da mesma rubrica no filtro.
+ */
+/**
+ * Importa a cota do parlamentar, ano a ano.
+ *
+ * Ano a ano porque a base pagina por ano e o mandato tem oito; e gravando a cada
+ * ano, porque uma importação longa que só grava no fim perde tudo se cair no
+ * meio — foi o que aconteceu com a produção e com as votações.
+ */
+export async function importarCeap(idDeputado, { desde = 2019, aoProgredir = () => {} } = {}) {
+  if (!idDeputado) throw new Error('Informe o ID do deputado na Câmara em Acessos → Dados do gabinete.');
+
+  const funil = { anos: 0, lancamentos: 0, novos: 0, atualizados: 0, porAno: {}, total: 0 };
+  const existentes = new Set((await listar('ceap', { recarregar: true })).map((l) => l.id));
+  const ateAno = new Date().getFullYear();
+
+  for (let ano = desde; ano <= ateAno; ano += 1) {
+    const daquele = [];
+    for (let pagina = 1; pagina <= 40; pagina += 1) {
+      // eslint-disable-next-line no-await-in-loop
+      // `buscarJson` já devolve o `dados` de dentro da resposta — desembrulhar
+      // de novo aqui devolvia `undefined` e a importação terminava com zero em
+      // todos os anos, sem erro nenhum para explicar.
+      const lote = await buscarJson(`/deputados/${idDeputado}/despesas?ano=${ano}&itens=100&pagina=${pagina}&ordem=ASC&ordenarPor=dataDocumento`) || [];
+      daquele.push(...lote);
+      if (lote.length < 100) break;
+    }
+
+    funil.anos += 1;
+    funil.porAno[ano] = daquele.length;
+    funil.lancamentos += daquele.length;
+
+    const registros = [];
+    const vistos = new Set();
+    for (const g of daquele) {
+      const id = chaveDoGasto(g);
+      if (vistos.has(id)) continue;
+      vistos.add(id);
+      const dados = doGastoDaCamara(g);
+      dados.importadoEm = new Date().toISOString().slice(0, 10);
+      funil.total += dados.valor;
+      if (existentes.has(id)) funil.atualizados += 1;
+      else { funil.novos += 1; existentes.add(id); }
+      registros.push({ id, dados });
+    }
+
+    if (registros.length) {
+      // eslint-disable-next-line no-await-in-loop
+      const gravacao = await salvarEmLote('ceap', registros);
+      if (gravacao.falhas.length) throw gravacao.falhas[0];
+    }
+    aoProgredir({ ...funil });
+  }
+
+  return funil;
+}
+
 export async function importarPauta(idDeputado, dias = 7) {
   const hoje = new Date();
   const ate = new Date(hoje.getTime() + dias * 86400e3);

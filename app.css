@@ -1152,3 +1152,21 @@ input:focus, select:focus, textarea:focus { border-color: var(--verde); outline:
   .ficha { max-width: none; }
   .ficha-secao { break-inside: avoid; }
 }
+
+/* ── cota: doze colunas e a linha do teto ────────────────────────────────
+   A soma anual esconde o mês em que quase estourou; as colunas mostram. */
+.colunas-mes { display: flex; gap: .4rem; align-items: flex-end; height: 9rem; }
+.coluna-mes { flex: 1; display: flex; flex-direction: column; gap: .25rem; height: 100%; }
+.coluna-trilho {
+  position: relative; flex: 1;
+  background: rgba(0, 0, 0, .05); border-radius: 2px;
+  display: flex; align-items: flex-end;
+}
+.coluna-barra { width: 100%; background: #75a7bf; border-radius: 2px 2px 0 0; display: block; }
+.coluna-barra--estourou { background: #a4262c; }
+/* O teto atravessado: é dele que a leitura "passou perto" depende. */
+.coluna-teto {
+  position: absolute; left: 0; right: 0; height: 0;
+  border-top: 2px dashed rgba(0, 0, 0, .45);
+}
+.coluna-rotulo { text-align: center; font-size: .75rem; opacity: .7; }
