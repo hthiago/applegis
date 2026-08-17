@@ -196,6 +196,7 @@ function paineisDisponiveis() {
   return [
     { id: 'painel', area: 'chefia', nome: 'Painel', render: nucleo.paineis.painelChefia },
     { id: 'resumo-cota', area: 'administrativo', nome: 'Resumo da cota', render: nucleo.paineis.painelCota },
+    { id: 'ficha', area: 'administrativo', nome: 'Ficha de apresentação', render: nucleo.ficha.painelFicha },
     { id: 'dashboard', area: 'orcamento', nome: 'Dashboard', render: nucleo.paineis.painelDashboard },
     { id: 'painel-emendas', area: 'orcamento', nome: 'Por município', render: nucleo.paineis.painelEmendas },
   ];
@@ -1142,7 +1143,7 @@ async function iniciar() {
   }
 
   try {
-    const [fb, sessaoMod, crud, admin, paineis, camara, minuta, dados, emendas, fontes] = await Promise.all([
+    const [fb, sessaoMod, crud, admin, paineis, camara, minuta, dados, emendas, ficha, fontes] = await Promise.all([
       import('./firebase.js'),
       import('./sessao.js'),
       import('./crud.js'),
@@ -1152,9 +1153,10 @@ async function iniciar() {
       import('./minuta.js'),
       import('./dados.js'),
       import('./emendas.js'),
+      import('./ficha.js'),
       import('./fontes.js'),
     ]);
-    nucleo = { fb, sessaoMod, crud, admin, paineis, camara, minuta, dados, emendas, fontes };
+    nucleo = { fb, sessaoMod, crud, admin, paineis, camara, minuta, dados, emendas, ficha, fontes };
   } catch (erro) {
     console.error(erro);
     limpar(raiz).appendChild(telaFalhaCarregamento(erro));

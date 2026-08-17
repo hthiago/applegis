@@ -1127,3 +1127,28 @@ input:focus, select:focus, textarea:focus { border-color: var(--verde); outline:
 .mapa-legenda { display: flex; align-items: center; gap: .35rem; margin-top: .6rem; flex-wrap: wrap; }
 .mapa-tom { width: 1.6rem; height: .7rem; display: inline-block; border-radius: 2px; }
 .bloco--detalhe-mapa { margin-top: 1rem; }
+
+/* ── ficha de apresentação ───────────────────────────────────────────────
+   Feita para ser levada em papel a uma reunião: uma coluna, seções curtas, e
+   nada que só funcione na tela. */
+.ficha { max-width: 60rem; }
+.ficha-topo { display: flex; align-items: baseline; gap: .6rem; flex-wrap: wrap; margin: 1rem 0 .5rem; }
+.ficha-topo h2 { margin: 0; }
+.ficha-secao { border-top: 1px solid rgba(0, 0, 0, .1); padding: .9rem 0; }
+.ficha-secao h3 { margin: 0 0 .5rem; font-size: 1rem; }
+.ficha-secao--alerta { border-left: 3px solid #a4262c; padding-left: .8rem; }
+.ficha-secao--alerta li { margin: .2rem 0; }
+.ficha-dados { display: grid; grid-template-columns: auto 1fr; gap: .25rem 1rem; margin: 0; }
+.ficha-dados dt { font-weight: 600; }
+.ficha-dados dd { margin: 0; }
+.ficha-contatos { list-style: none; padding: 0; margin: 0; }
+.ficha-contatos li { padding: .3rem 0; display: flex; gap: .5rem; flex-wrap: wrap; align-items: baseline; }
+.indicadores--compactos { margin: .3rem 0 .8rem; }
+.ficha-rodape { font-size: .85em; opacity: .65; margin-top: 1rem; }
+
+@media print {
+  /* Sobra a ficha. Barra, abas e botões não vão para o papel. */
+  .barra-topo, .barra-areas, .barra-abas, .modulo-acoes, .modulo-topo p { display: none !important; }
+  .ficha { max-width: none; }
+  .ficha-secao { break-inside: avoid; }
+}

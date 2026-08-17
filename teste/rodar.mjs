@@ -1475,6 +1475,67 @@ console.log('\nPlanilhas de emenda\n');
   await pagina.close();
 }
 
+// ── ficha de apresentação: o município em uma folha ──
+//
+// Para que serve: o deputado vai a Erechim na quinta e alguém monta, na quarta, a
+// folha com o que o mandato fez ali e o que está travado. O teste confere que a
+// folha se monta e — mais importante — que ela não inventa o que não tem.
+{
+  const pagina = await abrir();
+  await pagina.route(/servicodados\.ibge\.gov\.br.*localidades/, (r) => r.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    headers: { 'Access-Control-Allow-Origin': '*' },
+    body: JSON.stringify([{
+      id: 4306957,
+      nome: 'Erechim',
+      microrregiao: { nome: 'Erechim', mesorregiao: { nome: 'Noroeste Rio-Grandense', UF: { sigla: 'RS' } } },
+      'regiao-imediata': { nome: 'Erechim' },
+    }]),
+  }));
+  await pagina.route(/servicodados\.ibge\.gov\.br.*agregados/, (r) => r.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    headers: { 'Access-Control-Allow-Origin': '*' },
+    body: JSON.stringify([{ resultados: [{ series: [{ serie: { 2022: '105705' } }] }] }]),
+  }));
+
+  await pagina.goto(`${BASE}/#/administrativo/ficha`, { waitUntil: 'domcontentloaded' });
+  await pagina.waitForSelector('.ficha-secao', { timeout: 15000 });
+  const folha = (await pagina.locator('.ficha').innerText()).replace(/\s+/g, ' ');
+
+  conferir('a ficha abre já no município que o gabinete conhece',
+    /Erechim/.test(folha), folha.slice(0, 120));
+  conferir('traz o retrato da cidade, que dá escala ao valor da emenda',
+    /105\.705/.test(folha) && /Noroeste Rio-Grandense/.test(folha), folha.slice(0, 400));
+  // Um milhão em Aceguá não é um milhão em Porto Alegre: é o por habitante que
+  // torna comparável o incomparável.
+  conferir('e o valor por habitante, que é o que compara cidades diferentes',
+    /por habitante/i.test(folha), folha.slice(0, 600));
+  conferir('as emendas do município entram na folha',
+    /Emendas do mandato/.test(folha) && /R\$/.test(folha), folha.slice(0, 600));
+  // Lacuna dita é lacuna. Preencher buraco com suposição numa folha que vai para
+  // uma reunião é pior que a folha incompleta.
+  conferir('contato inexistente é dito como ausência, não preenchido por suposição',
+    /Nenhum contato deste município/.test(folha), folha.slice(-300));
+  conferir('e a folha declara de onde veio e que nada é estimado',
+    /Nada aqui é estimado/.test(folha), folha.slice(-200));
+
+  await pagina.close();
+}
+
+// Sem o IBGE, a ficha ainda serve: o que falta é dito, não inventado.
+{
+  const pagina = await abrir();
+  await pagina.route(/servicodados\.ibge\.gov\.br/, (r) => r.abort());
+  await pagina.goto(`${BASE}/#/administrativo/ficha`, { waitUntil: 'domcontentloaded' });
+  await pagina.waitForSelector('.ficha-secao', { timeout: 15000 });
+  const folha = (await pagina.locator('.ficha').innerText()).replace(/\s+/g, ' ');
+  conferir('sem o IBGE, o retrato é declarado ausente e o resto da folha fica',
+    /IBGE não respondeu/.test(folha) && /Emendas do mandato/.test(folha), folha.slice(0, 300));
+  await pagina.close();
+}
+
 // ── o dashboard: onde o mandato chegou, e onde não chegou ──
 //
 // Duas malhas de mentira, uma que responde e outra que não. O mapa é o caminho
