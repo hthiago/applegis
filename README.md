@@ -156,6 +156,24 @@ camadas: *Emendas* traz o consolidado por emenda — empenhado, liquidado, pago 
 restos —, e *Transferências* traz a emenda discriminada, uma linha por documento
 de execução, com quem recebeu, para quê e em que fase.
 
+**Votação por município** (ativa, sem cadastro). Em *Administrativo › Municípios*, o
+botão **Importar votação (TSE)** lê o arquivo de votação por município do repositório
+de dados eleitorais do TSE, casa o nome de urna com o nome do parlamentar cadastrado,
+soma os votos por cidade e calcula a colocação e o percentual. Só os campos de votação
+são escritos: prefeito, vereadores e o resumo econômico foram preenchidos por gente, e
+uma importação de votos não os apaga.
+
+**Ficha de apresentação** (ativa). Em *Administrativo › Ficha de apresentação*, o
+município em uma folha: população e região (IBGE), um minimapa mostrando onde a cidade
+fica no estado, quem governa e os vereadores aliados (cadastro de *Municípios*), a
+votação do parlamentar ali (TSE), renda e produção, as emendas com o valor por
+habitante, o que está travado e os contatos do gabinete na cidade. **Imprimir** gera a
+folha física em A4, sem barra nem botões. **Enviar por WhatsApp** monta a versão curta
+e abre a conversa com a mensagem pronta — o parlamentar aparece primeiro na lista, com
+o número cadastrado em *Acessos › Dados do gabinete*. O envio usa hoje o link `wa.me`,
+que funciona sem chave e sem cadastro; quando a API oficial do gabinete for definida,
+muda só a função `linkDoWhatsapp`.
+
 **Ainda por ligar:** Google Agenda (leitura para o gabinete, escrita para a chefia),
 Google Drive (documentos guardam o link, não o arquivo) e as despesas da cota
 (`/deputados/{id}/despesas`), que a Câmara publica com atraso e por isso servem de

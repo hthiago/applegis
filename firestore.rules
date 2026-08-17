@@ -62,6 +62,7 @@ service cloud.firestore {
         'documentos': 'administrativo',
         'ceap': 'administrativo',
         'contatos': 'administrativo',
+        'municipios': 'administrativo',
         'interacoes': 'administrativo',
         'atendimentos': 'administrativo',
         'proposicoes': 'legislativo',

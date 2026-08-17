@@ -176,6 +176,7 @@ function blocoGabinete(aoConcluir) {
     ['Parlamentar', g.deputado || '—'],
     ['UF', g.uf || '—'],
     ['ID na Câmara', g.idDeputadoCamara || 'não informado'],
+    ['WhatsApp do parlamentar', g.whatsappParlamentar || 'não informado'],
     ['Cota mensal (CEAP)', g.cotaMensal
       ? g.cotaMensal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
       : 'não informada'],
@@ -211,11 +212,13 @@ function formGabineteAtual(aoConcluir) {
   const uf = el('input', { type: 'text', maxlength: '2' });
   const idCamara = el('input', { type: 'number', inputmode: 'numeric' });
   const cota = el('input', { type: 'number', inputmode: 'decimal', step: '0.01', min: '0' });
+  const whatsapp = el('input', { type: 'tel', placeholder: '(54) 99999-0000' });
   nome.value = g.nome || '';
   deputado.value = g.deputado || '';
   uf.value = g.uf || '';
   idCamara.value = g.idDeputadoCamara || '';
   cota.value = g.cotaMensal ?? '';
+  whatsapp.value = g.whatsappParlamentar || '';
 
   form.append(
     el('div', { class: 'campo' }, [el('label', { texto: 'Nome do gabinete *' }), nome]),
@@ -223,6 +226,14 @@ function formGabineteAtual(aoConcluir) {
     el('div', { class: 'linha-campos' }, [
       el('div', { class: 'campo' }, [el('label', { texto: 'UF' }), uf]),
       el('div', { class: 'campo' }, [el('label', { texto: 'ID na Câmara' }), idCamara]),
+    ]),
+    // É o número que aparece primeiro na hora de mandar a ficha de apresentação
+    // — a folha é feita para ele, e procurar o próprio nome no meio de trezentos
+    // contatos seria o oposto do que esta tela existe para fazer.
+    el('div', { class: 'campo' }, [
+      el('label', { texto: 'WhatsApp do parlamentar' }),
+      whatsapp,
+      el('p', { class: 'campo-dica', texto: 'Usado no envio da ficha de apresentação. Fica só aqui, no gabinete.' }),
     ]),
     // O teto da CEAP varia por UF e é fixado por ato da Mesa; a base aberta não
     // o publica. Sem esse número não há como falar de economia — só de gasto —,
@@ -257,6 +268,7 @@ function formGabineteAtual(aoConcluir) {
       deputado: deputado.value.trim() || null,
       uf: uf.value.trim().toUpperCase() || null,
       idDeputadoCamara: idCamara.value ? Number(idCamara.value) : null,
+      whatsappParlamentar: whatsapp.value.trim() || null,
       cotaMensal: cota.value ? Number(cota.value) : null,
       atualizadoEm: serverTimestamp(),
       atualizadoPor: sessao.membro.email,

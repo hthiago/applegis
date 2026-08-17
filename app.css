@@ -1146,11 +1146,55 @@ input:focus, select:focus, textarea:focus { border-color: var(--verde); outline:
 .indicadores--compactos { margin: .3rem 0 .8rem; }
 .ficha-rodape { font-size: .85em; opacity: .65; margin-top: 1rem; }
 
+/* O cabeçalho da folha: identificação à esquerda, minimapa à direita. */
+.ficha-cabecalho {
+  display: flex; gap: 1rem; align-items: flex-start; justify-content: space-between;
+  flex-wrap: wrap; margin-bottom: .5rem;
+}
+.ficha-identificacao { flex: 1 1 20rem; }
+.ficha-origem { margin: 0; font-size: .85em; opacity: .65; }
+.ficha-vereadores { margin-top: .7rem; }
+.ficha-vereadores h4 { margin: 0 0 .3rem; font-size: .9rem; font-weight: 600; }
+.ficha-resumo { margin: 0; padding-left: 1.1rem; }
+.ficha-resumo li { margin: .15rem 0; }
+.ficha-resumo-texto { margin: .5rem 0 0; }
+.ficha-mensagem { width: 100%; font-family: inherit; font-size: .9rem; }
+
+/* ── minimapa: onde a cidade fica no estado ──────────────────────────────
+   Um ícone, não uma ferramenta: sem rótulo, sem clique, sem zoom. O que ele
+   responde é "é fronteira ou é metrópole?", e isso se responde de relance. */
+.ficha-minimapa {
+  flex: 0 0 auto; display: flex; flex-direction: column; align-items: center; gap: .2rem;
+  min-height: 1px;
+}
+.minimapa { max-width: 190px; height: auto; }
+.minimapa-estado { fill: rgba(0, 0, 0, .08); stroke: rgba(0, 0, 0, .25); stroke-width: .4; }
+.minimapa-cidade { fill: #a4262c; stroke: #a4262c; stroke-width: .8; }
+.ficha-minimapa-legenda { font-size: .75rem; opacity: .7; text-align: center; }
+
 @media print {
   /* Sobra a ficha. Barra, abas e botões não vão para o papel. */
-  .barra-topo, .barra-areas, .barra-abas, .modulo-acoes, .modulo-topo p { display: none !important; }
+  .barra-topo, .barra-areas, .barra-abas, .modulo-acoes, .modulo-topo p,
+  .aviso, .modal-fundo { display: none !important; }
+
+  /* A folha física: A4 com margem de relatório, preto no branco, sem sombra
+     nem fundo — o que economiza tinta e sobrevive a uma fotocópia. */
+  @page { size: A4 portrait; margin: 1.4cm 1.6cm; }
+  html, body { background: #fff !important; color: #000 !important; font-size: 11pt; }
+  .conteudo, main, .area { padding: 0 !important; margin: 0 !important; box-shadow: none !important; }
   .ficha { max-width: none; }
-  .ficha-secao { break-inside: avoid; }
+  /* Nenhuma seção parte no meio: uma pendência dividida entre duas páginas é
+     lida pela metade, e é justamente a parte que não pode ser lida pela metade. */
+  .ficha-secao, .ficha-cabecalho, .municipio-emenda, .indicadores { break-inside: avoid; }
+  .ficha-secao { border-top: 1pt solid #999; }
+  .ficha-secao h3 { font-size: 11pt; text-transform: uppercase; letter-spacing: .03em; }
+  .ficha-topo h2 { font-size: 16pt; }
+  .ficha-secao--alerta { border-left: 3pt solid #000; }
+  .minimapa-estado { fill: #eee; stroke: #666; }
+  .minimapa-cidade { fill: #000; stroke: #000; }
+  .etiqueta { border: 1pt solid #666; color: #000 !important; background: none !important; }
+  .indicador-valor { font-weight: 700; }
+  a[href]::after { content: none !important; }
 }
 
 /* ── cota: doze colunas e a linha do teto ────────────────────────────────

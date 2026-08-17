@@ -274,6 +274,50 @@ export const MODULOS = [
     ],
   },
   {
+    id: 'municipios',
+    area: 'administrativo',
+    nome: 'Municípios',
+    singular: 'município',
+    descricao: 'O que o gabinete sabe de cada cidade: quem governa, quem é aliado na Câmara, a votação do parlamentar e o que move a economia. É a base da ficha de apresentação.',
+    importaVotacao: true,
+    ordenar: { campo: 'nome', dir: 'asc' },
+    busca: ['nome', 'prefeito', 'partidoPrefeito', 'vereadores', 'atividades', 'resumo'],
+    facetas: [
+      { campo: 'partidoPrefeito', l: 'Partido do prefeito' },
+      { campo: 'uf', l: 'UF' },
+    ],
+    campos: [
+      { k: 'nome', l: 'Município', t: 'texto', req: true, lista: true },
+      { k: 'uf', l: 'UF', t: 'select', op: UFS.map((v) => ({ v, l: v })), padrao: 'RS', lista: true },
+      // Quem governa hoje. Vem preenchido à mão ou por importação, e não do
+      // IBGE: o IBGE dá o retrato da cidade, não a política dela.
+      { k: 'prefeito', l: 'Prefeito', t: 'texto', lista: true },
+      { k: 'partidoPrefeito', l: 'Partido do prefeito', t: 'texto', lista: true },
+      { k: 'vicePrefeito', l: 'Vice-prefeito', t: 'texto' },
+      { k: 'presidenteCamara', l: 'Presidente da Câmara', t: 'texto' },
+      // Vereadores do partido ou aliados: é com eles que o gabinete fala antes
+      // de qualquer visita.
+      { k: 'vereadores', l: 'Vereadores aliados', t: 'tags', lista: true },
+      // A votação do parlamentar naquela cidade. Sem ela a ficha não diz se
+      // aquele é um reduto ou um lugar a conquistar — que muda a conversa
+      // inteira.
+      { k: 'votosParlamentar', l: 'Votos do parlamentar', t: 'numero', lista: true },
+      { k: 'votosValidos', l: 'Votos válidos no município', t: 'numero' },
+      { k: 'colocacao', l: 'Colocação do parlamentar', t: 'numero' },
+      { k: 'anoEleicao', l: 'Ano da eleição', t: 'numero' },
+      // O que move a cidade. Uma linha honesta vale mais que um relatório
+      // genérico: é o que o parlamentar lê no carro, a caminho.
+      { k: 'atividades', l: 'Principais atividades econômicas', t: 'texto' },
+      { k: 'resumo', l: 'O que importa nesta cidade', t: 'area' },
+      { k: 'pibPerCapita', l: 'PIB per capita', t: 'dinheiro' },
+      { k: 'rendaMedia', l: 'Renda média mensal', t: 'dinheiro' },
+      { k: 'populacao', l: 'População', t: 'numero' },
+      { k: 'observacoes', l: 'Observações do gabinete', t: 'area', inline: true },
+      { k: 'fonte', l: 'Origem do dado', t: 'texto' },
+      { k: 'atualizadoNaFonte', l: 'Atualizado em', t: 'data' },
+    ],
+  },
+  {
     id: 'contatos',
     area: 'administrativo',
     nome: 'Contatos (CRM)',

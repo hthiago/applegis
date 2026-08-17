@@ -185,3 +185,56 @@ export function desenharMalha(malha, { valores = new Map(), aoClicar = () => {},
 
   return { svg, cortes };
 }
+
+/**
+ * Minimapa: o estado inteiro em cinza, com uma cidade acesa.
+ *
+ * Responde a pergunta que ninguém faz em voz alta e todo mundo tem: onde fica
+ * isso? Numa ficha que o parlamentar lê no carro, "Noroeste Rio-Grandense" não
+ * situa; a mancha no mapa situa em um segundo. Sem rótulo, sem interação e sem
+ * cor — é um ícone, não uma ferramenta.
+ */
+export function desenharMinimapa(malha, nomeDestaque, { largura = 200 } = {}) {
+  let minLon = Infinity; let maxLon = -Infinity;
+  let minLat = Infinity; let maxLat = -Infinity;
+  for (const m of malha.municipios) {
+    for (const anel of m.poligonos) {
+      for (const [lon, lat] of anel) {
+        if (lon < minLon) minLon = lon;
+        if (lon > maxLon) maxLon = lon;
+        if (lat < minLat) minLat = lat;
+        if (lat > maxLat) maxLat = lat;
+      }
+    }
+  }
+  if (!Number.isFinite(minLon)) return null;
+
+  const fatorLon = Math.cos(((minLat + maxLat) / 2) * (Math.PI / 180));
+  const escala = largura / ((maxLon - minLon) * fatorLon);
+  const altura = Math.round((maxLat - minLat) * escala);
+  const ponto = ([lon, lat]) => `${((lon - minLon) * fatorLon * escala).toFixed(1)},${((maxLat - lat) * escala).toFixed(1)}`;
+  const caminho = (anel) => `M${anel.map(ponto).join('L')}Z`;
+
+  const alvo = semAcento(nomeDestaque);
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('viewBox', `0 0 ${Math.round(largura)} ${altura}`);
+  svg.setAttribute('class', 'minimapa');
+  svg.setAttribute('role', 'img');
+  svg.setAttribute('aria-label', `Localização de ${nomeDestaque} em ${malha.uf}`);
+
+  // O estado inteiro num traço só: um caminho por município deixaria o SVG
+  // dez vezes maior sem mudar o que se enxerga num quadrado de dois centímetros.
+  const fundo = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  fundo.setAttribute('d', malha.municipios.flatMap((m) => m.poligonos.map(caminho)).join(' '));
+  fundo.setAttribute('class', 'minimapa-estado');
+  svg.appendChild(fundo);
+
+  const cidade = malha.municipios.find((m) => semAcento(m.nome) === alvo);
+  if (cidade) {
+    const marca = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    marca.setAttribute('d', cidade.poligonos.map(caminho).join(' '));
+    marca.setAttribute('class', 'minimapa-cidade');
+    svg.appendChild(marca);
+  }
+  return { svg, achou: !!cidade };
+}

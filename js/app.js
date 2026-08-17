@@ -717,6 +717,55 @@ function extrasDosContatos() {
 }
 
 /**
+ * Importação da votação por município, do arquivo do TSE.
+ *
+ * É o único jeito de a ficha de apresentação dizer se aquela cidade é um reduto
+ * ou um lugar a conquistar. Só os campos de votação são escritos: prefeito,
+ * vereadores e o resumo econômico foram preenchidos por gente, e uma importação
+ * de votos não tem por que apagá-los.
+ */
+function extrasDosMunicipios() {
+  return [
+    (recarregar) => {
+      const escolher = el('input', { type: 'file', accept: '.csv,.txt,text/csv', class: 'oculto-visual' });
+      const btn = el('button', {
+        class: 'btn btn--fantasma',
+        texto: 'Importar votação (TSE)',
+        title: 'O arquivo de votação por município do repositório de dados eleitorais do TSE',
+        onclick: () => escolher.click(),
+      });
+
+      escolher.addEventListener('change', async () => {
+        const arquivo = escolher.files?.[0];
+        if (!arquivo) return;
+        btn.disabled = true;
+        btn.textContent = 'Apurando…';
+        try {
+          const tse = await import('./tse.js');
+          const g = nucleo.sessaoMod.sessao.gabinete;
+          const r = await tse.importarVotacao(arquivo, { nomeAutor: g?.deputado || null });
+          aviso([
+            `${r.municipios} municípios (${r.novos} novos, ${r.atualizados} atualizados)`,
+            `${r.votos.toLocaleString('pt-BR')} votos em ${r.linhas} linhas lidas`,
+            r.melhores.length ? `maiores: ${r.melhores.join(', ')}` : null,
+          ].filter(Boolean).join(' · '), 'ok');
+          recarregar();
+        } catch (erro) {
+          console.error(erro);
+          aviso(erro.message || 'Não foi possível importar a votação.', 'erro');
+        } finally {
+          escolher.value = '';
+          btn.disabled = false;
+          btn.textContent = 'Importar votação (TSE)';
+        }
+      });
+
+      return el('span', { class: 'importador' }, [btn, escolher]);
+    },
+  ];
+}
+
+/**
  * Leitura do bilhete de passagem por imagem.
  *
  * A regra: nada é gravado sem confirmação. Leitura de imagem erra, e uma viagem
@@ -1299,6 +1348,7 @@ async function desenharConteudo(alvo, areaId, abaId) {
   else if (modulo.importaTransferencias) extras = extrasDasTransferencias();
   else if (modulo.importaContatos) extras = extrasDosContatos();
   else if (modulo.leBilhete) extras = extrasDasViagens();
+  else if (modulo.importaVotacao) extras = extrasDosMunicipios();
 
   const acoesItem = modulo.geraMinuta ? acoesDaMinuta() : [];
   const acoesLinha = modulo.enviaParaAcompanhamento ? [acaoAcompanhar] : [];

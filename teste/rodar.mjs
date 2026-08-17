@@ -1845,6 +1845,76 @@ console.log('\nPlanilhas de emenda\n');
   await pagina.close();
 }
 
+// ── votação do TSE: reduto ou lugar a conquistar ──
+//
+// O TSE grava o nome de urna, que quase nunca é o nome cadastrado no gabinete.
+// Exigir igualdade exata devolveria zero votos sem erro nenhum — que é o pior
+// modo de falhar, porque parece resposta.
+{
+  const tse = await import('../js/tse.js');
+  const cabecalho = ['ANO_ELEICAO', 'SG_UF', 'NM_MUNICIPIO', 'DS_CARGO', 'NR_VOTAVEL', 'NM_VOTAVEL', 'SG_PARTIDO', 'QT_VOTOS'];
+  const mapa = tse.mapearColunasDoTse(cabecalho);
+  const linhas = [
+    ['2022', 'RS', 'Erechim', 'DEPUTADO FEDERAL', '3000', 'MARCEL VAN HATTEM', 'NOVO', '5000'],
+    ['2022', 'RS', 'Erechim', 'DEPUTADO FEDERAL', '4000', 'OUTRO CANDIDATO', 'XYZ', '6000'],
+    ['2022', 'RS', 'Erechim', 'DEPUTADO FEDERAL', '5000', 'TERCEIRO NOME', 'ABC', '2000'],
+    ['2022', 'RS', 'Aceguá', 'DEPUTADO FEDERAL', '3000', 'MARCEL VAN HATTEM', 'NOVO', '300'],
+    // Outro cargo no mesmo arquivo: contar isto misturaria duas eleições.
+    ['2022', 'RS', 'Erechim', 'DEPUTADO ESTADUAL', '30000', 'MARCEL VAN HATTEM', 'NOVO', '9000'],
+  ];
+
+  conferir('o cabeçalho do TSE é reconhecido apesar dos prefixos de coluna',
+    mapa.municipio === 2 && mapa.votos === 7 && mapa.cargo === 3, JSON.stringify(mapa));
+  conferir('o nome de urna casa com o nome cadastrado no gabinete',
+    tse.mesmoCandidato('MARCEL VAN HATTEM', 'Marcel van Hattem')
+    && !tse.mesmoCandidato('MARCELO VANIN', 'Marcel van Hattem'));
+
+  const apurado = tse.apurarPorMunicipio(linhas, mapa, {
+    nomeAutor: 'Marcel van Hattem', cargo: 'DEPUTADO FEDERAL',
+  });
+  const erechim = apurado.find((m) => m.nome === 'Erechim');
+  conferir('os votos são somados por município, sem o cargo errado no meio',
+    erechim.votosParlamentar === 5000 && erechim.votosValidos === 13000,
+    JSON.stringify(erechim));
+  // A colocação é o número que diz se ali é um reduto: sem ela o total de votos
+  // não conta história nenhuma.
+  conferir('a colocação sai da mesma leitura, contando quem teve mais votos',
+    erechim.colocacao === 2 && Math.round(erechim.percentual * 100) / 100 === 38.46,
+    JSON.stringify(erechim));
+  conferir('cidade pequena com votação própria também entra',
+    apurado.find((m) => m.nome === 'Aceguá').colocacao === 1);
+  conferir('a chave do município é a mesma da base do gabinete',
+    tse.chaveDoMunicipio('Santa Maria do Herval', 'RS') === 'santa-maria-do-herval-rs');
+}
+
+/**
+ * Malha e nomes do IBGE, de mentira.
+ *
+ * Ficam aqui, fora dos blocos, porque a malha é guardada em localStorage e o
+ * localStorage é do domínio, não da página: dois testes com fixtures diferentes
+ * fariam o segundo ler o cache do primeiro e falhar por um motivo que não é o
+ * dele. Uma fixture só, e o cache compartilhado passa a ser mais um caminho
+ * exercitado em vez de uma armadilha.
+ */
+const malhaFalsa = {
+  type: 'FeatureCollection',
+  features: [
+    { properties: { codarea: '4306957' }, geometry: { type: 'Polygon', coordinates: [[[-52, -27], [-51, -27], [-51, -28], [-52, -28], [-52, -27]]] } },
+    { properties: { codarea: '4300034' }, geometry: { type: 'Polygon', coordinates: [[[-54, -31], [-53, -31], [-53, -32], [-54, -32], [-54, -31]]] } },
+    { properties: { codarea: '4309050' }, geometry: { type: 'Polygon', coordinates: [[[-51, -29], [-50, -29], [-50, -30], [-51, -30], [-51, -29]]] } },
+  ],
+};
+const nomesFalsos = [
+  {
+    id: 4306957,
+    nome: 'Erechim',
+    microrregiao: { nome: 'Erechim', mesorregiao: { nome: 'Noroeste Rio-Grandense', UF: { sigla: 'RS' } } },
+    'regiao-imediata': { nome: 'Erechim' },
+  },
+  { id: 4300034, nome: 'Aceguá' },
+  { id: 4309050, nome: 'Gramado' },
+];
+
 // ── ficha de apresentação: o município em uma folha ──
 //
 // Para que serve: o deputado vai a Erechim na quinta e alguém monta, na quarta, a
@@ -1852,16 +1922,17 @@ console.log('\nPlanilhas de emenda\n');
 // folha se monta e — mais importante — que ela não inventa o que não tem.
 {
   const pagina = await abrir();
+  await pagina.route(/servicodados\.ibge\.gov\.br.*malhas/, (r) => r.fulfill({
+    status: 200,
+    contentType: 'application/geo+json',
+    headers: { 'Access-Control-Allow-Origin': '*' },
+    body: JSON.stringify(malhaFalsa),
+  }));
   await pagina.route(/servicodados\.ibge\.gov\.br.*localidades/, (r) => r.fulfill({
     status: 200,
     contentType: 'application/json',
     headers: { 'Access-Control-Allow-Origin': '*' },
-    body: JSON.stringify([{
-      id: 4306957,
-      nome: 'Erechim',
-      microrregiao: { nome: 'Erechim', mesorregiao: { nome: 'Noroeste Rio-Grandense', UF: { sigla: 'RS' } } },
-      'regiao-imediata': { nome: 'Erechim' },
-    }]),
+    body: JSON.stringify(nomesFalsos),
   }));
   await pagina.route(/servicodados\.ibge\.gov\.br.*agregados/, (r) => r.fulfill({
     status: 200,
@@ -1891,6 +1962,81 @@ console.log('\nPlanilhas de emenda\n');
   conferir('e a folha declara de onde veio e que nada é estimado',
     /Nada aqui é estimado/.test(folha), folha.slice(-200));
 
+  // O que nenhuma API entrega e o gabinete cadastrou à mão. Sem isto a ficha é
+  // um extrato de execução orçamentária, não uma ficha de apresentação.
+  conferir('quem governa a cidade entra na folha, com o partido',
+    /Paulo Prefeito \(NOVO\)/.test(folha) && /Carlos Presidente/.test(folha),
+    folha.slice(0, 700));
+  conferir('e os vereadores aliados, que é com quem se fala antes de viajar',
+    /Ana Vereadora/.test(folha) && /Bruno Vereador/.test(folha), folha.slice(0, 800));
+  // Reduto ou lugar a conquistar: é o que muda a conversa de uma visita.
+  conferir('a votação do parlamentar na cidade, com percentual e colocação',
+    /5\.000/.test(folha) && /38,5%|38\.5%/.test(folha) && /2º/.test(folha),
+    folha.slice(0, 900));
+  conferir('o resumo de renda e produção sai dos campos, não de texto gerado',
+    /agroindústria e metalmecânica/.test(folha) && /2\.100/.test(folha)
+    && /distrito industrial/.test(folha), folha.slice(0, 1200));
+  // Pedido explícito do gabinete: numa folha levada a uma reunião, o código do
+  // IBGE ocupa linha e não responde pergunta nenhuma.
+  conferir('o código do IBGE não aparece mais na folha',
+    !/Código IBGE/.test(folha) && !/4306957/.test(folha), folha.slice(0, 500));
+
+  // O minimapa: onde a cidade fica no estado. Vale, numa folha impressa, o que
+  // três linhas de texto não valem.
+  conferir('o minimapa desenha o estado e destaca a cidade',
+    (await pagina.locator('.minimapa .minimapa-cidade').count()) === 1,
+    String(await pagina.locator('.ficha-minimapa').count()));
+
+  // A folha vira mensagem sem virar outra coisa: mesma fonte, três saídas.
+  const envio = await pagina.evaluate(async () => {
+    const f = await import('/js/ficha.js');
+    const ficha = f.dadosDaFicha({
+      nome: 'Erechim',
+      uf: 'RS',
+      lugar: null,
+      retrato: { nome: 'Erechim', uf: 'RS', populacao: 105705 },
+      cadastro: { prefeito: 'Paulo Prefeito', partidoPrefeito: 'NOVO', vereadores: ['Ana Vereadora'], votosParlamentar: 5000, votosValidos: 13000, colocacao: 2, anoEleicao: 2022, atividades: 'agroindústria' },
+      contatos: [],
+    });
+    return {
+      texto: f.textoDaFicha(ficha),
+      link: f.linkDoWhatsapp('(54) 99999-0000', 'oi'),
+      semNumero: f.linkDoWhatsapp('', 'oi'),
+      comDdi: f.linkDoWhatsapp('5554999990000', 'oi'),
+      destinatarios: f.destinatariosPossiveis({
+        gabinete: { deputado: 'Deputada Teste', whatsappParlamentar: '54999990000' },
+        contatos: [
+          { nome: 'Zeca Local', telefone: '(54) 98888-0000', municipio: 'Erechim' },
+          { nome: 'Ana Distante', telefone: '(51) 97777-0000', municipio: 'Porto Alegre' },
+        ],
+        municipio: 'Erechim',
+      }),
+    };
+  });
+
+  conferir('a mensagem de WhatsApp traz o que se responde na porta da prefeitura',
+    /Erechim\/RS/.test(envio.texto) && /Paulo Prefeito \(NOVO\)/.test(envio.texto)
+    && /5\.000 votos/.test(envio.texto) && /2º lugar/.test(envio.texto),
+    envio.texto.slice(0, 300));
+  conferir('sem emenda registrada, a mensagem diz a ausência em vez de omitir',
+    /nenhuma registrada/.test(envio.texto), envio.texto);
+  conferir('o link do WhatsApp completa o DDI e não o duplica',
+    envio.link.startsWith('https://wa.me/5554999990000?text=')
+    && envio.comDdi.startsWith('https://wa.me/5554999990000?text='),
+    `${envio.link} | ${envio.comDdi}`);
+  conferir('sem número, o link abre o seletor de contatos do próprio WhatsApp',
+    envio.semNumero.startsWith('https://wa.me/?text='), envio.semNumero);
+  // A ficha é feita para o parlamentar: obrigá-lo a procurar o próprio nome no
+  // meio de trezentos contatos seria o oposto do que esta tela existe para fazer.
+  conferir('o parlamentar vem primeiro na lista de envio',
+    envio.destinatarios[0].grupo === 'Parlamentar'
+    && envio.destinatarios[0].telefone === '54999990000',
+    JSON.stringify(envio.destinatarios[0]));
+  conferir('e quem é da cidade vem antes dos demais contatos',
+    envio.destinatarios[1].nome === 'Zeca Local'
+    && envio.destinatarios[1].grupo === 'No município',
+    JSON.stringify(envio.destinatarios));
+
   await pagina.close();
 }
 
@@ -1912,20 +2058,6 @@ console.log('\nPlanilhas de emenda\n');
 // bom; a lista é o que garante que uma indisponibilidade do IBGE não leve embora
 // a resposta.
 {
-  const malhaFalsa = {
-    type: 'FeatureCollection',
-    features: [
-      { properties: { codarea: '4306957' }, geometry: { type: 'Polygon', coordinates: [[[-52, -27], [-51, -27], [-51, -28], [-52, -28], [-52, -27]]] } },
-      { properties: { codarea: '4300034' }, geometry: { type: 'Polygon', coordinates: [[[-54, -31], [-53, -31], [-53, -32], [-54, -32], [-54, -31]]] } },
-      { properties: { codarea: '4309050' }, geometry: { type: 'Polygon', coordinates: [[[-51, -29], [-50, -29], [-50, -30], [-51, -30], [-51, -29]]] } },
-    ],
-  };
-  const nomesFalsos = [
-    { id: 4306957, nome: 'Erechim' },
-    { id: 4300034, nome: 'Aceguá' },
-    { id: 4309050, nome: 'Gramado' },
-  ];
-
   const pagina = await abrir();
   await pagina.route(/servicodados\.ibge\.gov\.br.*malhas/, (r) => r.fulfill({
     status: 200,

@@ -12,6 +12,7 @@ if (!globalThis.__BANCO_VAZIO_TESTE) {
   colecaoDe('sistema').set('instalado', { por: 'chefe@teste.br' });
   colecaoDe('gabinetes').set('g1', {
     nome: 'Gabinete de Teste', deputado: 'Deputada Teste', uf: 'RS', idDeputadoCamara: 999,
+    whatsappParlamentar: '54999990000',
   });
   colecaoDe('autorizados').set('chefe@teste.br', {
     nome: 'Chefe Teste',
@@ -31,6 +32,17 @@ colecaoDe('gabinetes/g1/emendas').set('em1', {
   codigo: '202612340000', ano: 2026, tipo: 'individual', beneficiario: 'Prefeitura de Erechim', municipio: 'Erechim',
   uf: 'RS', areaDestino: 'saude', valorIndicado: 500000, valorEmpenhado: 300000,
   valorPago: 100000, fase: 'execucao',
+});
+// O que nenhuma base pública entrega: quem governa a cidade e como foi a
+// votação ali. É o que separa uma ficha de apresentação de um extrato.
+colecaoDe('gabinetes/g1/municipios').set('erechim-rs', {
+  nome: 'Erechim', uf: 'RS',
+  prefeito: 'Paulo Prefeito', partidoPrefeito: 'NOVO', vicePrefeito: 'Vera Vice',
+  presidenteCamara: 'Carlos Presidente',
+  vereadores: ['Ana Vereadora', 'Bruno Vereador'],
+  votosParlamentar: 5000, votosValidos: 13000, colocacao: 2, anoEleicao: 2022,
+  atividades: 'agroindústria e metalmecânica', rendaMedia: 2100, pibPerCapita: 45000,
+  resumo: 'A prefeitura pede a pavimentação do acesso ao distrito industrial.',
 });
 // Situação propositalmente desatualizada e autoria "suja": a consulta
 // automática ao abrir a lista precisa corrigir as duas.
