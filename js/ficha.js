@@ -27,6 +27,10 @@ import { telefonePadrao, telefoneVisivel } from './crm.js';
  *   - Interlocutores: os contatos do gabinete naquele município, que é quem se
  *     liga antes de viajar.
  *
+ * Para onde ela vai: tela, papel e mensagem de WhatsApp, todos da mesma fonte.
+ * O envio é restrito ao parlamentar e à equipe — a ficha traz pendências e a
+ * leitura interna do gabinete, e não é material de divulgação.
+ *
  * O que ela deliberadamente NÃO faz: inventar leitura política. Nada aqui é
  * gerado por texto livre. Cada linha da ficha tem fonte, e o que não veio de
  * fonte alguma aparece como lacuna — porque uma ficha que preenche buraco com
@@ -285,36 +289,42 @@ export function linkDoWhatsapp(telefone, texto) {
 }
 
 /**
- * Para quem se pode mandar a ficha.
+ * Para quem se pode mandar a ficha: o parlamentar e a equipe. Mais ninguém.
+ *
+ * A ficha não é material de divulgação. Ela traz o que está impedido, o que a
+ * prefeitura vai cobrar e a leitura que o gabinete faz da cidade — coisas que
+ * se dizem dentro do gabinete e não se mandam para o prefeito sobre quem foram
+ * escritas. Um seletor com trezentos contatos do CRM transformaria um toque
+ * errado num vazamento, e é por isso que o CRM não entra aqui.
+ *
+ * Sem número cadastrado a pessoa não aparece: um envio "sem destinatário" cairia
+ * no seletor de contatos do próprio WhatsApp, que é justamente a porta que esta
+ * lista existe para fechar.
  *
  * O parlamentar vem primeiro e sempre: a ficha é feita para ele, e obrigá-lo a
- * procurar o próprio nome no meio de trezentos contatos seria uma piada de mau
- * gosto com quem usa isto às sete da manhã.
+ * procurar o próprio nome no meio da lista seria uma piada de mau gosto com quem
+ * usa isto às sete da manhã.
  */
-export function destinatariosPossiveis({ gabinete, contatos, municipio }) {
+export function destinatariosPossiveis({ gabinete, equipe = [] }) {
   const lista = [];
   const visto = new Set();
-  const juntar = (nome, telefone, grupo) => {
-    if (!nome) return;
+  const juntar = (nome, telefone, grupo, cargo = null) => {
     const tel = telefonePadrao(telefone);
-    const chave = `${semAcento(nome)}|${tel || ''}`;
-    if (visto.has(chave)) return;
-    visto.add(chave);
-    lista.push({ nome, telefone: tel, grupo });
+    if (!nome || !tel) return;
+    if (visto.has(tel)) return;
+    visto.add(tel);
+    lista.push({ nome, telefone: tel, grupo, cargo });
   };
 
-  if (gabinete?.deputado || gabinete?.whatsappParlamentar) {
-    juntar(gabinete.deputado || 'Parlamentar', gabinete.whatsappParlamentar, 'Parlamentar');
+  juntar(gabinete?.deputado || 'Parlamentar', gabinete?.whatsappParlamentar, 'Parlamentar');
+
+  for (const p of equipe) {
+    // Quem saiu do gabinete não recebe documento interno do gabinete.
+    if (p?.situacao && p.situacao !== 'ativo') continue;
+    juntar(p?.nome, p?.telefone, 'Equipe do gabinete', p?.cargo || null);
   }
 
-  const alvo = semAcento(municipio || '');
-  for (const c of contatos) {
-    if (!c?.nome) continue;
-    const cidade = semAcento(c.municipio || c.cidade || '');
-    juntar(c.nome, c.telefone || c.celular, cidade && cidade === alvo ? `No município` : 'Outros contatos');
-  }
-
-  const ordem = { Parlamentar: 0, 'No município': 1, 'Outros contatos': 2 };
+  const ordem = { Parlamentar: 0, 'Equipe do gabinete': 1 };
   return lista.sort((a, b) => (ordem[a.grupo] - ordem[b.grupo])
     || a.nome.localeCompare(b.nome, 'pt-BR'));
 }
@@ -322,7 +332,28 @@ export function destinatariosPossiveis({ gabinete, contatos, municipio }) {
 /** A janela de envio: escolher a quem, conferir o texto e abrir o WhatsApp. */
 function abrirEnvio(ficha, destinatarios, gabinete) {
   const form = el('form', { class: 'form' });
-  const texto = textoDaFicha(ficha, { gabinete });
+
+  // Ninguém com número cadastrado: dizer onde se cadastra é a única resposta
+  // útil. Oferecer um campo de número livre aqui abriria de novo a porta que
+  // esta tela fecha.
+  if (!destinatarios.length) {
+    const fechar = modal(`Enviar a ficha de ${ficha.nome}`, form);
+    form.append(
+      el('p', { texto: 'A ficha só é enviada ao parlamentar e à equipe do gabinete, e ninguém tem número de WhatsApp cadastrado ainda.' }),
+      el('ul', {}, [
+        el('li', { texto: 'O número do parlamentar fica em Acessos → Dados do gabinete.' }),
+        el('li', {}, [
+          el('span', { texto: 'O da equipe, no cadastro de ' }),
+          el('a', { href: '#/administrativo/equipe', texto: 'Equipe' }),
+          el('span', { texto: '.' }),
+        ]),
+      ]),
+      el('div', { class: 'modal-acoes' }, [
+        el('button', { class: 'btn btn--primario', type: 'button', texto: 'Entendi', onclick: () => fechar() }),
+      ]),
+    );
+    return;
+  }
 
   const escolha = el('select', {});
   const grupos = new Map();
@@ -334,38 +365,29 @@ function abrirEnvio(ficha, destinatarios, gabinete) {
     }
     grupos.get(d.grupo).appendChild(el('option', {
       value: String(i),
-      texto: d.telefone ? `${d.nome} — ${telefoneVisivel(d.telefone)}` : `${d.nome} (sem telefone)`,
+      texto: `${d.nome}${d.cargo ? ` (${d.cargo})` : ''} — ${telefoneVisivel(d.telefone)}`,
     }));
-  });
-  const outroGrupo = el('optgroup', { label: 'Outro' });
-  outroGrupo.appendChild(el('option', { value: 'manual', texto: 'Digitar um número…' }));
-  outroGrupo.appendChild(el('option', { value: 'escolher', texto: 'Escolher no WhatsApp' }));
-  escolha.appendChild(outroGrupo);
-
-  const manual = el('input', { type: 'tel', placeholder: '(54) 99999-0000', class: 'oculto-visual' });
-  escolha.addEventListener('change', () => {
-    manual.classList.toggle('oculto-visual', escolha.value !== 'manual');
-    if (escolha.value === 'manual') manual.focus();
   });
 
   const corpo = el('textarea', { rows: '12', class: 'ficha-mensagem' });
-  corpo.value = texto;
+  corpo.value = textoDaFicha(ficha, { gabinete });
 
   form.append(
     el('div', { class: 'campo' }, [
       el('label', { texto: 'Enviar para' }),
       escolha,
-      manual,
       el('p', {
         class: 'campo-dica',
-        // Dito na tela porque a pergunta aparece na primeira vez que se usa.
-        texto: 'Abre o WhatsApp com a mensagem pronta — você confere e envia. Quando a API oficial do gabinete estiver definida, o envio passa a ser direto por aqui.',
+        // Dito na tela porque a pergunta aparece na primeira vez que se usa, e
+        // porque a restrição precisa ter um motivo visível para não parecer
+        // limitação do sistema.
+        texto: 'Só o parlamentar e a equipe do gabinete: a ficha traz pendências e leitura interna, que não são material de divulgação. A equipe sai do cadastro de Equipe; o número do parlamentar, de Acessos → Dados do gabinete.',
       }),
     ]),
     el('div', { class: 'campo' }, [
       el('label', { texto: 'Mensagem' }),
       corpo,
-      el('p', { class: 'campo-dica', texto: 'Pode editar antes de enviar.' }),
+      el('p', { class: 'campo-dica', texto: 'Abre o WhatsApp com a mensagem pronta — você confere e envia. Pode editar antes.' }),
     ]),
   );
 
@@ -378,16 +400,9 @@ function abrirEnvio(ficha, destinatarios, gabinete) {
 
   form.addEventListener('submit', (e) => {
     e.preventDefault();
-    let telefone = '';
-    if (escolha.value === 'manual') telefone = manual.value;
-    else if (escolha.value === 'escolher') telefone = '';
-    else telefone = destinatarios[Number(escolha.value)]?.telefone || '';
-
-    if (escolha.value === 'manual' && !telefonePadrao(telefone)) {
-      aviso('Digite um número com DDD.', 'erro');
-      return;
-    }
-    window.open(linkDoWhatsapp(telefone, corpo.value), '_blank', 'noopener');
+    const alvo = destinatarios[Number(escolha.value)];
+    if (!alvo?.telefone) { aviso('Escolha quem vai receber a ficha.', 'erro'); return; }
+    window.open(linkDoWhatsapp(alvo.telefone, corpo.value), '_blank', 'noopener');
     fechar();
   });
 }
@@ -396,11 +411,13 @@ export async function painelFicha(container) {
   limpar(container).appendChild(carregando());
 
   const { sessao } = await import('./sessao.js');
-  const [emendas, transferencias, contatos, cadastros] = await Promise.all([
+  const [emendas, transferencias, contatos, cadastros, equipe] = await Promise.all([
     listar('emendas', { recarregar: true }),
     listar('transferencias', { recarregar: true }).catch(() => []),
     listar('contatos', { recarregar: true }).catch(() => []),
     listar('municipios', { recarregar: true }).catch(() => []),
+    // Só para o envio: é a equipe, e não o CRM, que pode receber a ficha.
+    listar('equipe', { recarregar: true }).catch(() => []),
   ]);
 
   const lugares = consolidarPorMunicipio(emendas, transferencias);
@@ -613,8 +630,7 @@ export async function painelFicha(container) {
       if (!atual) { aviso('Gere a ficha antes de enviar.', 'erro'); return; }
       abrirEnvio(atual, destinatariosPossiveis({
         gabinete: sessao.gabinete,
-        contatos,
-        municipio: atual.nome,
+        equipe,
       }), sessao.gabinete);
     },
   });

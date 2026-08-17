@@ -23,7 +23,7 @@ if (!globalThis.__BANCO_VAZIO_TESTE) {
   });
 }
 if (!globalThis.__BANCO_VAZIO_TESTE) {
-colecaoDe('gabinetes/g1/equipe').set('e1', { nome: 'Ana Assessora', cargo: 'Secretária parlamentar', funcao: 'legislativo', lotacao: 'brasilia', situacao: 'ativo' });
+colecaoDe('gabinetes/g1/equipe').set('e1', { nome: 'Ana Assessora', cargo: 'Secretária parlamentar', funcao: 'legislativo', lotacao: 'brasilia', situacao: 'ativo', telefone: '54988880000' });
 colecaoDe('gabinetes/g1/tarefas').set('t1', {
   titulo: 'Preparar parecer da comissão', area: 'legislativo', responsavel: 'e1',
   prazo: '2020-01-01', prioridade: 'alta', status: 'aberta',

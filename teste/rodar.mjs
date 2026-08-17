@@ -2005,12 +2005,18 @@ const nomesFalsos = [
       comDdi: f.linkDoWhatsapp('5554999990000', 'oi'),
       destinatarios: f.destinatariosPossiveis({
         gabinete: { deputado: 'Deputada Teste', whatsappParlamentar: '54999990000' },
-        contatos: [
-          { nome: 'Zeca Local', telefone: '(54) 98888-0000', municipio: 'Erechim' },
-          { nome: 'Ana Distante', telefone: '(51) 97777-0000', municipio: 'Porto Alegre' },
+        equipe: [
+          { nome: 'Ana Assessora', cargo: 'Secretária parlamentar', telefone: '(54) 98888-0000', situacao: 'ativo' },
+          // Quem saiu do gabinete não recebe documento interno do gabinete.
+          { nome: 'Zeca Exonerado', telefone: '(54) 97777-0000', situacao: 'desligado' },
+          // Sem número não há para onde mandar; oferecê-lo abriria o seletor de
+          // contatos do WhatsApp, que é a porta que esta lista fecha.
+          { nome: 'Bia Sem Telefone', situacao: 'ativo' },
         ],
-        municipio: 'Erechim',
       }),
+      // O CRM não entra: a ficha traz pendências e leitura interna, e um toque
+      // errado num seletor de trezentos contatos viraria vazamento.
+      semEquipe: f.destinatariosPossiveis({ gabinete: {}, equipe: [] }),
     };
   });
 
@@ -2032,10 +2038,32 @@ const nomesFalsos = [
     envio.destinatarios[0].grupo === 'Parlamentar'
     && envio.destinatarios[0].telefone === '54999990000',
     JSON.stringify(envio.destinatarios[0]));
-  conferir('e quem é da cidade vem antes dos demais contatos',
-    envio.destinatarios[1].nome === 'Zeca Local'
-    && envio.destinatarios[1].grupo === 'No município',
+  // A ficha não é material de divulgação: ela traz o que está impedido e a
+  // leitura que o gabinete faz da cidade. Sai o CRM, fica a equipe.
+  conferir('depois dele, só a equipe do gabinete — e nenhum contato do CRM',
+    envio.destinatarios.length === 2
+    && envio.destinatarios[1].nome === 'Ana Assessora'
+    && envio.destinatarios[1].grupo === 'Equipe do gabinete',
     JSON.stringify(envio.destinatarios));
+  conferir('quem saiu do gabinete e quem não tem número ficam de fora',
+    !envio.destinatarios.some((d) => /Exonerado|Sem Telefone/.test(d.nome)),
+    JSON.stringify(envio.destinatarios.map((d) => d.nome)));
+  conferir('sem ninguém cadastrado, a lista fica vazia em vez de abrir o seletor',
+    envio.semEquipe.length === 0, JSON.stringify(envio.semEquipe));
+
+  // Pela tela: o seletor não pode oferecer um caminho de saída que a regra
+  // fecha — número livre ou "escolher no WhatsApp" tornariam a restrição
+  // decorativa.
+  await pagina.getByRole('button', { name: 'Enviar por WhatsApp' }).click();
+  await pagina.waitForSelector('.modal select', { timeout: 5000 });
+  const opcoes = await pagina.locator('.modal select option').allInnerTexts();
+  conferir('o seletor de envio traz o parlamentar e a equipe, e nada mais',
+    opcoes.length === 2 && /Deputada Teste/.test(opcoes[0]) && /Ana Assessora/.test(opcoes[1]),
+    JSON.stringify(opcoes));
+  conferir('e não oferece número livre nem o seletor do próprio WhatsApp',
+    !opcoes.some((o) => /Digitar|Escolher no WhatsApp/i.test(o))
+    && (await pagina.locator('.modal input[type="tel"]').count()) === 0,
+    JSON.stringify(opcoes));
 
   await pagina.close();
 }

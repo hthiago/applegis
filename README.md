@@ -169,10 +169,17 @@ fica no estado, quem governa e os vereadores aliados (cadastro de *Municípios*)
 votação do parlamentar ali (TSE), renda e produção, as emendas com o valor por
 habitante, o que está travado e os contatos do gabinete na cidade. **Imprimir** gera a
 folha física em A4, sem barra nem botões. **Enviar por WhatsApp** monta a versão curta
-e abre a conversa com a mensagem pronta — o parlamentar aparece primeiro na lista, com
-o número cadastrado em *Acessos › Dados do gabinete*. O envio usa hoje o link `wa.me`,
-que funciona sem chave e sem cadastro; quando a API oficial do gabinete for definida,
-muda só a função `linkDoWhatsapp`.
+e abre a conversa com a mensagem pronta.
+
+O envio é restrito ao **parlamentar e à equipe do gabinete** — a ficha traz pendências,
+impedimentos e a leitura interna da cidade, e não é material de divulgação. O CRM não
+aparece nessa lista, e não há campo de número livre: um toque errado num seletor de
+trezentos contatos mandaria para o prefeito o que foi escrito sobre ele. O número do
+parlamentar fica em *Acessos › Dados do gabinete*; o da equipe, no cadastro de *Equipe*
+(fora da navegação, acessível por `#/administrativo/equipe`). Quem está desligado ou sem
+número não aparece. O envio usa hoje o link `wa.me`, que funciona sem chave e sem
+cadastro; quando a API oficial do gabinete for definida, muda só a função
+`linkDoWhatsapp`.
 
 **Ainda por ligar:** Google Agenda (leitura para o gabinete, escrita para a chefia),
 Google Drive (documentos guardam o link, não o arquivo) e as despesas da cota
