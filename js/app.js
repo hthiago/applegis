@@ -656,6 +656,66 @@ function extrasDasEmendas() {
  * se reparte por beneficiário. É daqui que a sanfona de cada emenda se enche —
  * uma varredura só traz tudo, e a partir dela abrir uma linha não custa consulta.
  */
+/**
+ * Importação de contatos, com padronização na entrada.
+ *
+ * As listas do gabinete vêm de todo lado e cada uma escreve telefone, nome e
+ * município do seu jeito. Importar sem padronizar transfere a bagunça para
+ * dentro do sistema, onde ela fica pior: dois contatos para a mesma pessoa, e o
+ * CRM deixa de responder a única pergunta que se faz dele — quem eu conheço
+ * nesta cidade.
+ */
+function extrasDosContatos() {
+  return [
+    (recarregar) => {
+      const escolher = el('input', { type: 'file', accept: '.csv,.txt,text/csv', class: 'oculto-visual' });
+      const btn = el('button', {
+        class: 'btn btn--fantasma',
+        texto: 'Importar lista',
+        title: 'Lê uma planilha em CSV e padroniza telefone, nome, município e categoria',
+        onclick: () => escolher.click(),
+      });
+
+      escolher.addEventListener('change', async () => {
+        const arquivo = escolher.files?.[0];
+        if (!arquivo) return;
+        btn.disabled = true;
+        btn.textContent = 'Lendo…';
+        try {
+          const crm = await import('./crm.js');
+          const r = await crm.importarContatos(arquivo, {
+            ufPadrao: nucleo.sessaoMod.sessao.gabinete?.uf || null,
+          });
+          const porCategoria = Object.entries(r.porCategoria)
+            .sort((a, b) => b[1] - a[1]).slice(0, 4)
+            .map(([c, n]) => `${n} ${c}`).join(', ');
+          aviso([
+            `${r.novos} contatos novos, ${r.atualizados} atualizados`,
+            `${r.linhas} linhas lidas`,
+            porCategoria ? `classificados: ${porCategoria}` : null,
+            // Sem telefone o contato não se identifica entre listas: na próxima
+            // importação ele volta como duplicata se o nome vier diferente.
+            r.semTelefone ? `${r.semTelefone} sem telefone` : null,
+            r.colunasIgnoradas.length
+              ? `colunas não reconhecidas: ${r.colunasIgnoradas.slice(0, 5).join(', ')}`
+              : null,
+          ].filter(Boolean).join(' · '), (r.novos + r.atualizados) ? 'ok' : 'erro');
+          recarregar();
+        } catch (erro) {
+          console.error(erro);
+          aviso(`Não foi possível importar: ${erro.message || erro}`, 'erro');
+        } finally {
+          escolher.value = '';
+          btn.disabled = false;
+          btn.textContent = 'Importar lista';
+        }
+      });
+
+      return el('span', { class: 'importador' }, [btn, escolher]);
+    },
+  ];
+}
+
 function extrasDasTransferencias() {
   return [botaoDetalhar, botaoReorganizar];
 }
@@ -1066,6 +1126,7 @@ async function desenharConteudo(alvo, areaId, abaId) {
   else if (modulo.importaVotacoes) extras = extrasDasVotacoes();
   else if (modulo.importaEmendas) extras = extrasDasEmendas();
   else if (modulo.importaTransferencias) extras = extrasDasTransferencias();
+  else if (modulo.importaContatos) extras = extrasDosContatos();
 
   const acoesItem = modulo.geraMinuta ? acoesDaMinuta() : [];
   const acoesLinha = modulo.enviaParaAcompanhamento ? [acaoAcompanhar] : [];

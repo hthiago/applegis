@@ -259,9 +259,15 @@ export const MODULOS = [
     singular: 'contato',
     descricao: 'Base de relacionamento do mandato: cidadãos, lideranças, prefeituras e entidades.',
     ordenar: { campo: 'nome', dir: 'asc' },
-    busca: ['nome', 'municipio', 'email', 'telefone'],
+    busca: ['nome', 'cargo', 'municipio', 'uf', 'email', 'telefone', 'temas', 'observacoes'],
+    importaContatos: true,
+    facetas: [
+      { campo: 'categoria', l: 'Categoria' },
+      { campo: 'municipio', l: 'Município' },
+    ],
     campos: [
       { k: 'nome', l: 'Nome', t: 'texto', req: true, lista: true },
+      { k: 'cargo', l: 'Cargo ou função', t: 'texto', lista: true },
       { k: 'categoria', l: 'Categoria', t: 'select', req: true, lista: true, op: [
         { v: 'cidadao', l: 'Cidadão', cor: 'neutro' },
         { v: 'lideranca', l: 'Liderança política', cor: 'info' },
@@ -277,7 +283,9 @@ export const MODULOS = [
       { k: 'email', l: 'E-mail', t: 'email' },
       { k: 'temas', l: 'Temas de interesse', t: 'tags' },
       { k: 'responsavel', l: 'Responsável no gabinete', t: 'ref', ref: 'equipe', rotulo: 'nome' },
-      { k: 'observacoes', l: 'Observações', t: 'area' },
+      { k: 'observacoes', l: 'Observações', t: 'area', inline: true },
+      { k: 'fonte', l: 'Origem do cadastro', t: 'texto' },
+      { k: 'importadoEm', l: 'Importado em', t: 'data' },
     ],
   },
   {

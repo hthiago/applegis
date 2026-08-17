@@ -1497,6 +1497,138 @@ console.log('\nPlanilhas de emenda\n');
   await pagina.close();
 }
 
+// ── CRM: padronização na entrada ──
+//
+// As listas do gabinete vêm da campanha, do WhatsApp, de lista de presença. Cada
+// uma escreve telefone de um jeito. Importar sem padronizar transfere a bagunça
+// para dentro do sistema, onde ela fica pior: dois contatos para a mesma pessoa,
+// e buscar "Erechim" não acha "ERECHIM/RS".
+{
+  const crm = await import('../js/crm.js');
+
+  // A forma guardada tem de ser a comparável, senão a mesma pessoa entra duas
+  // vezes na próxima importação.
+  const fones = [
+    ['(51) 99999-9999', '51999999999'],
+    ['5551999999999', '51999999999'],
+    ['+55 51 98888-7777', '51988887777'],
+    ['051 3333-4444', '5133334444'],
+  ];
+  const foraDoPadrao = fones.filter(([bruto, esperado]) => crm.telefonePadrao(bruto) !== esperado);
+  conferir('telefones em quatro grafias viram a mesma forma comparável',
+    foraDoPadrao.length === 0,
+    foraDoPadrao.map(([b]) => `${b} → ${crm.telefonePadrao(b)}`).join(' | '));
+  conferir('e a exibição volta a ser legível para quem liga',
+    crm.telefoneVisivel('51999999999') === '(51) 99999-9999'
+    && crm.telefoneVisivel('5133334444') === '(51) 3333-4444');
+  // 0800 não tem DDD: formatado como celular virava "(08) 00123-4567".
+  conferir('0800 não é tratado como celular com DDD',
+    crm.telefoneVisivel(crm.telefonePadrao('0800 123 4567')) === '0800 123 4567',
+    crm.telefoneVisivel(crm.telefonePadrao('0800 123 4567')));
+
+  conferir('nome em caixa alta vira caixa de título, com as partículas minúsculas',
+    crm.nomePadrao('MARIA DAS DORES DE SOUZA') === 'Maria das Dores de Souza');
+  conferir('nome já digitado por gente não é mexido',
+    crm.nomePadrao('Ana Paula Ribeiro') === 'Ana Paula Ribeiro');
+  conferir('sigla continua sigla',
+    crm.nomePadrao('APAE DE ERECHIM') === 'APAE de Erechim'
+    && crm.nomePadrao('CTG PORTEIRA VELHA') === 'CTG Porteira Velha');
+
+  const locais = [
+    ['ERECHIM/RS', 'Erechim', 'RS'],
+    ['Erechim - RS', 'Erechim', 'RS'],
+    ['Erechim (RS)', 'Erechim', 'RS'],
+    ['Porto Alegre, RS', 'Porto Alegre', 'RS'],
+    ['Erechim RS', 'Erechim', 'RS'],
+    // A regra que recortava duas letras de onde estivessem inventava um município
+    // e um estado: "Santa Maria do Herv" em "AL". Município inventado ainda
+    // estragaria o agrupamento por cidade no painel e na ficha.
+    ['SANTA MARIA DO HERVAL', 'Santa Maria do Herval', null],
+    ['Rio Grande', 'Rio Grande', null],
+  ];
+  const errados = locais.filter(([bruto, cidade, uf]) => {
+    const r = crm.localPadrao(bruto);
+    return r.municipio !== cidade || (r.uf || null) !== uf;
+  });
+  conferir('município e UF se separam, e nome de cidade não é recortado ao meio',
+    errados.length === 0,
+    errados.map(([b]) => `${b} → ${JSON.stringify(crm.localPadrao(b))}`).join(' | '));
+
+  // Sem dedução, tudo entraria como "cidadão" e a categoria não distinguiria
+  // nada — o mesmo defeito dos filtros de orçamento.
+  const cats = [
+    ['Prefeito de Erechim', 'prefeitura'],
+    ['Vereador', 'vereador'],
+    ['Presidente da APAE', 'entidade'],
+    ['Empresário', 'empresa'],
+    ['Delegado de Polícia', 'orgao'],
+    ['Agricultor', 'cidadao'],
+  ];
+  const catsErradas = cats.filter(([t, esperado]) => crm.categoriaDe(t) !== esperado);
+  conferir('a categoria é deduzida do cargo, em vez de tudo cair em cidadão',
+    catsErradas.length === 0,
+    catsErradas.map(([t]) => `${t} → ${crm.categoriaDe(t)}`).join(' | '));
+
+  // O telefone identifica melhor que o nome: homônimo é comum e a mesma pessoa
+  // aparece como "José Silva" e "Jose da Silva".
+  conferir('o telefone é a chave; sem ele, o e-mail; sem os dois, nome e cidade',
+    crm.chaveDoContato({ telefone: '51999999999', nome: 'X' }) === 't-51999999999'
+    && crm.chaveDoContato({ email: 'a@b.com' }) === 'e-a-b-com'
+    && crm.chaveDoContato({ nome: 'José da Silva', municipio: 'Erechim' }) === 'n-jose-da-silva-erechim'
+    && crm.chaveDoContato({}) === null);
+
+  conferir('a coluna é reconhecida mesmo com o nome que a lista usar',
+    (() => {
+      const m = crm.mapearColunasDeContato(['Nome Completo', 'WhatsApp', 'Cidade/UF', 'Cargo', 'E-mail']);
+      return m.nome === 0 && m.telefone === 1 && m.municipio === 2 && m.cargo === 3 && m.email === 4;
+    })(),
+    JSON.stringify(crm.mapearColunasDeContato(['Nome Completo', 'WhatsApp', 'Cidade/UF', 'Cargo', 'E-mail'])));
+}
+
+// A importação pela tela, incluindo o caso comum: reimportar a mesma lista.
+{
+  const pagina = await abrir();
+  await pagina.goto(`${BASE}/#/administrativo/contatos`, { waitUntil: 'domcontentloaded' });
+  await pagina.waitForSelector('.modulo-topo');
+
+  const planilha = [
+    'Nome Completo;Cargo;WhatsApp;Cidade/UF;E-mail;Temas',
+    'JOAO DA SILVA;Prefeito;(51) 99999-9999;ERECHIM/RS;JOAO@Exemplo.COM;saúde, estradas',
+    'MARIA DAS DORES;Vereadora;5551988887777;Santa Maria do Herval;;educação',
+    'APAE DE ERECHIM;Presidente;;Erechim - RS;apae@x.org;',
+  ].join('\n');
+
+  await pagina.setInputFiles('.importador input[type=file]', {
+    name: 'lista.csv', mimeType: 'text/csv', buffer: Buffer.from(planilha, 'utf8'),
+  });
+  await pagina.waitForTimeout(1200);
+
+  const recado = (await pagina.locator('.aviso').last().innerText().catch(() => '')).replace(/\s+/g, ' ');
+  conferir('a lista entra e o aviso conta o que foi classificado',
+    /3 contatos novos/.test(recado) && /classificados/.test(recado), recado);
+
+  const tabela = (await pagina.locator('.tabela tbody').innerText()).replace(/\s+/g, ' ');
+  conferir('os nomes chegam legíveis, não em caixa alta',
+    /Joao da Silva|João da Silva/.test(tabela) && /APAE de Erechim/.test(tabela), tabela.slice(0, 300));
+  conferir('e o município separado da UF, para agrupar de verdade',
+    /Erechim/.test(tabela) && /Santa Maria do Herval/.test(tabela), tabela.slice(0, 400));
+
+  // Reimportar a mesma lista é o caso comum — a pessoa exporta de novo depois de
+  // atualizar dois telefones. Uma importação que só insere viraria três cópias
+  // da mesma base em um mês.
+  const antes = await pagina.locator('.tabela tbody tr').count();
+  await pagina.setInputFiles('.importador input[type=file]', {
+    name: 'lista.csv', mimeType: 'text/csv', buffer: Buffer.from(planilha, 'utf8'),
+  });
+  await pagina.waitForTimeout(1200);
+  const depois = (await pagina.locator('.aviso').last().innerText()).replace(/\s+/g, ' ');
+  conferir('reimportar atualiza em vez de duplicar',
+    (await pagina.locator('.tabela tbody tr').count()) === antes && /3 atualizados/.test(depois),
+    `${antes} linhas · ${depois}`);
+
+  await pagina.close();
+}
+
 // ── cota parlamentar, conferida contra a base da Câmara ──
 //
 // A CEAP é publicada lançamento por lançamento. Digitar isso à mão era
