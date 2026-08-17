@@ -1475,6 +1475,117 @@ console.log('\nPlanilhas de emenda\n');
   await pagina.close();
 }
 
+// As quatro abas saem da navegação sem sair do sistema: oito campos de outros
+// módulos apontam para `equipe` em "Responsável", e apagar a coleção quebraria
+// todos eles.
+{
+  const mod = await import('../js/modulos.js');
+  const visiveis = mod.modulosDaArea('administrativo').map((m) => m.id);
+  conferir('férias, documentos, histórico de contato e equipe saem da barra',
+    !['ausencias', 'documentos', 'interacoes', 'equipe'].some((id) => visiveis.includes(id)),
+    visiveis.join(', '));
+  conferir('mas o administrativo continua com o que interessa',
+    ['viagens', 'ceap', 'contatos', 'atendimentos'].every((id) => visiveis.includes(id)),
+    visiveis.join(', '));
+  // Esconder e desligar são coisas diferentes: misturá-las transformaria "tire
+  // esta aba do caminho" em "perca este cadastro".
+  conferir('a coleção escondida continua existindo, para os campos que a referenciam',
+    !!mod.porId.equipe && mod.porId.equipe.oculto === true);
+  const refs = mod.MODULOS.flatMap((m) => m.campos.filter((c) => c.ref).map((c) => c.ref));
+  conferir('toda referência aponta para um módulo que existe',
+    refs.every((r) => !!mod.porId[r]),
+    refs.filter((r) => !mod.porId[r]).join(', ') || 'todas existem');
+}
+
+// ── pós-processamento: a fase que faltava entre buscar e mostrar ──
+{
+  const pp = await import('../js/posprocessamento.js');
+
+  // O nome do favorecido diz o que ele é, e nem todo favorecido é destino.
+  const casos = [
+    ['MUNICIPIO DE ERECHIM', 'municipio', 'ERECHIM'],
+    ['PREFEITURA MUNICIPAL DE GRAMADO', 'municipio', 'GRAMADO'],
+    ['FUNDO MUNICIPAL DE SAUDE DE ANTA GORDA', 'municipio', 'ANTA GORDA'],
+    ['MUNICIPIO DE ACEGUA - RS', 'municipio', 'ACEGUA'],
+    // O banco não recebeu a emenda: passou o dinheiro adiante. Tratá-lo como
+    // destino punha "BANCO DO BRASIL SA" na coluna de município e somava a ele
+    // o repasse de dezenas de cidades.
+    ['BANCO DO BRASIL SA', 'intermediario', null],
+    ['CAIXA ECONOMICA FEDERAL', 'intermediario', null],
+    ['ASSOCIACAO BENEFICENTE HOSPITAL SANTO ANTONIO', 'entidade', null],
+    ['SANTA CASA DE CARIDADE', 'entidade', null],
+    ['ESTADO DO RIO GRANDE DO SUL', 'estado', null],
+    ['FUNDO ESTADUAL DE SAUDE', 'estado', null],
+    ['MINISTERIO DA SAUDE', 'uniao', null],
+  ];
+  const erradas = casos.filter(([nome, tipo, cidade]) => {
+    const c = pp.classificarDestino(nome);
+    return c.tipo !== tipo || (c.municipio || null) !== cidade;
+  });
+  conferir('o favorecido é classificado, e só o que é município vira município',
+    erradas.length === 0,
+    erradas.map(([n]) => `${n} → ${JSON.stringify(pp.classificarDestino(n))}`).join(' | '));
+  // Linha sem classificação foi o que produziu o filtro de 5752 opções vazias.
+  // "Indefinido" é uma resposta; ausência de resposta, não.
+  conferir('nome vazio recebe classificação, não ausência dela',
+    pp.classificarDestino('').tipo === 'indefinido'
+    && pp.classificarDestino(null).tipo === 'indefinido');
+
+  // Empenho, liquidação e pagamento do mesmo dinheiro eram três linhas; somadas,
+  // triplicavam o repasse.
+  const reunidos = pp.reunirDestinos([
+    { codigoEmenda: '202041160001', favorecido: 'BANCO DO BRASIL SA', municipio: 'ERECHIM',
+      tipo: 'empenho', valor: 1000, documento: '2020NE1', data: '2020-04-08',
+      objeto: 'ATENCAO BASICA EM SAUDE' },
+    { codigoEmenda: '202041160001', favorecido: 'BANCO DO BRASIL SA', municipio: 'ERECHIM',
+      tipo: 'liquidacao', valor: 1000, documento: '2020NS1', data: '2020-05-27' },
+    { codigoEmenda: '202041160001', favorecido: 'BANCO DO BRASIL SA', municipio: 'ERECHIM',
+      tipo: 'pagamento', valor: 1000, documento: '2020OB1', data: '2020-06-01' },
+  ]);
+  conferir('os documentos de um destino viram uma linha, com as fases em colunas',
+    reunidos.length === 1
+    && reunidos[0].valorEmpenhado === 1000
+    && reunidos[0].valorLiquidado === 1000
+    && reunidos[0].valorPago === 1000
+    && reunidos[0].valor === 1000,
+    JSON.stringify(reunidos[0]));
+  conferir('e o município aparece no lugar do banco',
+    reunidos[0].municipio === 'ERECHIM' && reunidos[0].destinoTipo === 'municipio');
+  // "Foi pago em três parcelas" é informação, não ruído.
+  conferir('a contagem de documentos se preserva, com os números',
+    reunidos[0].qtdDocumentos === 3 && /2020NE1/.test(reunidos[0].documentos));
+  conferir('e a linha sai classificada em que pé está',
+    reunidos[0].situacaoExecucao === 'pago', reunidos[0].situacaoExecucao);
+  conferir('o objeto sobrevive mesmo vindo de uma fase só',
+    reunidos[0].objeto === 'ATENCAO BASICA EM SAUDE');
+
+  // Dois executores da mesma cidade são dois destinos, com objetos diferentes.
+  conferir('favorecido de verdade não se funde com outro da mesma cidade',
+    pp.reunirDestinos([
+      { codigoEmenda: '1', favorecido: 'SECRETARIA DE SAUDE', municipio: 'X', tipo: 'especial', valor: 1 },
+      { codigoEmenda: '1', favorecido: 'SECRETARIA DE OBRAS', municipio: 'X', tipo: 'especial', valor: 2 },
+    ]).length === 2);
+
+  const semNada = pp.reunirDestinos([
+    { codigoEmenda: '9', tipo: 'liquidacao', documento: '2020NS9', data: '2020-05-29' },
+    { codigoEmenda: '9', tipo: 'liquidacao', documento: '2020NS8', data: '2020-05-30' },
+  ]);
+  // Os documentos não se jogam fora: reunidos, dois carimbos sem destino são UMA
+  // linha que diz "dois documentos, destino a resolver" — e é ela que permite
+  // tentar de novo. Descartá-los faria a falha de uma consulta apagar a prova de
+  // que a execução existe.
+  conferir('documentos sem destino resolvido viram uma linha, não zero nem trinta',
+    semNada.length === 1 && semNada[0].qtdDocumentos === 2 && !pp.vazia(semNada[0]),
+    JSON.stringify(semNada[0]));
+  conferir('linha sem valor, sem quem e sem documento é descartada',
+    pp.vazia({ qtdDocumentos: 0 }) === true);
+
+  conferir('o impedimento vence qualquer valor na classificação da situação',
+    pp.situacaoDaExecucao({ valorPago: 100, situacao: 'IMPEDIDO — dado bancário' }) === 'impedido');
+  conferir('pago a menos que o empenhado é pago em parte, não pago',
+    pp.situacaoDaExecucao({ valorEmpenhado: 100, valorPago: 40 }) === 'pago-parcial');
+}
+
 // A pergunta que chega ao gabinete: "quanto foi para Erechim, e já foi pago?".
 // A resposta precisa estar na tela, não ser montada de cabeça a partir de linhas
 // com o formato da fonte.
@@ -1913,8 +2024,11 @@ console.log('\nPlanilhas de emenda\n');
   conferir('com o objeto de cada documento',
     /Aquisição de equipamentos hospitalares/.test(dentro)
     && /Reforma de unidade básica/.test(dentro), dentro);
-  conferir('e as fases distintas, que só aqui aparecem',
-    /Empenho/.test(dentro) && /Pagamento/.test(dentro), dentro);
+  // As fases deixam de ser linhas e passam a ser colunas: o mesmo real registrado
+  // em etapas somava três vezes quando cada etapa era uma linha.
+  conferir('as fases viram colunas, e cada real é contado uma vez',
+    /EMPENHADO/i.test(dentro) && /PAGO/i.test(dentro)
+    && /4\.000\.000/.test(dentro) && /3\.000\.000/.test(dentro), dentro);
   conferir('somando o que a emenda repartiu',
     /7\.000\.000/.test(dentro), dentro);
   await pagina.close();
@@ -1982,9 +2096,10 @@ console.log('\nPlanilhas de emenda\n');
     /ATENCAO PRIMARIA A SAUDE/.test(dentro), dentro);
   // A linha de pagamento fica — é a prova de que o dinheiro chegou —, mas a
   // observação dela identifica em vez de descrever, e o objeto vem do empenho.
-  conferir('a linha de pagamento permanece e herda o objeto do empenho',
-    /Pagamento/.test(dentro)
-    && !/PAGAMENTO DA PROPOSTA/.test(dentro)
+  // Cada município é um destino, com o objeto herdado do empenho — e a
+  // observação burocrática do pagamento não ocupa a coluna de objeto.
+  conferir('cada município vira um destino, com o objeto do empenho',
+    !/PAGAMENTO DA PROPOSTA/.test(dentro)
     && (dentro.match(/PORTARIA 706/g) || []).length === 2,
     dentro);
   await pagina.close();
@@ -2119,10 +2234,11 @@ console.log('\nPlanilhas de emenda\n');
     /valores não informados/.test(dentro) && !/R\$ 0,00/.test(dentro), dentro);
   conferir('a espécie do documento não ocupa a coluna de objeto',
     !/Não se aplica/.test(dentro), dentro);
-  // A linha existe e prova que houve empenho naquela data; apagá-la para "não
-  // mostrar campo vazio" esconderia execução real.
-  conferir('as fases e datas continuam à vista, que é o que a fonte tem',
-    /Empenho/.test(dentro) && /23\/04\/2026/.test(dentro), dentro);
+  // Os documentos sem destino resolvido não desaparecem nem viram trinta linhas
+  // em branco: viram uma, que diz quantos são. É ela que prova que a execução
+  // existe e que permite tentar de novo.
+  conferir('documento sem destino resolvido vira uma linha que diz quantos são',
+    /2 documento\(s\) de execução, destino a resolver/.test(dentro), dentro);
   conferir('e a tela explica que falta um nível, em vez de parecer quebrada',
     /n[íi]vel abaixo/.test(dentro), dentro);
   await pagina.close();

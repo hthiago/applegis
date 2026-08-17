@@ -112,6 +112,8 @@ export const MODULOS = [
   // ──────────────────────────── ADMINISTRATIVO ────────────────────────────
   {
     id: 'equipe',
+    // Some da navegação, mas continua sendo a lista para que outros módulos apontem em "Responsável".
+    oculto: true,
     area: 'administrativo',
     nome: 'Equipe',
     singular: 'integrante',
@@ -137,6 +139,8 @@ export const MODULOS = [
   },
   {
     id: 'ausencias',
+    // Fora de uso pelo gabinete.
+    oculto: true,
     area: 'administrativo',
     nome: 'Férias e ausências',
     singular: 'ausência',
@@ -184,6 +188,8 @@ export const MODULOS = [
   },
   {
     id: 'documentos',
+    // Fora de uso pelo gabinete.
+    oculto: true,
     area: 'administrativo',
     nome: 'Documentos e ofícios',
     singular: 'documento',
@@ -276,6 +282,8 @@ export const MODULOS = [
   },
   {
     id: 'interacoes',
+    // Fora de uso pelo gabinete; o histórico por contato vive no CRM.
+    oculto: true,
     area: 'administrativo',
     nome: 'Histórico de contato',
     singular: 'interação',
@@ -802,71 +810,79 @@ export const MODULOS = [
   {
     id: 'transferencias',
     area: 'orcamento',
-    nome: 'Transferências',
-    singular: 'transferência',
-    descricao: 'A emenda discriminada: quem recebeu, para quê, quanto e em que fase. Uma linha por proposta, convênio ou documento de execução.',
-    ordenar: { campo: 'data', dir: 'desc' },
-    busca: ['favorecido', 'municipio', 'objeto', 'metas', 'documento', 'codigoEmenda'],
+    nome: 'Destinos',
+    singular: 'destino',
+    descricao: 'Um destino por linha: quem recebeu, para quê, quanto foi empenhado e quanto já foi pago. Os documentos de execução de cada destino vêm reunidos, não repetidos.',
+    ordenar: { campo: 'valor', dir: 'desc' },
+    busca: ['favorecido', 'municipio', 'objeto', 'metas', 'acao', 'documentos', 'codigoEmenda', 'processo'],
     importaTransferencias: true,
-    // Cada linha vem de uma base pública; cadastrar à mão criaria divergência.
     semCriacao: true,
+    // Faceta só serve quando toda linha tem classificação. A versão em grão de
+    // documento produzia 5752 opções "sem classificação", que não filtram nada —
+    // o pós-processamento existe para que estas quatro sejam úteis.
     facetas: [
-      { campo: 'tipo', l: 'Tipo' },
-      { campo: 'ano', l: 'Ano', ordem: 'valor-desc' },
-      { campo: 'situacao', l: 'Situação' },
-      { campo: 'area', l: 'Área' },
+      { campo: 'situacaoExecucao', l: 'Em que pé está' },
+      { campo: 'destinoTipo', l: 'Tipo de destino' },
+      { campo: 'modalidade', l: 'Modalidade' },
       { campo: 'uf', l: 'UF' },
     ],
-    // Por município, que é como o gabinete pensa a distribuição da emenda.
     agruparPor: { campo: 'municipio' },
     campos: [
-      { k: 'data', l: 'Data', t: 'data', lista: true },
       { k: 'favorecido', l: 'Quem recebeu', t: 'texto', lista: true,
         subLinha: { campo: 'favorecidoDoc', prefixo: 'CNPJ ' } },
       { k: 'objeto', l: 'Objeto', t: 'area', lista: true },
-      // O que a emenda comprou ou construiu, com quantidade. É a resposta mais
-      // concreta que essas bases dão a "para quê foi" — mais concreta que a
-      // função orçamentária, que só diz a área.
       { k: 'metas', l: 'Metas', t: 'area', lista: true },
+      // A escada do dinheiro em colunas, não em linhas. Empenho, liquidação e
+      // pagamento são o mesmo real em etapas: somados como linhas triplicavam o
+      // repasse; em colunas, respondem "já foi pago?" de um olhar.
+      { k: 'valorDestinado', l: 'Destinado', t: 'dinheiro' },
+      { k: 'valorEmpenhado', l: 'Empenhado', t: 'dinheiro', lista: true },
+      { k: 'valorLiquidado', l: 'Liquidado', t: 'dinheiro' },
+      { k: 'valorPago', l: 'Pago', t: 'dinheiro', lista: true },
+      // O valor que representa o destino: o pago quando houve, senão o
+      // empenhado, senão o destinado. Sem ele, uma transferência especial ainda
+      // não empenhada aparecia como R$ 0,00 nas duas colunas de fase.
       { k: 'valor', l: 'Valor', t: 'dinheiro', lista: true },
-      { k: 'tipo', l: 'Tipo', t: 'select', lista: true, op: [
-        { v: 'empenho', l: 'Empenho', cor: 'info' },
-        { v: 'liquidacao', l: 'Liquidação', cor: 'info' },
-        { v: 'pagamento', l: 'Pagamento', cor: 'ok' },
-        { v: 'proposta', l: 'Proposta', cor: 'neutro' },
-        { v: 'convenio', l: 'Convênio', cor: 'atencao' },
+      { k: 'situacaoExecucao', l: 'Em que pé está', t: 'select', lista: true, op: [
+        { v: 'pago', l: 'Pago', cor: 'ok' },
+        { v: 'pago-parcial', l: 'Pago em parte', cor: 'atencao' },
+        { v: 'empenhado', l: 'Empenhado, sem pagamento', cor: 'atencao' },
+        { v: 'destinado', l: 'Destinado, sem empenho', cor: 'info' },
+        { v: 'impedido', l: 'Com impedimento', cor: 'critico' },
+        { v: 'sem-execucao', l: 'Sem execução registrada', cor: 'neutro' },
+      ] },
+      { k: 'destinoTipo', l: 'Tipo de destino', t: 'select', op: [
+        { v: 'municipio', l: 'Município', cor: 'ok' },
+        { v: 'entidade', l: 'Entidade privada', cor: 'info' },
+        { v: 'estado', l: 'Estado', cor: 'info' },
+        { v: 'uniao', l: 'União', cor: 'neutro' },
+        { v: 'intermediario', l: 'Banco intermediário', cor: 'neutro' },
+        { v: 'indefinido', l: 'Não classificado', cor: 'atencao' },
+      ] },
+      { k: 'modalidade', l: 'Modalidade', t: 'select', op: [
         { v: 'especial', l: 'Transferência especial', cor: 'atencao' },
         { v: 'fundoafundo', l: 'Fundo a fundo', cor: 'info' },
+        { v: 'convenio', l: 'Convênio', cor: 'info' },
+        { v: 'execucao', l: 'Execução direta', cor: 'neutro' },
       ] },
-      { k: 'situacao', l: 'Situação', t: 'texto', lista: true },
+      { k: 'situacao', l: 'Situação na fonte', t: 'area', lista: true },
       { k: 'notaInterna', l: 'Nota do gabinete', t: 'area', lista: true, inline: true },
       { k: 'codigoEmenda', l: 'Emenda de origem', t: 'texto' },
-      { k: 'documento', l: 'Nº do documento', t: 'texto' },
       { k: 'municipio', l: 'Município', t: 'texto' },
       { k: 'uf', l: 'UF', t: 'texto' },
-      { k: 'orgao', l: 'Órgão concedente', t: 'texto' },
-      { k: 'favorecidoDoc', l: 'CNPJ/CPF de quem recebeu', t: 'texto' },
-      { k: 'ano', l: 'Ano', t: 'numero' },
-      // Custeio e investimento vêm separados da origem e não se somam de volta:
-      // a prefeitura pode gastar um em folha e obra e o outro não, e a pergunta
-      // "quanto deu para comprar equipamento" só se responde com os dois à vista.
-      { k: 'valorCusteio', l: 'Custeio', t: 'dinheiro' },
-      { k: 'valorInvestimento', l: 'Investimento', t: 'dinheiro' },
-      { k: 'valorEmpenhado', l: 'Empenhado', t: 'dinheiro' },
-      { k: 'execucao', l: 'Empenhos', t: 'area' },
       { k: 'area', l: 'Área de política pública', t: 'texto' },
       { k: 'subfuncao', l: 'Subfunção', t: 'texto' },
-      // Por qual programa o dinheiro saiu e para qual recorte territorial. Na
-      // execução direta não há plano de ação descrevendo objeto: é isto que
-      // responde "para quê".
-      { k: 'acao', l: 'Ação orçamentária', t: 'texto', lista: true },
+      { k: 'acao', l: 'Ação orçamentária', t: 'texto' },
       { k: 'localizador', l: 'Localizador do gasto', t: 'texto' },
-      { k: 'especie', l: 'Espécie do documento', t: 'texto' },
-      // A frase como a fonte a escreveu. O objeto é a leitura dela; isto é a
-      // prova, e fica fora da lista para não repetir o que já está resumido.
-      { k: 'historico', l: 'Histórico do documento', t: 'area' },
-      // O elo com o convênio no Transferegov, extraído da própria observação.
+      { k: 'valorCusteio', l: 'Custeio', t: 'dinheiro' },
+      { k: 'valorInvestimento', l: 'Investimento', t: 'dinheiro' },
+      // Doze parcelas é informação, não ruído: diz que o repasse foi fatiado.
+      { k: 'qtdDocumentos', l: 'Documentos de execução', t: 'numero' },
+      { k: 'documentos', l: 'Números dos documentos', t: 'area' },
+      { k: 'processo', l: 'Processo', t: 'texto' },
       { k: 'proposta', l: 'Proposta', t: 'texto' },
+      { k: 'primeiraData', l: 'Primeiro movimento', t: 'data' },
+      { k: 'ultimaData', l: 'Último movimento', t: 'data', lista: true },
       { k: 'fonte', l: 'Origem do dado', t: 'texto' },
       { k: 'importadoEm', l: 'Importado em', t: 'data' },
     ],
@@ -875,6 +891,13 @@ export const MODULOS = [
 
 export const porId = Object.fromEntries(MODULOS.map((m) => [m.id, m]));
 
+/**
+ * Os módulos que aparecem na barra de uma área.
+ *
+ * `oculto` existe para tirar uma aba de circulação sem apagar a coleção: oito
+ * campos de outros módulos apontam para `equipe` em "Responsável", e remover a
+ * definição quebraria todos eles. A aba desaparece; o dado permanece.
+ */
 export function modulosDaArea(areaId) {
-  return MODULOS.filter((m) => m.area === areaId);
+  return MODULOS.filter((m) => m.area === areaId && !m.oculto);
 }

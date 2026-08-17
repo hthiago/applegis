@@ -1002,39 +1002,15 @@ export async function detalharDocumento(documento) {
 }
 
 /**
- * Completa o que já está guardado mas veio pela metade.
+ * Há documentos cujo destino a consulta ainda não resolveu?
  *
- * O cache antes bastava que UMA linha tivesse dado para considerar a emenda
- * inteira resolvida — e as outras vinte e seis ficavam congeladas vazias para
- * sempre, porque a versão que sabia completá-las nunca chegava a rodar. Aqui a
- * conta é por linha: completa-se o que falta e deixa-se em paz o que já está.
+ * Depois do pós-processamento, os documentos sem destino identificado viram uma
+ * linha só — "catorze documentos, destino a resolver". Reabrir a sanfona com uma
+ * dessas à vista tem de reconsultar a fonte, e não repetir o que está guardado:
+ * a retentativa mora na consulta, não no que ficou salvo.
  */
-export async function completarGuardadas(guardadas, { aoProgredir = () => {} } = {}) {
-  const faltando = guardadas.filter(
-    (t) => t.codigoDocumento && !t.favorecido && !t.valor,
-  );
-  if (!faltando.length) return { linhas: guardadas, completados: 0 };
-
-  const prontas = new Map();
-  let completados = 0;
-  const POR_LEVA = 5;
-
-  for (let i = 0; i < faltando.length; i += POR_LEVA) {
-    const leva = faltando.slice(i, i + POR_LEVA);
-    // eslint-disable-next-line no-await-in-loop
-    const detalhes = await Promise.all(leva.map(detalharDocumento));
-    // eslint-disable-next-line no-await-in-loop
-    const finais = await Promise.all(detalhes.map((d) => favorecidosFinais(d.codigoDocumento)));
-    detalhes.forEach((d, j) => {
-      if (d.favorecido || d.valor) completados += 1;
-      prontas.set(leva[j].id, repartirEntreFinais(d, finais[j] || []));
-    });
-    aoProgredir({ feitos: Math.min(i + POR_LEVA, faltando.length), total: faltando.length });
-  }
-
-  const linhas = guardadas.flatMap((t) => prontas.get(t.id) || [t]);
-  if (completados) await guardarTransferencias(linhas);
-  return { linhas: herdarObjeto(linhas), completados };
+export function faltaResolver(destinos) {
+  return destinos.some((d) => d.qtdDocumentos && !d.favorecido && !d.municipio);
 }
 
 /**
@@ -1138,18 +1114,32 @@ export function chaveDaTransferencia({
   return null;
 }
 
-/** Grava um lote de planos de ação já traduzidos. */
-async function guardarTransferencias(planos) {
+/**
+ * Grava destinos, não documentos.
+ *
+ * Antes daqui passava o que a fonte devolveu, linha por linha — e a fonte
+ * responde em grão de documento contábil. Uma emenda paga em doze parcelas
+ * virava dezenas de registros quase todos vazios, o filtro juntava 5752 "sem
+ * classificação" e a soma triplicava o repasse. O pós-processamento reúne os
+ * documentos de cada destino numa linha, soma por fase e classifica quem
+ * recebeu; o que não informa nada não é gravado.
+ */
+async function guardarTransferencias(linhas) {
   const { salvarEmLote } = await import('./dados.js');
+  const { reunirDestinos, vazia } = await import('./posprocessamento.js');
+
   const registros = [];
   const vistos = new Set();
 
-  for (const t of planos) {
-    const id = chaveDaTransferencia(t);
+  for (const t of reunirDestinos(linhas)) {
+    if (vazia(t)) continue;
+    const id = t.id || chaveDaTransferencia(t);
     if (!id || vistos.has(id)) continue;
     vistos.add(id);
     const dados = {};
-    for (const [campo, valor] of Object.entries(t)) comValor(dados, campo, valor);
+    for (const [campo, valor] of Object.entries(t)) {
+      if (campo !== 'id') comValor(dados, campo, valor);
+    }
     dados.importadoEm = new Date().toISOString().slice(0, 10);
     registros.push({ id, dados });
   }
@@ -1159,6 +1149,47 @@ async function guardarTransferencias(planos) {
     if (gravacao.falhas.length) throw gravacao.falhas[0];
   }
   return registros.map((r) => ({ id: r.id, ...r.dados }));
+}
+
+/**
+ * Passa o que já está guardado pelo pós-processamento.
+ *
+ * Os registros gravados por versões anteriores continuam em grão de documento —
+ * e é deles que vêm as milhares de linhas em branco e os filtros inúteis. Esta
+ * função reúne, regrava consolidado e marca como removido o que era ruído.
+ * Existe como ação explícita porque mexer em massa no que está guardado é coisa
+ * que se faz quando alguém decide, não escondido dentro de outra tarefa.
+ */
+export async function reorganizar({ aoProgredir = () => {} } = {}) {
+  const { listar, salvarEmLote } = await import('./dados.js');
+  const { reunirDestinos, vazia } = await import('./posprocessamento.js');
+
+  const antigas = await listar('transferencias', { recarregar: true });
+  const funil = { antes: antigas.length, depois: 0, descartadas: 0, aposentadas: 0 };
+  if (!antigas.length) return funil;
+
+  const reunidos = reunirDestinos(antigas);
+  const uteis = reunidos.filter((d) => !vazia(d));
+  funil.descartadas = reunidos.length - uteis.length;
+  funil.depois = uteis.length;
+  aoProgredir({ ...funil, etapa: 'gravando' });
+
+  const guardados = await guardarTransferencias(antigas);
+  const novos = new Set(guardados.map((g) => g.id));
+
+  // O que não virou destino nenhum sai de cena. Marcado, não apagado: a marca
+  // viaja para os outros navegadores, e uma exclusão em massa equivocada
+  // continua recuperável no console do Firebase.
+  const aposentar = antigas.filter((a) => !novos.has(a.id));
+  funil.aposentadas = aposentar.length;
+
+  if (aposentar.length) {
+    const hoje = new Date().toISOString();
+    const gravacao = await salvarEmLote('transferencias',
+      aposentar.map((a) => ({ id: a.id, dados: { removidoEm: hoje } })));
+    if (gravacao.falhas.length) throw gravacao.falhas[0];
+  }
+  return funil;
 }
 
 /**

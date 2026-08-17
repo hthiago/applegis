@@ -1,5 +1,5 @@
 import { CONFIGURADO, AREAS, PAPEIS, podeEditar, podeEditarAgenda, podeEditarTarefas, ehAdmin } from './config.js';
-import { modulosDaArea } from './modulos.js';
+import { modulosDaArea, porId } from './modulos.js';
 import { el, limpar, aviso, carregando, vazio, fmtDinheiro } from './ui.js';
 
 /**
@@ -207,6 +207,23 @@ function abasDaArea(areaId) {
   ];
 }
 
+/**
+ * A aba pedida pelo endereço, mesmo que ela não esteja na barra.
+ *
+ * `oculto` tira o módulo de circulação, não do sistema: o dado continua lá, os
+ * outros módulos continuam apontando para ele, e quem tem o endereço na mão
+ * continua chegando. Esconder e desligar são coisas diferentes — misturá-las
+ * transformaria "tire esta aba do caminho" em "perca este cadastro".
+ */
+function abaPorId(areaId, abaId) {
+  const naBarra = abasDaArea(areaId).find((a) => a.id === abaId);
+  if (naBarra) return naBarra;
+  const escondido = porId[abaId];
+  return escondido && escondido.area === areaId
+    ? { id: escondido.id, nome: escondido.nome, modulo: escondido }
+    : null;
+}
+
 function rota() {
   const partes = (location.hash || '').replace(/^#\/?/, '').split('/').filter(Boolean);
   return { area: partes[0] || null, aba: partes[1] || null };
@@ -263,7 +280,11 @@ function navegacao(areaAtual) {
 function subAbas(areaId, abaAtual) {
   const abas = abasDaArea(areaId);
   if (abas.length <= 1) return null;
-  const ativa = abas.some((a) => a.id === abaAtual) ? abaAtual : abas[0].id;
+  // Aba oculta não se acende na barra, mas não force a navegação de volta: quem
+  // chegou por endereço direto continua onde pediu para estar.
+  const ativa = abas.some((a) => a.id === abaAtual) || abaPorId(areaId, abaAtual)
+    ? abaAtual
+    : abas[0].id;
   return el('div', { class: 'abas', role: 'tablist' }, abas.map((a) => el('a', {
     href: `#/${areaId}/${a.id}`,
     class: `aba${ativa === a.id ? ' aba--ativa' : ''}`,
@@ -634,7 +655,45 @@ function extrasDasEmendas() {
  * uma varredura só traz tudo, e a partir dela abrir uma linha não custa consulta.
  */
 function extrasDasTransferencias() {
-  return [botaoDetalhar];
+  return [botaoDetalhar, botaoReorganizar];
+}
+
+/**
+ * O pós-processamento, como ação explícita.
+ *
+ * O que está guardado por versões anteriores está em grão de documento contábil:
+ * milhares de linhas quase todas vazias, e filtros com uma opção "sem
+ * classificação" que não filtra nada. Reorganizar reúne cada destino numa linha,
+ * soma por fase e aposenta o ruído. É um botão, e não algo escondido dentro de
+ * outra tarefa, porque mexer em massa no que já está gravado é decisão de quem
+ * usa — e o aviso diz exatamente quantas linhas entraram e quantas saíram.
+ */
+function botaoReorganizar(recarregar) {
+  return el('button', {
+    class: 'btn btn--fantasma',
+    texto: 'Reorganizar',
+    title: 'Reúne os documentos de cada destino numa linha, soma por fase e descarta o que não informa nada',
+    onclick: async (e) => {
+      const btn = e.currentTarget;
+      btn.disabled = true;
+      btn.textContent = 'Reorganizando…';
+      try {
+        const r = await nucleo.emendas.reorganizar();
+        aviso([
+          `${r.antes} linhas viraram ${r.depois} destinos`,
+          r.aposentadas ? `${r.aposentadas} em grão de documento foram aposentadas` : null,
+          r.descartadas ? `${r.descartadas} não informavam nada` : null,
+        ].filter(Boolean).join(' · '), r.depois ? 'ok' : 'erro');
+        recarregar();
+      } catch (erro) {
+        console.error(erro);
+        aviso(erro.message || 'Não foi possível reorganizar.', 'erro');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Reorganizar';
+      }
+    },
+  });
 }
 
 /**
@@ -779,32 +838,33 @@ async function sanfonaDaEmenda(emenda, alvo, recarregar) {
     // situação e não traz data; a planilha do Portal traz fase e data e não traz
     // situação. Mostrar coluna sempre vazia gasta largura e não informa nada.
     const tem = (campo) => linhas.some((t) => t[campo]);
-    // A coluna que agrupa é marcada, não deduzida da posição: com o município
-    // ausente — favorecido que não é prefeitura — ela sai da tabela, e amarrar
-    // o agrupamento ao índice zero passaria a apagar a coluna errada.
+    const somar = (campo) => linhas.reduce((soma, t) => soma + (Number(t[campo]) || 0), 0);
+    const dinheiro = (v) => (Number(v) ? fmtDinheiro(v) : '—');
+
+    // As colunas seguem o que os destinos têm. Depois do pós-processamento cada
+    // linha é um destino com as fases em colunas próprias — e a escada do
+    // dinheiro (destinado → empenhado → pago) é a resposta a "já foi pago?".
     const colunas = [
       tem('municipio') && { titulo: 'Município', agrupa: true, valor: (t) => t.municipio || '—' },
-      { titulo: 'Quem recebeu', agrupa: !tem('municipio'), valor: (t) => t.favorecido || '—' },
+      { titulo: 'Quem recebeu', agrupa: !tem('municipio'), valor: (t) => rotuloDoDestino(t) },
       tem('objeto') && { titulo: 'Objeto', valor: (t) => t.objeto || '—' },
-      // As metas são a resposta mais concreta a "para quê foi": o que se
-      // comprou ou construiu, com quantidade.
       tem('metas') && { titulo: 'Metas', valor: (t) => t.metas || '—' },
-      // A ação orçamentária e o localizador dizem por qual programa o dinheiro
-      // saiu e para qual recorte territorial — é o "para quê" da execução
-      // direta, em que não há plano de ação nenhum descrevendo objeto.
       tem('acao') && { titulo: 'Ação orçamentária', valor: (t) => t.acao || '—' },
-      // A fase só distingue quando há mais de uma; num lote todo de
-      // transferência especial ela repetiria a mesma palavra em todas as linhas.
-      new Set(linhas.map((t) => t.tipo)).size > 1
-        && { titulo: 'Fase', valor: (t) => ROTULO_FASE[t.tipo] || t.tipo || '—' },
+      somar('valorDestinado') && { titulo: 'Destinado', num: true, valor: (t) => dinheiro(t.valorDestinado) },
+      somar('valorEmpenhado') && { titulo: 'Empenhado', num: true, valor: (t) => dinheiro(t.valorEmpenhado) },
+      somar('valorPago') && { titulo: 'Pago', num: true, valor: (t) => dinheiro(t.valorPago) },
       // O impedimento é o que trava o repasse — é sobre isso que a prefeitura
       // liga para o gabinete, e por isso ele vem colado na situação.
       tem('situacao') && { titulo: 'Situação', valor: (t) => t.situacao || '—' },
+      tem('ultimaData') && {
+        titulo: 'Último movimento',
+        valor: (t) => (t.ultimaData ? t.ultimaData.split('-').reverse().join('/') : '—'),
+      },
       tem('data') && {
         titulo: 'Data',
         valor: (t) => (t.data ? t.data.split('-').reverse().join('/') : '—'),
       },
-      { titulo: 'Valor', num: true, valor: (t) => (t.valor != null ? fmtDinheiro(t.valor) : '—') },
+      { titulo: 'Valor', num: true, valor: (t) => dinheiro(t.valor) },
     ].filter(Boolean);
 
     // Por município, somando as parcelas: é a leitura que responde "quanto foi
@@ -865,22 +925,14 @@ async function sanfonaDaEmenda(emenda, alvo, recarregar) {
     // que UMA tivesse dado deixava as outras vinte e seis congeladas vazias para
     // sempre: a versão que sabia completá-las nunca chegava a rodar. O cache
     // serve para não repetir consulta, não para preservar buracos.
-    if (guardadas.length && nucleo.fontes.disponivel()) {
+    // Guardado basta, exceto quando sobrou documento sem destino resolvido — aí
+    // vale reconsultar a fonte, que é onde a retentativa mora.
+    const resolvido = guardadas.length && !nucleo.emendas.faltaResolver(guardadas);
+    if (resolvido || (guardadas.length && !nucleo.fontes.disponivel())) {
       desenhar(guardadas);
-      const r = await nucleo.emendas.completarGuardadas(guardadas, {
-        aoProgredir: (p) => {
-          const nota = alvo.querySelector('.sanfona-recado');
-          const texto = `Completando ${p.feitos} de ${p.total} documentos…`;
-          if (nota) nota.textContent = texto;
-          else alvo.insertBefore(el('p', { class: 'sanfona-recado', texto }), alvo.firstChild);
-        },
-      });
-      // Sem redesenhar a lista: recarregar aqui fecharia a própria sanfona que
-      // acabou de ser preenchida, e o que mudou não aparece na linha de fora.
-      desenhar(r.linhas);
       return;
     }
-    if (guardadas.length) { desenhar(guardadas); return; }
+    if (guardadas.length) desenhar(guardadas);
 
     if (!nucleo.fontes.disponivel()) {
       desenhar([], 'Nada detalhado ainda. A consulta automática está desligada — use "Importar planilha" ou ligue as Cloud Functions.');
@@ -943,6 +995,21 @@ async function sanfonaDaEmenda(emenda, alvo, recarregar) {
   }
 }
 
+/**
+ * Como chamar um destino que a fonte não identificou.
+ *
+ * Depois do pós-processamento, os documentos sem favorecido conhecido viram uma
+ * linha só. Deixá-la com um travessão faria parecer erro de tela; dizer quantos
+ * documentos ela reúne diz o que ela é — execução que existe, destino a resolver.
+ */
+function rotuloDoDestino(t) {
+  if (t.favorecido) return t.favorecido;
+  if (t.qtdDocumentos) {
+    return `${t.qtdDocumentos} documento(s) de execução, destino a resolver`;
+  }
+  return '—';
+}
+
 const ROTULO_FASE = {
   empenho: 'Empenho',
   liquidacao: 'Liquidação',
@@ -970,7 +1037,7 @@ async function desenharConteudo(alvo, areaId, abaId) {
   }
 
   const abas = abasDaArea(areaId);
-  const aba = abas.find((a) => a.id === abaId) || abas[0];
+  const aba = abaPorId(areaId, abaId) || abas[0];
   if (!aba) {
     limpar(alvo).appendChild(vazio('Esta área ainda não tem conteúdo.'));
     return;

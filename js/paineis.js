@@ -229,9 +229,20 @@ export function consolidarPorMunicipio(emendas, transferencias) {
       m.emendas.add(String(t.codigoEmenda));
       comDestino.add(String(t.codigoEmenda));
     }
-    const valor = Number(t.valor) || 0;
-    m[FASE_DA_COLUNA[t.tipo] || 'destinado'] += valor;
-    if (IMPEDIDO.test(t.situacao || '')) m.impedido += valor || 0;
+    // Depois do pós-processamento cada destino já traz as fases em colunas
+    // próprias; antes dele, uma linha era uma fase. Ler os dois formatos evita
+    // que o painel zere enquanto o gabinete não reorganizou o que está guardado.
+    if (t.valorEmpenhado != null || t.valorPago != null || t.valorDestinado != null) {
+      m.destinado += Number(t.valorDestinado) || 0;
+      m.empenhado += Number(t.valorEmpenhado) || 0;
+      m.liquidado += Number(t.valorLiquidado) || 0;
+      m.pago += Number(t.valorPago) || 0;
+    } else {
+      m[FASE_DA_COLUNA[t.tipo] || 'destinado'] += Number(t.valor) || 0;
+    }
+    if (IMPEDIDO.test(t.situacao || '') || t.situacaoExecucao === 'impedido') {
+      m.impedido += Number(t.valor) || 0;
+    }
     m.destinos.push(t);
   }
 
@@ -342,12 +353,16 @@ export async function painelEmendas(container) {
     return el('div', { class: 'municipio-detalhe' }, [...porCodigo.entries()].map(([codigo, linhas]) => {
       const objetos = [...new Set(linhas.map((t) => t.objeto).filter(Boolean))];
       const metas = [...new Set(linhas.map((t) => t.metas).filter(Boolean))];
-      const pago = linhas.filter((t) => t.tipo === 'pagamento')
-        .reduce((s, t) => s + (Number(t.valor) || 0), 0);
-      const empenhado = linhas.filter((t) => t.tipo === 'empenho')
-        .reduce((s, t) => s + (Number(t.valor) || 0), 0);
-      const destinado = linhas.filter((t) => !FASE_DA_COLUNA[t.tipo])
-        .reduce((s, t) => s + (Number(t.valor) || 0), 0);
+      const fase = (coluna, tipo) => linhas.reduce((s, t) => {
+        if (t[coluna] != null) return s + (Number(t[coluna]) || 0);
+        return t.tipo === tipo ? s + (Number(t.valor) || 0) : s;
+      }, 0);
+      const pago = fase('valorPago', 'pagamento');
+      const empenhado = fase('valorEmpenhado', 'empenho');
+      const destinado = linhas.reduce((s, t) => {
+        if (t.valorDestinado != null) return s + (Number(t.valorDestinado) || 0);
+        return FASE_DA_COLUNA[t.tipo] ? s : s + (Number(t.valor) || 0);
+      }, 0);
       const travas = [...new Set(linhas.map((t) => t.situacao).filter((x) => IMPEDIDO.test(x || '')))];
       const ultima = linhas.map((t) => t.data).filter(Boolean).sort().pop();
 
