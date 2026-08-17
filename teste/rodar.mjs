@@ -1497,6 +1497,126 @@ console.log('\nPlanilhas de emenda\n');
   await pagina.close();
 }
 
+// ── bilhete de passagem lido por imagem ──
+//
+// O que substitui: alguém redigita origem, destino, data, hora, voo e localizador
+// em dois lugares. É transcrição, erra em número de voo, e o erro só aparece no
+// aeroporto.
+{
+  const p = await import('../js/passagens.js');
+
+  const trecho = {
+    passageiro: 'MARCEL VAN HATTEM', companhia: 'GOL', voo: 'G3 1234',
+    origem: 'Porto Alegre', origemSigla: 'POA', destino: 'Brasília', destinoSigla: 'BSB',
+    data: '2026-09-02', horaPartida: '6:20', horaChegada: '8:15',
+    localizador: 'ABC123', assento: '12A', valor: 1234.5,
+  };
+  const v = p.viagemDoTrecho(trecho);
+  conferir('o trecho lido vira viagem com voo, localizador e horários',
+    v.voo === 'G3 1234' && v.localizador === 'ABC123' && v.ida === '2026-09-02'
+    && v.horaPartida === '6:20' && v.custo === 1234.5, JSON.stringify(v));
+  conferir('origem e destino guardam cidade e sigla, que é como o bilhete traz',
+    v.origem === 'Porto Alegre · POA' && v.destino === 'Brasília · BSB');
+
+  // Campo ilegível fica nulo, e não com um palpite: a tela pinta o vazio, e vazio
+  // pede atenção enquanto palpite passa por conferido.
+  const incerto = p.viagemDoTrecho({ ...trecho, data: '02/09', horaPartida: 'manhã', valor: 0 });
+  conferir('data e hora que não vêm no formato esperado ficam vazias, não adivinhadas',
+    incerto.ida === null && incerto.horaPartida === null && incerto.custo === null,
+    JSON.stringify({ ida: incerto.ida, hora: incerto.horaPartida, custo: incerto.custo }));
+
+  // A captura circula no grupo do gabinete: reenviar não pode criar outra linha.
+  conferir('voo mais data são a chave: o mesmo bilhete reenviado não duplica',
+    p.chaveDaViagem(v) === 'v-g3-1234-2026-09-02'
+    && p.chaveDaViagem({ localizador: 'XYZ9', ida: '2026-09-02' }) === 'l-xyz9-2026-09-02'
+    && p.chaveDaViagem({ ida: null, voo: 'G3 1' }) === null);
+
+  const compromisso = p.compromissoDaViagem(v);
+  conferir('o voo vira compromisso de agenda com hora e localizador',
+    compromisso.inicio === '2026-09-02T06:20' && compromisso.fim === '2026-09-02T08:15'
+    && /ABC123/.test(compromisso.observacoes), JSON.stringify(compromisso));
+  // Sem hora, bloquear o dia inteiro é o pior caso e o correto: prometer manhã
+  // livre com base num horário ilegível é o erro que aparece no aeroporto.
+  conferir('sem hora legível, o compromisso bloqueia o dia e avisa por quê',
+    p.compromissoDaViagem({ ...v, horaPartida: null }).inicio === '2026-09-02T00:00'
+    && /não legível/.test(p.compromissoDaViagem({ ...v, horaPartida: null }).observacoes));
+  conferir('trecho sem data não vira compromisso: agenda com data errada é pior que sem',
+    p.compromissoDaViagem({ ...v, ida: null }) === null);
+
+  const repartido = p.repartirNoTempo(
+    [{ ida: '2026-12-01' }, { ida: '2026-01-01' }, { ida: '2026-08-17' }, { voo: 'X' }],
+    '2026-08-17',
+  );
+  conferir('a lista se reparte em futuras, hoje, passadas e sem data',
+    repartido.futuras.length === 1 && repartido.hoje.length === 1
+    && repartido.passadas.length === 1 && repartido.semData.length === 1,
+    JSON.stringify(Object.fromEntries(Object.entries(repartido).map(([k, x]) => [k, x.length]))));
+}
+
+// A confirmação na tela: nada é gravado sem alguém conferir.
+{
+  const pagina = await abrir({
+    consultaAutomatica: true,
+    funcoes: {
+      lerPassagem: {
+        trechos: [{
+          passageiro: 'DEPUTADA TESTE', companhia: 'GOL', voo: 'G3 1234',
+          origem: 'Porto Alegre', origemSigla: 'POA', destino: 'Brasília', destinoSigla: 'BSB',
+          data: '2026-12-02', horaPartida: '06:20', horaChegada: '08:15',
+          localizador: 'ABC123', assento: null, valor: 1200,
+        }],
+        ilegivel: ['assento'],
+      },
+    },
+  });
+
+  await pagina.goto(`${BASE}/#/administrativo/viagens`, { waitUntil: 'domcontentloaded' });
+  await pagina.waitForSelector('.modulo-topo');
+  conferir('a aba de viagens oferece a leitura do bilhete',
+    (await pagina.getByRole('button', { name: 'Ler bilhete' }).count()) === 1);
+
+  // Um PNG de 1x1: o que importa aqui é o caminho, não a imagem.
+  const png = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAACgAAAAUCAIAAABwJOjsAAAAIklEQVR4nGM4MUCAYdTiUYtHLR61eNTiUYtHLR61eORYDABe1FNqhH8OKAAAAABJRU5ErkJggg==',
+    'base64',
+  );
+  await pagina.setInputFiles('.importador input[type=file]', {
+    name: 'bilhete.png', mimeType: 'image/png', buffer: png,
+  });
+  await pagina.waitForSelector('.bilhete-trecho', { timeout: 15000 });
+
+  // O passo a mais é deliberado: o ganho está em não redigitar, não em confiar
+  // cegamente numa leitura de imagem.
+  conferir('a leitura não grava: abre a confirmação com os campos preenchidos',
+    (await pagina.locator('#bilhete-0-voo').inputValue()) === 'G3 1234'
+    && (await pagina.locator('#bilhete-0-ida').inputValue()) === '2026-12-02',
+    await pagina.locator('#bilhete-0-voo').inputValue());
+  conferir('e o campo que a imagem não permitiu ler vem marcado',
+    (await pagina.locator('#bilhete-0-assento').getAttribute('class') || '').includes('bilhete-falta'),
+    await pagina.locator('#bilhete-0-assento').getAttribute('class'));
+  conferir('a tela diz o que ficou ilegível, em vez de deixar descobrir depois',
+    /assento/.test(await pagina.locator('.campo-dica').first().innerText()));
+
+  await pagina.getByRole('button', { name: 'Salvar viagens' }).click();
+  await pagina.waitForTimeout(1200);
+
+  const recado = (await pagina.locator('.aviso').last().innerText().catch(() => '')).replace(/\s+/g, ' ');
+  conferir('confirmar grava a viagem e o compromisso na agenda',
+    /1 trecho\(s\) salvos/.test(recado) && /1 na agenda/.test(recado), recado);
+
+  const tabela = (await pagina.locator('.tabela tbody').innerText()).replace(/\s+/g, ' ');
+  conferir('a viagem aparece na lista, classificada no tempo',
+    /G3 1234/.test(tabela) && /Ainda vai acontecer/.test(tabela), tabela.slice(0, 250));
+
+  await pagina.goto(`${BASE}/#/chefia/agenda`, { waitUntil: 'domcontentloaded' });
+  await pagina.waitForSelector('.tabela');
+  const agenda = (await pagina.locator('.tabela tbody').innerText()).replace(/\s+/g, ' ');
+  conferir('e o voo está na agenda do deputado, com o trecho no título',
+    /G3 1234/.test(agenda) && /POA/.test(agenda), agenda.slice(0, 250));
+
+  await pagina.close();
+}
+
 // ── CRM: padronização na entrada ──
 //
 // As listas do gabinete vêm da campanha, do WhatsApp, de lista de presença. Cada

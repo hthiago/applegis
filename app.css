@@ -1170,3 +1170,25 @@ input:focus, select:focus, textarea:focus { border-color: var(--verde); outline:
   border-top: 2px dashed rgba(0, 0, 0, .45);
 }
 .coluna-rotulo { text-align: center; font-size: .75rem; opacity: .7; }
+
+/* ── confirmação do bilhete lido ─────────────────────────────────────────
+   Um passo a mais de propósito: o ganho está em não redigitar, não em confiar
+   cegamente numa leitura de imagem. */
+.bilhete-trecho {
+  border: 1px solid rgba(0, 0, 0, .12);
+  border-radius: 6px;
+  padding: .6rem .8rem 1rem;
+  margin: .6rem 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
+  gap: .5rem .8rem;
+}
+.bilhete-trecho legend { grid-column: 1 / -1; font-weight: 600; padding: 0 .3rem; }
+/* Campo que a leitura não conseguiu preencher: vazio pede atenção, palpite
+   passa por conferido. */
+.bilhete-falta { border-color: #c98a00; background: rgba(201, 138, 0, .07); }
+.campo--linha { display: flex; align-items: center; gap: .5rem; }
+.oculto-visual {
+  position: absolute; width: 1px; height: 1px; overflow: hidden;
+  clip: rect(0 0 0 0); white-space: nowrap;
+}

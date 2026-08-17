@@ -270,3 +270,25 @@ pode editar o quê.
 
 `docs/anamnese.html` é o levantamento que originou o sistema: o escopo de cada área, a
 matriz de permissão, as integrações, os riscos e o que ficou de fora. Abra no navegador.
+
+
+### Leitura de bilhetes de passagem
+
+A aba **Viagens e passagens** lê a captura de um e-ticket ou cartão de embarque e
+preenche os campos — origem, destino, data, hora, voo, localizador — em vez de
+alguém redigitá-los na planilha e na agenda. A leitura acontece numa Cloud
+Function, porque a chave da API não pode ficar em código de navegador.
+
+```bash
+firebase functions:secrets:set CHAVE_ANTHROPIC
+firebase deploy --only functions
+```
+
+A chave se obtém em console.anthropic.com. O gasto é por imagem lida e o volume
+de um gabinete é pequeno — algumas dezenas de bilhetes por mês.
+
+**Nada é gravado sem confirmação.** A função devolve o que leu, a tela mostra
+campo por campo com o que ficou ilegível em destaque, e quem confirma é uma
+pessoa. Leitura de imagem erra, e uma viagem gravada sozinha com a data errada é
+pior que uma viagem não gravada: a segunda alguém percebe que falta, a primeira
+ninguém percebe até o embarque.

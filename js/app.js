@@ -1,6 +1,6 @@
 import { CONFIGURADO, AREAS, PAPEIS, podeEditar, podeEditarAgenda, podeEditarTarefas, ehAdmin } from './config.js';
 import { modulosDaArea, porId } from './modulos.js';
-import { el, limpar, aviso, carregando, vazio, fmtDinheiro } from './ui.js';
+import { el, limpar, aviso, carregando, vazio, fmtDinheiro, modal } from './ui.js';
 
 /**
  * Montagem da aplicação.
@@ -716,6 +716,177 @@ function extrasDosContatos() {
   ];
 }
 
+/**
+ * Leitura do bilhete de passagem por imagem.
+ *
+ * A regra: nada é gravado sem confirmação. Leitura de imagem erra, e uma viagem
+ * gravada sozinha com a data errada é pior que uma viagem não gravada — a segunda
+ * alguém percebe que falta, a primeira ninguém percebe até o embarque.
+ */
+function extrasDasViagens() {
+  return [
+    (recarregar) => {
+      if (!nucleo.fontes.disponivel()) return null;
+
+      const escolher = el('input', { type: 'file', accept: 'image/png,image/jpeg,image/webp', class: 'oculto-visual' });
+      const btn = el('button', {
+        class: 'btn btn--fantasma',
+        texto: 'Ler bilhete',
+        title: 'Envie a captura do e-ticket ou do cartão de embarque; o sistema lê e você confirma',
+        onclick: () => escolher.click(),
+      });
+
+      escolher.addEventListener('change', async () => {
+        const arquivo = escolher.files?.[0];
+        if (!arquivo) return;
+        btn.disabled = true;
+        btn.textContent = 'Lendo o bilhete…';
+        try {
+          const passagens = await import('./passagens.js');
+          const lido = await passagens.lerBilhete(arquivo);
+          if (!lido.trechos?.length) {
+            aviso('Não achei trecho de voo nesta imagem. Tente uma captura mais nítida, ou cadastre à mão.', 'erro');
+            return;
+          }
+          abrirConfirmacaoDeBilhete(lido, passagens, recarregar);
+        } catch (erro) {
+          console.error(erro);
+          aviso(erro.message || 'Não foi possível ler o bilhete.', 'erro');
+        } finally {
+          escolher.value = '';
+          btn.disabled = false;
+          btn.textContent = 'Ler bilhete';
+        }
+      });
+
+      return el('span', { class: 'importador' }, [btn, escolher]);
+    },
+  ];
+}
+
+/**
+ * A tela de confirmação do bilhete lido.
+ *
+ * Cada trecho aparece com seus campos editáveis, e o que a leitura não conseguiu
+ * ler vem em destaque. É deliberadamente um passo a mais: o ganho está em não
+ * redigitar, não em confiar cegamente numa leitura de imagem.
+ */
+function abrirConfirmacaoDeBilhete(lido, passagens, recarregar) {
+  const trechos = lido.trechos.map((t) => passagens.viagemDoTrecho(t, {
+    viajante: nucleo.sessaoMod.sessao.gabinete?.deputado || null,
+  }));
+
+  const campos = [
+    ['viajante', 'Quem viaja'], ['origem', 'Origem'], ['destino', 'Destino'],
+    ['ida', 'Data (AAAA-MM-DD)'], ['horaPartida', 'Partida'], ['horaChegada', 'Chegada'],
+    ['companhia', 'Companhia'], ['voo', 'Voo'], ['localizador', 'Localizador'],
+    ['assento', 'Assento'], ['custo', 'Valor'],
+  ];
+
+  const entradas = trechos.map((v, i) => {
+    const linha = {};
+    const bloco = el('fieldset', { class: 'bilhete-trecho' }, [
+      el('legend', { texto: `Trecho ${i + 1}` }),
+      ...campos.map(([k, rotulo]) => {
+        const entrada = el('input', {
+          type: 'text',
+          id: `bilhete-${i}-${k}`,
+          // Campo que a leitura não conseguiu preencher fica marcado: vazio pede
+          // atenção, palpite passa por conferido.
+          class: v[k] === null || v[k] === undefined ? 'bilhete-falta' : null,
+        });
+        entrada.value = v[k] ?? '';
+        linha[k] = entrada;
+        return el('div', { class: 'campo' }, [
+          el('label', { for: `bilhete-${i}-${k}`, texto: rotulo }), entrada,
+        ]);
+      }),
+    ]);
+    return { bloco, linha };
+  });
+
+  const naAgenda = el('input', { type: 'checkbox', id: 'bilhete-agenda' });
+  naAgenda.checked = true;
+
+  const corpo = el('div', {}, [
+    el('p', { class: 'campo-dica', texto: lido.ilegivel?.length
+      ? `A imagem não permitiu ler com segurança: ${lido.ilegivel.join(', ')}. Confira os campos marcados antes de salvar.`
+      : 'Confira os campos antes de salvar. A leitura de imagem acerta quase sempre, e "quase" é o motivo desta tela existir.' }),
+    ...entradas.map((e) => e.bloco),
+    el('div', { class: 'campo campo--linha' }, [
+      naAgenda,
+      el('label', { for: 'bilhete-agenda', texto: 'Criar também o compromisso na agenda do deputado' }),
+    ]),
+  ]);
+
+  const salvar = el('button', { class: 'btn btn--primario', type: 'button', texto: 'Salvar viagens' });
+  const fechar = modal('Bilhete lido', corpo);
+
+  corpo.appendChild(el('div', { class: 'modal-acoes' }, [
+    el('button', { class: 'btn btn--fantasma', type: 'button', texto: 'Cancelar', onclick: () => fechar() }),
+    salvar,
+  ]));
+
+  salvar.addEventListener('click', async () => {
+    salvar.disabled = true;
+    salvar.textContent = 'Salvando…';
+    try {
+      const hoje = new Date().toISOString().slice(0, 10);
+      const viagens = [];
+      for (const { linha } of entradas) {
+        const v = {};
+        for (const [k] of campos) {
+          const valor = linha[k].value.trim();
+          v[k] = valor === '' ? null : valor;
+        }
+        v.custo = v.custo ? Number(String(v.custo).replace(',', '.')) : null;
+        v.status = 'emitida';
+        v.fonte = 'bilhete lido por imagem';
+        // "Quando" é calculado, não digitado: é o que faz o filtro "o que vem por
+        // aí" funcionar sem ninguém manter um campo em dia.
+        v.quando = !v.ida ? 'sem-data' : (v.ida > hoje ? 'futura' : (v.ida === hoje ? 'hoje' : 'passada'));
+        viagens.push(v);
+      }
+
+      const registros = viagens
+        .map((v) => ({ id: passagens.chaveDaViagem(v), dados: v }))
+        .filter((r) => r.id);
+      if (!registros.length) {
+        aviso('Sem data ou número de voo não é possível identificar o trecho. Preencha ao menos a data.', 'erro');
+        return;
+      }
+
+      const gravacao = await nucleo.dados.salvarEmLote('viagens', registros);
+      if (gravacao.falhas.length) throw gravacao.falhas[0];
+
+      let naAgendaCriados = 0;
+      if (naAgenda.checked) {
+        const compromissos = viagens
+          .map((v) => passagens.compromissoDaViagem(v))
+          .filter(Boolean)
+          .map((c, i) => ({ id: `voo-${registros[i]?.id || i}`, dados: c }));
+        if (compromissos.length) {
+          const g2 = await nucleo.dados.salvarEmLote('agenda', compromissos);
+          if (!g2.falhas.length) naAgendaCriados = compromissos.length;
+        }
+      }
+
+      aviso([
+        `${registros.length} trecho(s) salvos`,
+        naAgendaCriados ? `${naAgendaCriados} na agenda` : null,
+      ].filter(Boolean).join(' · '));
+      fechar();
+      recarregar();
+    } catch (erro) {
+      console.error(erro);
+      aviso(erro.message || 'Não foi possível salvar as viagens.', 'erro');
+    } finally {
+      salvar.disabled = false;
+      salvar.textContent = 'Salvar viagens';
+    }
+  });
+}
+
 function extrasDasTransferencias() {
   return [botaoDetalhar, botaoReorganizar];
 }
@@ -1127,6 +1298,7 @@ async function desenharConteudo(alvo, areaId, abaId) {
   else if (modulo.importaEmendas) extras = extrasDasEmendas();
   else if (modulo.importaTransferencias) extras = extrasDasTransferencias();
   else if (modulo.importaContatos) extras = extrasDosContatos();
+  else if (modulo.leBilhete) extras = extrasDasViagens();
 
   const acoesItem = modulo.geraMinuta ? acoesDaMinuta() : [];
   const acoesLinha = modulo.enviaParaAcompanhamento ? [acaoAcompanhar] : [];

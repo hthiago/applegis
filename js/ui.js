@@ -118,3 +118,26 @@ export function vazio(mensagem, acao = null) {
 export function carregando(texto = 'Carregando…') {
   return el('div', { class: 'carregando', texto });
 }
+
+/**
+ * Janela modal.
+ *
+ * Vivia em admin.js, privada. Passou para cá quando a confirmação do bilhete de
+ * passagem precisou dela: duas cópias da mesma janela divergem na primeira
+ * correção de acessibilidade, e é sempre a segunda que fica sem.
+ */
+export function modal(titulo, form) {
+  const fechar = () => { fundo.remove(); document.removeEventListener('keydown', aoTeclar); };
+  const aoTeclar = (e) => { if (e.key === 'Escape') fechar(); };
+  const fundo = el('div', { class: 'modal-fundo', onclick: (e) => { if (e.target === fundo) fechar(); } }, [
+    el('div', { class: 'modal', role: 'dialog', 'aria-modal': 'true' }, [
+      el('h2', { class: 'modal-titulo', texto: titulo }),
+      form,
+    ]),
+  ]);
+  document.body.appendChild(fundo);
+  document.addEventListener('keydown', aoTeclar);
+  form.querySelector('input, select')?.focus();
+  return fechar;
+}
+

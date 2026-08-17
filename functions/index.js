@@ -25,6 +25,7 @@ const { getFirestore } = require('firebase-admin/firestore');
 initializeApp();
 
 const CHAVE_PORTAL = defineSecret('CHAVE_PORTAL_TRANSPARENCIA');
+const CHAVE_CLAUDE = defineSecret('CHAVE_ANTHROPIC');
 
 /**
  * As fontes que esta ponte aceita, e só elas.
@@ -257,5 +258,155 @@ exports.consultarFonte = onCall(
     // A URL volta sem a chave — ela nunca entra na query, mas o hábito de
     // conferir o que se devolve vale mais do que a certeza.
     return { fonte, quantidade: Array.isArray(dados) ? dados.length : 1, dados };
+  },
+);
+
+
+// ───────────────────── leitura de bilhete de passagem ─────────────────────
+
+/**
+ * Extrai os dados de uma passagem a partir da imagem do bilhete.
+ *
+ * O que isto substitui: alguém do gabinete recebe por WhatsApp a captura do
+ * e-ticket e redigita origem, destino, data, hora, voo e localizador em dois
+ * lugares — na planilha de viagens e na agenda. É transcrição, erra em número de
+ * voo e horário, e o erro só aparece no aeroporto.
+ *
+ * Por que no servidor: a chave da API não pode ficar em código de navegador, pela
+ * mesma razão que a do Portal não pode. E por que uma função separada da ponte de
+ * consulta: aquela é um repassador que não interpreta nada, e esta interpreta —
+ * misturá-las faria a mais perigosa das duas herdar a superfície da outra.
+ *
+ * O que a função NÃO faz: gravar. Ela devolve o que leu, com o grau de certeza de
+ * cada campo, e quem confirma é a pessoa na tela. Leitura de imagem erra, e uma
+ * viagem gravada sozinha com a data errada é pior que uma viagem não gravada.
+ */
+const ESQUEMA_PASSAGEM = {
+  type: 'object',
+  properties: {
+    trechos: {
+      type: 'array',
+      description: 'Um por voo, na ordem em que aparecem. Ida e volta são dois trechos.',
+      items: {
+        type: 'object',
+        properties: {
+          passageiro: { type: ['string', 'null'] },
+          companhia: { type: ['string', 'null'] },
+          voo: { type: ['string', 'null'] },
+          origem: { type: ['string', 'null'], description: 'Cidade ou aeroporto de partida, como escrito' },
+          origemSigla: { type: ['string', 'null'], description: 'Sigla IATA de três letras, se visível' },
+          destino: { type: ['string', 'null'] },
+          destinoSigla: { type: ['string', 'null'] },
+          data: { type: ['string', 'null'], description: 'AAAA-MM-DD. Se o ano não aparecer, deixe nulo em vez de supor.' },
+          horaPartida: { type: ['string', 'null'], description: 'HH:MM em 24 horas' },
+          horaChegada: { type: ['string', 'null'] },
+          localizador: { type: ['string', 'null'], description: 'Código de reserva, localizador ou e-ticket' },
+          assento: { type: ['string', 'null'] },
+          valor: { type: ['number', 'null'], description: 'Em reais, só se estiver escrito na imagem' },
+        },
+        required: ['passageiro', 'companhia', 'voo', 'origem', 'origemSigla', 'destino',
+          'destinoSigla', 'data', 'horaPartida', 'horaChegada', 'localizador', 'assento', 'valor'],
+        additionalProperties: false,
+      },
+    },
+    ilegivel: {
+      type: 'array',
+      description: 'Campos que a imagem não permite ler com segurança. Preferir listar aqui a adivinhar.',
+      items: { type: 'string' },
+    },
+  },
+  required: ['trechos', 'ilegivel'],
+  additionalProperties: false,
+};
+
+const INSTRUCAO_PASSAGEM = [
+  'Você recebe a imagem de um bilhete aéreo, cartão de embarque ou e-ticket brasileiro.',
+  'Extraia os dados exatamente como estão escritos. Não converta moeda, não traduza nomes de cidade,',
+  'não complete o ano de uma data que não o mostra e não deduza o voo de volta a partir da ida.',
+  'Campo que a imagem não permite ler com segurança vai em "ilegivel" e fica nulo — quem confere é uma',
+  'pessoa, e um campo adivinhado passa por conferido enquanto um campo vazio pede atenção.',
+].join(' ');
+
+exports.lerPassagem = onCall(
+  {
+    region: 'southamerica-east1',
+    secrets: [CHAVE_CLAUDE],
+    timeoutSeconds: 120,
+    memory: '512MiB',
+    maxInstances: 3,
+  },
+  async (request) => {
+    await conferirAcesso(request.auth);
+
+    const { imagemBase64, tipoMime } = request.data || {};
+    if (!imagemBase64 || typeof imagemBase64 !== 'string') {
+      throw new HttpsError('invalid-argument', 'Envie a imagem do bilhete.');
+    }
+    // 5 MB em base64 são ~6,7 MB de texto. Acima disso não é captura de bilhete,
+    // e o limite existe para a função não virar canal de upload.
+    if (imagemBase64.length > 7_000_000) {
+      throw new HttpsError('invalid-argument', 'A imagem é grande demais. Envie uma captura de tela do bilhete, não o PDF inteiro.');
+    }
+    const aceitos = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
+    if (!aceitos.includes(tipoMime)) {
+      throw new HttpsError('invalid-argument', `Formato não aceito: ${tipoMime}. Use PNG, JPEG ou WebP.`);
+    }
+    if (!CHAVE_CLAUDE.value()) {
+      throw new HttpsError('failed-precondition',
+        'A chave da API da Anthropic não foi cadastrada no projeto. Veja o README, seção "Leitura de bilhetes".');
+    }
+
+    let resposta;
+    try {
+      resposta = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-api-key': CHAVE_CLAUDE.value(),
+          'anthropic-version': '2023-06-01',
+        },
+        body: JSON.stringify({
+          model: 'claude-opus-5',
+          max_tokens: 4096,
+          tools: [{
+            name: 'registrar_passagem',
+            description: 'Registra os trechos lidos do bilhete.',
+            strict: true,
+            input_schema: ESQUEMA_PASSAGEM,
+          }],
+          // Ferramenta forçada: é o que garante que a resposta volte no formato
+          // que a tela sabe preencher, em vez de prosa que alguém teria de ler.
+          tool_choice: { type: 'tool', name: 'registrar_passagem' },
+          messages: [{
+            role: 'user',
+            content: [
+              { type: 'image', source: { type: 'base64', media_type: tipoMime, data: imagemBase64 } },
+              { type: 'text', text: INSTRUCAO_PASSAGEM },
+            ],
+          }],
+        }),
+      });
+    } catch (erro) {
+      throw new HttpsError('unavailable', `A leitura não respondeu: ${erro.message}`);
+    }
+
+    const corpo = await resposta.text();
+    if (!resposta.ok) {
+      throw new HttpsError('unavailable', `A leitura falhou (${resposta.status}): ${corpo.slice(0, 300)}`);
+    }
+
+    let dados;
+    try {
+      dados = JSON.parse(corpo);
+    } catch {
+      throw new HttpsError('internal', 'A leitura devolveu algo que não é JSON.');
+    }
+
+    const uso = dados.content?.find((b) => b.type === 'tool_use');
+    if (!uso?.input) {
+      throw new HttpsError('internal',
+        'Não foi possível ler o bilhete nesta imagem. Tente uma captura mais nítida, ou preencha à mão.');
+    }
+    return { ...uso.input, modelo: dados.model || null };
   },
 );

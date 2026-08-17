@@ -3,7 +3,7 @@ import {
 } from './firebase.js';
 import { sessao } from './sessao.js';
 import { AREAS, PAPEIS, ehAdmin } from './config.js';
-import { el, limpar, etiqueta, aviso, confirmar, carregando, vazio } from './ui.js';
+import { el, limpar, etiqueta, aviso, confirmar, carregando, vazio, modal} from './ui.js';
 
 /**
  * Gestão de acessos.
@@ -274,21 +274,6 @@ function formGabineteAtual(aoConcluir) {
       btn.textContent = 'Salvar';
     }
   });
-}
-
-function modal(titulo, form) {
-  const fechar = () => { fundo.remove(); document.removeEventListener('keydown', aoTeclar); };
-  const aoTeclar = (e) => { if (e.key === 'Escape') fechar(); };
-  const fundo = el('div', { class: 'modal-fundo', onclick: (e) => { if (e.target === fundo) fechar(); } }, [
-    el('div', { class: 'modal', role: 'dialog', 'aria-modal': 'true' }, [
-      el('h2', { class: 'modal-titulo', texto: titulo }),
-      form,
-    ]),
-  ]);
-  document.body.appendChild(fundo);
-  document.addEventListener('keydown', aoTeclar);
-  form.querySelector('input, select')?.focus();
-  return fechar;
 }
 
 function formAcesso(acesso, gabinetes, aoConcluir) {

@@ -167,12 +167,24 @@ export const MODULOS = [
     singular: 'viagem',
     descricao: 'Deslocamentos da equipe e do deputado, da solicitação à prestação de contas.',
     ordenar: { campo: 'ida', dir: 'desc' },
-    busca: ['viajante', 'destino', 'motivo'],
+    busca: ['viajante', 'origem', 'destino', 'motivo', 'voo', 'localizador', 'companhia'],
+    leBilhete: true,
+    facetas: [
+      { campo: 'quando', l: 'Quando' },
+      { campo: 'status', l: 'Situação' },
+    ],
     campos: [
       { k: 'viajante', l: 'Quem viaja', t: 'texto', req: true, lista: true },
-      { k: 'origem', l: 'Origem', t: 'texto' },
+      { k: 'origem', l: 'Origem', t: 'texto', lista: true },
       { k: 'destino', l: 'Destino', t: 'texto', lista: true },
       { k: 'ida', l: 'Ida', t: 'data', req: true, lista: true },
+      { k: 'horaPartida', l: 'Hora de partida', t: 'texto', lista: true },
+      { k: 'horaChegada', l: 'Hora de chegada', t: 'texto' },
+      // O que o bilhete traz e ninguém deveria redigitar.
+      { k: 'companhia', l: 'Companhia', t: 'texto' },
+      { k: 'voo', l: 'Voo', t: 'texto', lista: true },
+      { k: 'localizador', l: 'Localizador', t: 'texto' },
+      { k: 'assento', l: 'Assento', t: 'texto' },
       { k: 'volta', l: 'Volta', t: 'data' },
       { k: 'motivo', l: 'Motivo', t: 'area' },
       { k: 'custo', l: 'Custo', t: 'dinheiro', lista: true },
@@ -184,6 +196,15 @@ export const MODULOS = [
         { v: 'prestada', l: 'Contas prestadas', cor: 'ok' },
         { v: 'cancelada', l: 'Cancelada', cor: 'neutro' },
       ] },
+      // Calculado na leitura, não digitado: é o que permite filtrar "o que vem
+      // por aí" sem ninguém ter de manter um campo em dia.
+      { k: 'quando', l: 'Quando', t: 'select', lista: true, op: [
+        { v: 'futura', l: 'Ainda vai acontecer', cor: 'info' },
+        { v: 'hoje', l: 'Hoje', cor: 'critico' },
+        { v: 'passada', l: 'Já aconteceu', cor: 'neutro' },
+        { v: 'sem-data', l: 'Sem data legível', cor: 'atencao' },
+      ] },
+      { k: 'fonte', l: 'Origem do registro', t: 'texto' },
     ],
   },
   {
