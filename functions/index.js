@@ -26,6 +26,7 @@ initializeApp();
 
 const CHAVE_PORTAL = defineSecret('CHAVE_PORTAL_TRANSPARENCIA');
 const CHAVE_CLAUDE = defineSecret('CHAVE_ANTHROPIC');
+const CHAVE_OPENAI = defineSecret('CHAVE_OPENAI');
 
 /**
  * As fontes que esta ponte aceita, e só elas.
@@ -327,10 +328,121 @@ const INSTRUCAO_PASSAGEM = [
   'pessoa, e um campo adivinhado passa por conferido enquanto um campo vazio pede atenção.',
 ].join(' ');
 
+/**
+ * Quem lê a imagem.
+ *
+ * Duas implementações, escolhidas pela chave que estiver cadastrada — OpenAI
+ * primeiro, porque é a que o gabinete usa agora. Manter as duas custa pouco: a
+ * parte difícil é o esquema e a instrução, que são as mesmas, e o que muda é o
+ * formato do envelope. Arrancar uma para trocar de provedor obrigaria a
+ * reescrever tudo na próxima troca — e "momentaneamente" é uma palavra que
+ * costuma durar.
+ *
+ * O que as duas têm em comum, e é o que importa: a resposta é forçada a vir no
+ * esquema declarado. Prosa livre obrigaria alguém a interpretar texto, e é aí que
+ * uma data errada passa por conferida.
+ */
+const PROVEDORES = {
+  openai: {
+    disponivel: () => !!CHAVE_OPENAI.value(),
+    modelo: () => process.env.MODELO_LEITURA || 'gpt-4o',
+    async ler({ imagemBase64, tipoMime }) {
+      const modelo = PROVEDORES.openai.modelo();
+      const r = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          authorization: `Bearer ${CHAVE_OPENAI.value()}`,
+        },
+        // Sem teto de tokens de propósito: o nome do parâmetro mudou entre
+        // gerações de modelo, e a resposta já é limitada pelo esquema. Um
+        // parâmetro recusado devolveria 400 sem relação com o bilhete.
+        body: JSON.stringify({
+          model: modelo,
+          messages: [{
+            role: 'user',
+            content: [
+              { type: 'text', text: INSTRUCAO_PASSAGEM },
+              { type: 'image_url', image_url: { url: `data:${tipoMime};base64,${imagemBase64}` } },
+            ],
+          }],
+          response_format: {
+            type: 'json_schema',
+            json_schema: { name: 'passagem', strict: true, schema: ESQUEMA_PASSAGEM },
+          },
+        }),
+      });
+
+      const corpo = await r.text();
+      if (!r.ok) {
+        throw new HttpsError('unavailable', `A leitura falhou (${r.status}): ${corpo.slice(0, 300)}`);
+      }
+      const dados = JSON.parse(corpo);
+      const escolha = dados.choices?.[0]?.message;
+      if (escolha?.refusal) {
+        throw new HttpsError('failed-precondition', `A leitura foi recusada: ${escolha.refusal}`);
+      }
+      if (!escolha?.content) {
+        throw new HttpsError('internal',
+          'Não foi possível ler o bilhete nesta imagem. Tente uma captura mais nítida, ou preencha à mão.');
+      }
+      return { ...JSON.parse(escolha.content), modelo: dados.model || modelo };
+    },
+  },
+
+  anthropic: {
+    disponivel: () => !!CHAVE_CLAUDE.value(),
+    modelo: () => process.env.MODELO_LEITURA || 'claude-opus-5',
+    async ler({ imagemBase64, tipoMime }) {
+      const modelo = PROVEDORES.anthropic.modelo();
+      const r = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-api-key': CHAVE_CLAUDE.value(),
+          'anthropic-version': '2023-06-01',
+        },
+        body: JSON.stringify({
+          model: modelo,
+          max_tokens: 4096,
+          tools: [{
+            name: 'registrar_passagem',
+            description: 'Registra os trechos lidos do bilhete.',
+            strict: true,
+            input_schema: ESQUEMA_PASSAGEM,
+          }],
+          // Ferramenta forçada: é o que garante que a resposta volte no formato
+          // que a tela sabe preencher, em vez de prosa que alguém teria de ler.
+          tool_choice: { type: 'tool', name: 'registrar_passagem' },
+          messages: [{
+            role: 'user',
+            content: [
+              { type: 'image', source: { type: 'base64', media_type: tipoMime, data: imagemBase64 } },
+              { type: 'text', text: INSTRUCAO_PASSAGEM },
+            ],
+          }],
+        }),
+      });
+
+      const corpo = await r.text();
+      if (!r.ok) {
+        throw new HttpsError('unavailable', `A leitura falhou (${r.status}): ${corpo.slice(0, 300)}`);
+      }
+      const dados = JSON.parse(corpo);
+      const uso = dados.content?.find((b) => b.type === 'tool_use');
+      if (!uso?.input) {
+        throw new HttpsError('internal',
+          'Não foi possível ler o bilhete nesta imagem. Tente uma captura mais nítida, ou preencha à mão.');
+      }
+      return { ...uso.input, modelo: dados.model || modelo };
+    },
+  },
+};
+
 exports.lerPassagem = onCall(
   {
     region: 'southamerica-east1',
-    secrets: [CHAVE_CLAUDE],
+    secrets: [CHAVE_CLAUDE, CHAVE_OPENAI],
     timeoutSeconds: 120,
     memory: '512MiB',
     maxInstances: 3,
@@ -351,62 +463,21 @@ exports.lerPassagem = onCall(
     if (!aceitos.includes(tipoMime)) {
       throw new HttpsError('invalid-argument', `Formato não aceito: ${tipoMime}. Use PNG, JPEG ou WebP.`);
     }
-    if (!CHAVE_CLAUDE.value()) {
+
+    // A ordem é a preferência; a escolha é de quem cadastrou a chave. Dizer qual
+    // provedor respondeu é o que permite entender uma leitura ruim depois.
+    const escolhido = ['openai', 'anthropic'].find((n) => PROVEDORES[n].disponivel());
+    if (!escolhido) {
       throw new HttpsError('failed-precondition',
-        'A chave da API da Anthropic não foi cadastrada no projeto. Veja o README, seção "Leitura de bilhetes".');
+        'Nenhuma chave de leitura cadastrada. Cadastre CHAVE_OPENAI ou CHAVE_ANTHROPIC no projeto e reimplante — veja o README, seção "Leitura de bilhetes".');
     }
 
-    let resposta;
     try {
-      resposta = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          'x-api-key': CHAVE_CLAUDE.value(),
-          'anthropic-version': '2023-06-01',
-        },
-        body: JSON.stringify({
-          model: 'claude-opus-5',
-          max_tokens: 4096,
-          tools: [{
-            name: 'registrar_passagem',
-            description: 'Registra os trechos lidos do bilhete.',
-            strict: true,
-            input_schema: ESQUEMA_PASSAGEM,
-          }],
-          // Ferramenta forçada: é o que garante que a resposta volte no formato
-          // que a tela sabe preencher, em vez de prosa que alguém teria de ler.
-          tool_choice: { type: 'tool', name: 'registrar_passagem' },
-          messages: [{
-            role: 'user',
-            content: [
-              { type: 'image', source: { type: 'base64', media_type: tipoMime, data: imagemBase64 } },
-              { type: 'text', text: INSTRUCAO_PASSAGEM },
-            ],
-          }],
-        }),
-      });
+      const lido = await PROVEDORES[escolhido].ler({ imagemBase64, tipoMime });
+      return { ...lido, provedor: escolhido };
     } catch (erro) {
+      if (erro instanceof HttpsError) throw erro;
       throw new HttpsError('unavailable', `A leitura não respondeu: ${erro.message}`);
     }
-
-    const corpo = await resposta.text();
-    if (!resposta.ok) {
-      throw new HttpsError('unavailable', `A leitura falhou (${resposta.status}): ${corpo.slice(0, 300)}`);
-    }
-
-    let dados;
-    try {
-      dados = JSON.parse(corpo);
-    } catch {
-      throw new HttpsError('internal', 'A leitura devolveu algo que não é JSON.');
-    }
-
-    const uso = dados.content?.find((b) => b.type === 'tool_use');
-    if (!uso?.input) {
-      throw new HttpsError('internal',
-        'Não foi possível ler o bilhete nesta imagem. Tente uma captura mais nítida, ou preencha à mão.');
-    }
-    return { ...uso.input, modelo: dados.model || null };
   },
 );

@@ -1566,6 +1566,8 @@ console.log('\nPlanilhas de emenda\n');
           localizador: 'ABC123', assento: null, valor: 1200,
         }],
         ilegivel: ['assento'],
+        provedor: 'openai',
+        modelo: 'gpt-4o',
       },
     },
   });

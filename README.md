@@ -279,13 +279,25 @@ preenche os campos — origem, destino, data, hora, voo, localizador — em vez 
 alguém redigitá-los na planilha e na agenda. A leitura acontece numa Cloud
 Function, porque a chave da API não pode ficar em código de navegador.
 
+A leitura aceita dois provedores, escolhidos pela chave que estiver cadastrada.
+A OpenAI vem primeiro quando as duas existem:
+
 ```bash
-firebase functions:secrets:set CHAVE_ANTHROPIC
+firebase functions:secrets:set CHAVE_OPENAI        # platform.openai.com
+# ou
+firebase functions:secrets:set CHAVE_ANTHROPIC     # console.anthropic.com
+
 firebase deploy --only functions
 ```
 
-A chave se obtém em console.anthropic.com. O gasto é por imagem lida e o volume
-de um gabinete é pequeno — algumas dezenas de bilhetes por mês.
+Para fixar o modelo, ponha `MODELO_LEITURA` em `functions/.env` — o padrão é
+`gpt-4o` na OpenAI e `claude-opus-5` na Anthropic. O gasto é por imagem lida e o
+volume de um gabinete é pequeno: algumas dezenas de bilhetes por mês.
+
+As duas implementações ficam no código de propósito. A parte difícil — o esquema
+dos campos e a instrução de não adivinhar — é a mesma nas duas; o que muda é o
+envelope. Arrancar uma para trocar de provedor obrigaria a reescrever tudo na
+próxima troca, e "momentaneamente" é uma palavra que costuma durar.
 
 **Nada é gravado sem confirmação.** A função devolve o que leu, a tela mostra
 campo por campo com o que ficou ilegível em destaque, e quem confirma é uma
