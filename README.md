@@ -171,6 +171,18 @@ gabinete.
 Para os vereadores aliados, informe o **partido** em *Acessos › Dados do gabinete* — sem
 ele a importação traz prefeito e vice, e diz na tela que não guardou vereador nenhum.
 
+Os arquivos do TSE passam de cem megabytes e a votação de um estado tem mais de um
+milhão de linhas. Eles são lidos **em fluxo**, pedaço a pedaço, somando o que interessa
+e descartando o resto — carregar o arquivo inteiro derrubava a aba. O botão mostra a
+porcentagem enquanto lê; num arquivo grande isso leva alguns minutos.
+
+**Eleito não é o mesmo que empossado.** O TSE publica quem ganhou a eleição, e entre ela
+e a visita cabem renúncia, cassação, morte e o vice assumindo — não existe base pública
+federal com quem está no cargo hoje. Então a ficha escreve **"Prefeito eleito"** e diz de
+que ano. Quando alguém do gabinete confere, marque **"Confirmado pelo gabinete"** no
+município: o rótulo passa a ser "Prefeito" e as importações seguintes do TSE não mexem
+mais naqueles nomes.
+
 A varredura do IBGE **não sobrescreve o que já está preenchido**: alguém pode ter
 corrigido um número à mão por saber de coisa que a tabela não sabe. Ela também não
 adivinha os códigos das tabelas do SIDRA — lê o catálogo que o próprio IBGE publica,

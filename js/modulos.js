@@ -299,6 +299,10 @@ export const MODULOS = [
       // de qualquer visita.
       { k: 'vereadores', l: 'Vereadores aliados', t: 'tags', lista: true },
       { k: 'anoEleicaoMunicipal', l: 'Eleição municipal de', t: 'numero' },
+      // Eleito não é empossado, e quatro anos é tempo de renúncia, cassação,
+      // morte e vice assumindo. Marcar aqui trava a importação do TSE: quem
+      // conferiu sabe mais que o resultado da eleição.
+      { k: 'governoConfirmado', l: 'Confirmado pelo gabinete', t: 'sim-nao', lista: true },
       // A votação do parlamentar naquela cidade. Sem ela a ficha não diz se
       // aquele é um reduto ou um lugar a conquistar — que muda a conversa
       // inteira.

@@ -1845,6 +1845,63 @@ console.log('\nPlanilhas de emenda\n');
   await pagina.close();
 }
 
+// ── leitura em fluxo: o arquivo do TSE não cabe na memória ──
+//
+// A votação por município e zona de um estado passa de um milhão de linhas. Lida
+// de uma vez, o texto vira uma string do dobro do tamanho do arquivo e a matriz
+// de campos vira dezenas de milhões de strings: a aba não trava, morre. Estes
+// testes cobrem o leitor que substituiu aquele caminho.
+{
+  const pl = await import('../js/planilha.js');
+
+  // Um File de mentira: o leitor só usa size e slice().arrayBuffer().
+  const arquivoFalso = (texto, { latin1 = false } = {}) => {
+    const bytes = latin1
+      ? Uint8Array.from([...texto].map((c) => c.charCodeAt(0) & 0xff))
+      : new TextEncoder().encode(texto);
+    return {
+      size: bytes.length,
+      slice(a, b) {
+        const p = bytes.slice(a, b);
+        return { arrayBuffer: async () => p.buffer.slice(p.byteOffset, p.byteOffset + p.byteLength) };
+      },
+    };
+  };
+
+  const csv = 'A;B;C\n1;dois;"tr;es"\n4;cinco;seis\n\n7;oito;nove\n';
+  const vistas = [];
+  const r = await pl.lerCsvEmFluxo(arquivoFalso(csv), (l) => vistas.push(l), { pedaco: 7 });
+  conferir('o cabeçalho sai inteiro mesmo cortado no meio por um pedaço',
+    r.cabecalho.join(',') === 'A,B,C' && r.registros === 3, JSON.stringify(r));
+  conferir('campo entre aspas com o separador dentro não é repartido',
+    vistas[0][2] === 'tr;es', JSON.stringify(vistas[0]));
+  conferir('linha em branco no meio do arquivo não vira registro',
+    vistas.length === 3 && vistas[2][0] === '7', JSON.stringify(vistas));
+
+  // O cabeçalho do TSE é ASCII puro, então o primeiro pedaço não revela a
+  // codificação. Decidir por ele fazia "SÃO JOSÉ" virar losango — e a chave do
+  // município saía diferente da que já estava guardada.
+  const acentos = 'NM_UE;X\nSÃO JOSÉ DO NORTE;1\nERECHIM;2\n';
+  const cortes = [5, 8, 9, 13, 1000];
+  let latinOk = true;
+  let utf8Ok = true;
+  for (const pedaco of cortes) {
+    const a = [];
+    await pl.lerCsvEmFluxo(arquivoFalso(acentos, { latin1: true }), (l) => a.push(l), { pedaco });
+    if (a[0]?.[0] !== 'SÃO JOSÉ DO NORTE') latinOk = false;
+    const b = [];
+    await pl.lerCsvEmFluxo(arquivoFalso(acentos), (l) => b.push(l), { pedaco });
+    if (b[0]?.[0] !== 'SÃO JOSÉ DO NORTE') utf8Ok = false;
+  }
+  conferir('windows-1252 é reconhecido em qualquer ponto de corte', latinOk);
+  conferir('e UTF-8 com caractere partido entre pedaços também', utf8Ok);
+  conferir('arquivo sem byte alto não força codificação nenhuma',
+    (await pl.descobrirCodificacao(arquivoFalso('A;B\n1;2\n'), 4)) === 'utf-8');
+
+  conferir('aspas dobradas dentro do campo viram uma aspa só',
+    pl.dividirLinha('a;"b;c";"d""e"', ';').join('|') === 'a|b;c|d"e');
+}
+
 // ── votação do TSE: reduto ou lugar a conquistar ──
 //
 // O TSE grava o nome de urna, que quase nunca é o nome cadastrado no gabinete.
@@ -1928,6 +1985,19 @@ console.log('\nPlanilhas de emenda\n');
   conferir('e o funil conta o que veio de cada cargo',
     eleitos.funil.prefeitos === 1 && eleitos.funil.vereadores === 3 && eleitos.funil.aliados === 2,
     JSON.stringify(eleitos.funil));
+
+  // A apuração precisa aguentar o arquivo inteiro sem guardar linha nenhuma: é
+  // um acumulador, não uma matriz. Alimentado registro a registro, o resultado
+  // tem de ser o mesmo.
+  const passoAPasso = tse.apuradorDeEleitos(mapaCand, { partidoAliado: 'NOVO' });
+  for (const l of cand) passoAPasso.linha(l);
+  conferir('apurar de uma vez e apurar em fluxo dão o mesmo resultado',
+    JSON.stringify(passoAPasso.resultado()) === JSON.stringify(eleitos));
+
+  const votosPasso = tse.apuradorDeVotacao(mapa, { nomeAutor: 'Marcel van Hattem', cargo: 'DEPUTADO FEDERAL' });
+  for (const l of linhas) votosPasso.linha(l);
+  conferir('o mesmo vale para a votação',
+    JSON.stringify(votosPasso.resultado()) === JSON.stringify(apurado));
 }
 
 // ── renda e produção, do IBGE ──
@@ -1973,6 +2043,20 @@ console.log('\nPlanilhas de emenda\n');
     JSON.stringify(Object.fromEntries(Object.entries(achadas).map(([k, v]) => [k, v.id]))));
   conferir('e o per capita é achado com a unidade dele, que não é a das demais',
     achadas.perCapita?.id === '6543' && achadas.perCapita.unidade === 'Reais');
+
+  // A primeira varredura escolheu a tabela do PIB "Referência 2002 (Série
+  // encerrada)": ela responde, e responde o retrato de dez anos atrás.
+  conferir('série encerrada não é escolhida quando existe série viva',
+    ibge.acharAgregado(ibge.achatarCatalogo([
+      { nome: 'Produto Interno Bruto dos Municípios', agregados: [
+        { id: '21', nome: 'Produto interno bruto - Referência 2002 (Série encerrada)' },
+        { id: '5938', nome: 'Produto interno bruto a preços correntes e valor adicionado bruto' },
+      ] },
+    ]).filter((a) => !/s[ée]rie encerrada/i.test(a.texto)), /produto interno bruto.*munic/i)?.id === '5938');
+  conferir('e a tabela mais recente vence pelo fim da série declarado',
+    ibge.ultimoPeriodo({ periodicidade: { fim: 2021 } }) === 2021
+    && ibge.ultimoPeriodo({ periodicidade: { fim: '2022' } }) === 2022
+    && ibge.ultimoPeriodo({}) === 0);
 
   conferir('"..." e "-" são ausência de dado, não zero',
     ibge.valorIbge('45123') === 45123 && ibge.valorIbge('...') === null
@@ -2081,6 +2165,13 @@ const nomesFalsos = [
     folha.slice(0, 700));
   conferir('e os vereadores aliados, que é com quem se fala antes de viajar',
     /Ana Vereadora/.test(folha) && /Bruno Vereador/.test(folha), folha.slice(0, 800));
+  // Não existe base pública que diga quem está sentado na cadeira hoje: entre a
+  // eleição e a visita cabem renúncia, cassação e o vice assumindo. A folha não
+  // afirma mais do que sabe.
+  conferir('quem não foi conferido aparece como "Prefeito eleito", não "Prefeito"',
+    /Prefeito eleito/.test(folha), folha.slice(0, 800));
+  conferir('e a folha diz onde se registra a conferência',
+    /Confirmado pelo gabinete/.test(folha), folha.slice(0, 1000));
   // Reduto ou lugar a conquistar: é o que muda a conversa de uma visita.
   conferir('a votação do parlamentar na cidade, com percentual e colocação',
     /5\.000/.test(folha) && /38,5%|38\.5%/.test(folha) && /2º/.test(folha),

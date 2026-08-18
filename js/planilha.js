@@ -106,6 +106,127 @@ export function lerCsv(texto, separador = null) {
   };
 }
 
+/** Reparte uma linha em campos, respeitando aspas. */
+export function dividirLinha(linha, sep) {
+  const campos = [];
+  let campo = '';
+  let dentroDeAspas = false;
+
+  for (let i = 0; i < linha.length; i += 1) {
+    const c = linha[i];
+    if (dentroDeAspas) {
+      if (c === '"') {
+        if (linha[i + 1] === '"') { campo += '"'; i += 1; } else dentroDeAspas = false;
+      } else campo += c;
+      continue;
+    }
+    if (c === '"') { dentroDeAspas = true; continue; }
+    if (c === sep) { campos.push(campo); campo = ''; continue; }
+    campo += c;
+  }
+  campos.push(campo);
+  return campos;
+}
+
+/**
+ * Descobre a codificação do arquivo antes de começar a ler.
+ *
+ * Decidir pelo primeiro pedaço não serve: o cabeçalho do TSE é ASCII puro
+ * ("NM_UE;DS_CARGO;…"), que é válido nas duas codificações. A escolha caía em
+ * UTF-8 e os acentos das primeiras cidades viravam losango — "SÃO JOSÉ" virava
+ * "S?O JOS?" e a chave do município saía diferente da que já estava guardada.
+ *
+ * Então a decisão espera a primeira evidência de verdade: o primeiro pedaço com
+ * byte alto. Se ele decodificar como UTF-8 e produzir caractere acentuado, é
+ * UTF-8; se estourar, é windows-1252. Byte alto na fronteira do pedaço não
+ * decide nada — fica pendente no decodificador e a evidência vem na rodada
+ * seguinte, que é justamente o que o modo `stream` existe para fazer.
+ */
+export async function descobrirCodificacao(arquivo, pedaco) {
+  const sonda = new TextDecoder('utf-8', { fatal: true });
+  for (let inicio = 0; inicio < arquivo.size; inicio += pedaco) {
+    const bytes = new Uint8Array(await arquivo.slice(inicio, inicio + pedaco).arrayBuffer());
+    if (!bytes.some((b) => b > 127)) continue;
+    try {
+      const texto = sonda.decode(bytes, { stream: true });
+      for (const c of texto) if (c.charCodeAt(0) > 127) return 'utf-8';
+    } catch {
+      return 'windows-1252';
+    }
+  }
+  return 'utf-8';
+}
+
+/**
+ * Lê uma planilha grande sem carregá-la inteira na memória.
+ *
+ * `lerCsv` monta a matriz completa, o que serve para as exportações de dezenas
+ * de milhares de linhas — e derruba a aba nos arquivos do TSE. A votação por
+ * município e zona de um estado tem mais de um milhão de linhas: o arquivo em
+ * texto vira uma string do dobro do tamanho, e a matriz de campos vira dezenas
+ * de milhões de strings. A página não trava, ela morre.
+ *
+ * Aqui o arquivo é lido em pedaços, decodificado em fluxo e entregue linha a
+ * linha a quem chamou, que soma o que interessa e descarta o resto. O uso de
+ * memória passa a ser o do resultado, não o do arquivo.
+ *
+ * O `await` de cada pedaço devolve o quadro ao navegador de propósito: sem ele a
+ * aba congela por minutos e o sistema operacional oferece encerrá-la, que é
+ * exatamente o que se está tentando evitar.
+ */
+export async function lerCsvEmFluxo(arquivo, aoRegistro, {
+  aoAndar = null, pedaco = 4 * 1024 * 1024,
+} = {}) {
+  const total = arquivo.size;
+  let decodificador = null;
+  let separador = null;
+  let cabecalho = null;
+  let registros = 0;
+  let resto = '';
+
+  const entregar = (linha) => {
+    if (!linha.trim()) return;
+    if (separador === null) separador = detectarSeparador(linha);
+    const campos = dividirLinha(linha, separador);
+    if (!cabecalho) { cabecalho = campos.map((v) => v.replace(BOM, '').trim()); return; }
+    registros += 1;
+    aoRegistro(campos, cabecalho, registros);
+  };
+
+  // Uma linha completa sempre termina fora de aspas, então o que sobra de um
+  // pedaço começa em fronteira de registro: dá para reiniciar o estado de aspas
+  // a cada rodada sem risco de partir um campo ao meio.
+  const consumir = (texto, ultimo) => {
+    let inicio = 0;
+    let dentroDeAspas = false;
+    for (let i = 0; i < texto.length; i += 1) {
+      const c = texto[i];
+      if (c === '"') { dentroDeAspas = !dentroDeAspas; continue; }
+      if (dentroDeAspas) continue;
+      if (c === '\n' || c === '\r') {
+        entregar(texto.slice(inicio, i));
+        if (c === '\r' && texto[i + 1] === '\n') i += 1;
+        inicio = i + 1;
+      }
+    }
+    resto = texto.slice(inicio);
+    if (ultimo && resto) { entregar(resto); resto = ''; }
+  };
+
+  decodificador = new TextDecoder(await descobrirCodificacao(arquivo, pedaco));
+
+  for (let inicio = 0; inicio < total; inicio += pedaco) {
+    const buffer = await arquivo.slice(inicio, inicio + pedaco).arrayBuffer();
+    const texto = decodificador.decode(buffer, { stream: inicio + pedaco < total });
+    consumir(resto + texto, false);
+    if (aoAndar) aoAndar(Math.min(inicio + pedaco, total), total, registros);
+    await new Promise((r) => { setTimeout(r, 0); });
+  }
+  consumir(resto, true);
+
+  return { cabecalho: cabecalho || [], registros };
+}
+
 /** Reduz um rótulo a uma chave comparável: sem acento, sem pontuação, minúsculo. */
 export function chaveDoRotulo(texto) {
   return String(texto || '')

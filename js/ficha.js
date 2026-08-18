@@ -211,6 +211,7 @@ export function dadosDaFicha({ nome, uf, lugar, retrato, cadastro, contatos }) {
     presidenteCamara: cadastro?.presidenteCamara || null,
     vereadores: [].concat(cadastro?.vereadores || []).filter(Boolean),
     fonteGoverno: cadastro?.fonteGoverno || null,
+    governoConfirmado: !!cadastro?.governoConfirmado,
     votacao: votacaoDoMunicipio(cadastro),
     economia: resumoEconomico(cadastro, retrato),
     emendas: lugar ? {
@@ -239,7 +240,7 @@ export function textoDaFicha(f, { gabinete = null } = {}) {
   if (f.populacao) l.push(`${f.populacao.toLocaleString('pt-BR')} habitantes${f.regiao ? ` · ${f.regiao}` : ''}`);
 
   if (f.prefeito) {
-    l.push('', `*Prefeitura*: ${f.prefeito}${f.partidoPrefeito ? ` (${f.partidoPrefeito})` : ''}`);
+    l.push('', `*${f.governoConfirmado ? 'Prefeito' : 'Prefeito eleito'}*: ${f.prefeito}${f.partidoPrefeito ? ` (${f.partidoPrefeito})` : ''}`);
     if (f.presidenteCamara) l.push(`Presidente da Câmara: ${f.presidenteCamara}`);
   }
   if (f.vereadores.length) l.push(`Vereadores aliados: ${f.vereadores.join(', ')}`);
@@ -498,8 +499,13 @@ export async function painelFicha(container) {
     ]));
 
     // ── quem governa ──
+    // "Prefeito eleito" e não "prefeito": o TSE publica quem ganhou a eleição,
+    // e entre a eleição e a visita cabem renúncia, cassação e o vice assumindo.
+    // Chamar o eleito de prefeito numa folha que vai para a mão do parlamentar
+    // é o tipo de precisão que se descobre que faltava na frente do interessado.
+    const rotuloPrefeito = f.governoConfirmado ? 'Prefeito' : 'Prefeito eleito';
     const politicos = [
-      f.prefeito ? ['Prefeito', f.prefeito + (f.partidoPrefeito ? ` (${f.partidoPrefeito})` : '')] : null,
+      f.prefeito ? [rotuloPrefeito, f.prefeito + (f.partidoPrefeito ? ` (${f.partidoPrefeito})` : '')] : null,
       f.vicePrefeito ? ['Vice-prefeito', f.vicePrefeito] : null,
       f.presidenteCamara ? ['Presidente da Câmara', f.presidenteCamara] : null,
     ].filter(Boolean);
@@ -523,7 +529,15 @@ export async function painelFicha(container) {
       f.prefeito && !f.presidenteCamara
         ? el('p', { class: 'campo-dica', texto: 'O presidente da Câmara não vem do TSE — é eleito pelos vereadores. Preencha em Municípios.' })
         : null,
-      f.fonteGoverno ? el('p', { class: 'ficha-fonte', texto: f.fonteGoverno }) : null,
+      // Não existe base pública que diga quem está sentado na cadeira hoje. O
+      // que dá para fazer é não afirmar mais do que se sabe, e mostrar onde
+      // quem sabe registra o que conferiu.
+      f.prefeito && !f.governoConfirmado
+        ? el('p', { class: 'campo-dica', texto: 'Quem tomou posse pode não ser quem está no cargo: cabe renúncia, cassação e o vice assumindo. Conferido? Marque "Confirmado pelo gabinete" em Municípios — a partir daí a importação do TSE não mexe mais nestes nomes.' })
+        : null,
+      f.fonteGoverno
+        ? el('p', { class: 'ficha-fonte', texto: f.governoConfirmado ? `${f.fonteGoverno} · confirmado pelo gabinete` : f.fonteGoverno })
+        : null,
     ].filter(Boolean)));
 
     // ── votação ──

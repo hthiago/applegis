@@ -20,7 +20,9 @@
 import { semAcento, CODIGO_UF } from './mapa.js';
 
 const IBGE = 'https://servicodados.ibge.gov.br/api';
-const CACHE = 'ibge-tabelas-v1';
+// v2: a v1 aceitava série encerrada e não sondava a tabela antes de usá-la, e
+// ficou guardada no navegador de quem já rodou a varredura.
+const CACHE = 'ibge-tabelas-v2';
 
 /** Número do IBGE: "..." e "-" significam sem informação, não zero. */
 export function valorIbge(bruto) {
@@ -137,24 +139,45 @@ const ALVOS_PIB = [
   { chave: 'servicos', re: /valor adicionado.*servi[çc]os/i },
 ];
 
+// "Rendimento médio de pessoas de 14 anos ou mais ocupadas por posição na
+// ocupação" não é "renda média do município": numa ficha levada a uma reunião
+// esse número seria defendido como se fosse outro. Ou vem o rendimento
+// domiciliar per capita, ou o campo fica vazio.
 const ALVOS_RENDA = [
-  { chave: 'rendaMedia', re: /rendimento.*(mensal|per capita)/i },
+  { chave: 'rendaMedia', re: /rendimento.*domiciliar.*per capita/i },
 ];
+
+/** Séries encerradas ainda respondem — com o retrato de dez anos atrás. */
+const ENCERRADA = /s[ée]rie encerrada|descontinuad/i;
 
 async function json(url) {
   const r = await fetch(url);
-  if (!r.ok) throw new Error(`${r.status} em ${url.replace(IBGE, '')}`);
+  if (!r.ok) throw new Error(`HTTP ${r.status} em ${url.replace(IBGE, '')}`);
   return r.json();
+}
+
+/** Até quando a tabela vai. É por aqui que a série viva vence a encerrada. */
+export function ultimoPeriodo(metadados) {
+  const fim = metadados?.periodicidade?.fim;
+  const n = Number(String(fim ?? '').slice(0, 4));
+  return Number.isFinite(n) ? n : 0;
 }
 
 /**
  * Resolve, uma vez, quais tabelas e variáveis usar — e guarda o resultado.
  *
- * O catálogo inteiro é grande e não muda de uma semana para a outra; o que fica
- * guardado é só o punhado de identificadores resolvidos, que cabe em qualquer
- * lugar. Se a resolução falhar, ela falha dizendo o que procurou.
+ * Três filtros, e cada um deles existe por um erro concreto que aconteceu:
+ *
+ *   1. Série encerrada fora. A primeira versão escolheu a tabela do PIB
+ *      "Referência 2002 (Série encerrada)" — ela responde, e responde velho.
+ *   2. A tabela mais recente primeiro, pelo fim da série declarado no metadado.
+ *   3. E, no fim, uma sonda: pede o dado de um município de verdade e só aceita
+ *      a tabela se vier número. Sem isso, uma tabela que exige classificação ou
+ *      que não tem o período pedido devolve vazio sem erro nenhum, e a
+ *      varredura inteira termina com "497 sem dado publicado" — que foi
+ *      exatamente o que aconteceu.
  */
-export async function tabelasEconomicas({ recarregar = false } = {}) {
+export async function tabelasEconomicas({ recarregar = false, codigoProva = null } = {}) {
   if (!recarregar) {
     try {
       const guardado = localStorage.getItem(CACHE);
@@ -165,28 +188,52 @@ export async function tabelasEconomicas({ recarregar = false } = {}) {
   const achatado = achatarCatalogo(await json(`${IBGE}/v3/agregados`));
   if (!achatado.length) throw new Error('O IBGE não devolveu o catálogo de tabelas.');
 
+  const tentativas = [];
   const resolver = async (re, alvos, rotulo) => {
-    // Mais de um candidato pode casar; vale o primeiro que chegue ao município
-    // e tenha as variáveis procuradas.
-    for (const candidato of achatado.filter((a) => re.test(a.texto)).slice(0, 6)) {
+    const candidatos = achatado.filter((a) => re.test(a.texto) && !ENCERRADA.test(a.texto));
+    if (!candidatos.length) {
+      tentativas.push(`${rotulo}: nenhuma tabela com esse nome no catálogo`);
+      return null;
+    }
+
+    const comMeta = [];
+    for (const c of candidatos.slice(0, 12)) {
       let meta;
-      try { meta = await json(`${IBGE}/v3/agregados/${candidato.id}/metadados`); } catch { continue; }
+      try { meta = await json(`${IBGE}/v3/agregados/${c.id}/metadados`); } catch { continue; }
       if (!atendeMunicipio(meta)) continue;
       const variaveis = acharVariaveis(meta, alvos);
       if (!Object.keys(variaveis).length) continue;
-      return { agregado: candidato.id, nome: candidato.texto.trim(), variaveis };
+      comMeta.push({ agregado: c.id, nome: c.texto.trim(), variaveis, ate: ultimoPeriodo(meta) });
     }
-    console.warn(`IBGE: nenhuma tabela de ${rotulo} com dado por município.`);
+    if (!comMeta.length) {
+      tentativas.push(`${rotulo}: ${candidatos.length} tabela(s) pelo nome, nenhuma com dado por município e as variáveis procuradas`);
+      return null;
+    }
+
+    comMeta.sort((a, b) => b.ate - a.ate);
+    if (!codigoProva) return comMeta[0];
+
+    for (const t of comMeta) {
+      try {
+        const prova = await lerTabela(t, [codigoProva]);
+        const valores = prova.get(String(codigoProva)) || {};
+        if (Object.entries(valores).some(([k, v]) => k !== 'ano' && v != null)) return t;
+      } catch (erro) {
+        tentativas.push(`${rotulo}: tabela ${t.agregado} recusou a consulta (${erro.message})`);
+      }
+    }
+    tentativas.push(`${rotulo}: ${comMeta.length} tabela(s) candidatas, nenhuma devolveu número para o município de prova`);
     return null;
   };
 
   const tabelas = {
     pib: await resolver(/produto interno bruto.*munic|valor adicionado bruto/i, ALVOS_PIB, 'PIB municipal'),
-    renda: await resolver(/rendimento.*domic|rendimento nominal/i, ALVOS_RENDA, 'rendimento'),
+    renda: await resolver(/rendimento.*domiciliar/i, ALVOS_RENDA, 'rendimento domiciliar per capita'),
+    tentativas,
     resolvidoEm: new Date().toISOString().slice(0, 10),
   };
   if (!tabelas.pib && !tabelas.renda) {
-    throw new Error('O IBGE respondeu, mas não achei nenhuma tabela de PIB ou rendimento com dado por município. O catálogo pode ter mudado de nome.');
+    throw new Error(`O IBGE respondeu, mas nenhuma tabela serviu. ${tentativas.join('; ')}.`);
   }
 
   try { localStorage.setItem(CACHE, JSON.stringify(tabelas)); } catch { /* cheio, tudo bem */ }
@@ -245,13 +292,12 @@ export function economiaDoMunicipio(pib, renda, tabelas) {
     administracao: pib.administracao,
   }) : null;
 
+  const curto = (t) => String(t || '').split(/[,;]| - /)[0].trim().slice(0, 70);
   const fontes = [];
-  if (pib?.perCapita || atividades) fontes.push(`${tabelas.pib?.nome || 'PIB dos municípios'} (${pib?.ano || 's/ ano'})`);
-  if (renda?.rendaMedia) fontes.push(`${tabelas.renda?.nome || 'rendimento'} (${renda?.ano || 's/ ano'})`);
+  if (pib?.perCapita || atividades) fontes.push(`${curto(tabelas.pib?.nome) || 'PIB dos municípios'} (${pib?.ano || 's/ ano'})`);
+  if (renda?.rendaMedia) fontes.push(`${curto(tabelas.renda?.nome) || 'rendimento'} (${renda?.ano || 's/ ano'})`);
 
   const dados = {};
-  // Mil reais na tabela do PIB, reais na ficha: um PIB per capita de "45" numa
-  // folha impressa não é um número errado, é um número que engana.
   if (pib?.perCapita != null) dados.pibPerCapita = pib.perCapita;
   if (atividades) dados.atividades = atividades;
   if (renda?.rendaMedia != null) dados.rendaMedia = renda.rendaMedia;
@@ -272,8 +318,6 @@ export function economiaDoMunicipio(pib, renda, tabelas) {
 export async function atualizarEconomia(municipios, {
   substituir = false, uf = null, aoAndar = null,
 } = {}) {
-  const tabelas = await tabelasEconomicas();
-
   // O código do IBGE não aparece na ficha, mas é a chave de tudo aqui: é por
   // ele que a tabela responde. Fica guardado no registro para a próxima
   // varredura não precisar resolver o nome de novo.
@@ -288,6 +332,16 @@ export async function atualizarEconomia(municipios, {
     .map((m) => ({ m, codigo: m.codigoIbge || porNome.get(semAcento(m.nome)) || null }))
     .filter((x) => x.codigo);
 
+  if (!alvos.length) {
+    throw new Error(uf
+      ? `Nenhum dos ${municipios.length} municípios cadastrados foi reconhecido na lista do IBGE de ${uf}. Confira a UF em Acessos → Dados do gabinete.`
+      : 'Informe a UF do gabinete em Acessos → Dados do gabinete: é por ela que os municípios são reconhecidos no IBGE.');
+  }
+
+  // A tabela é escolhida com um município de verdade na mão, e não no escuro:
+  // é a sonda que separa a tabela certa da que responde vazio sem reclamar.
+  const tabelas = await tabelasEconomicas({ codigoProva: alvos[0].codigo });
+
   const funil = {
     municipios: municipios.length,
     comCodigo: alvos.length,
@@ -295,7 +349,9 @@ export async function atualizarEconomia(municipios, {
     preenchidos: 0,
     preservados: 0,
     semDado: 0,
-    tabelas: [tabelas.pib?.nome, tabelas.renda?.nome].filter(Boolean),
+    tabelas: [tabelas.pib, tabelas.renda].filter(Boolean).map((t) => `${t.nome.slice(0, 60)} (até ${t.ate || '?'})`),
+    faltando: tabelas.tentativas || [],
+    erros: [],
   };
 
   const registros = [];
@@ -303,10 +359,19 @@ export async function atualizarEconomia(municipios, {
   for (let i = 0; i < alvos.length; i += POR_VEZ) {
     const fatia = alvos.slice(i, i + POR_VEZ);
     const codigos = fatia.map((x) => x.codigo);
-    const [pib, renda] = await Promise.all([
-      tabelas.pib ? lerTabela(tabelas.pib, codigos).catch(() => new Map()) : new Map(),
-      tabelas.renda ? lerTabela(tabelas.renda, codigos).catch(() => new Map()) : new Map(),
-    ]);
+    // A falha de rede é registrada, não engolida: foi engolindo-a que a
+    // varredura anterior conseguiu terminar dizendo "497 sem dado publicado",
+    // que manda procurar defeito no IBGE quando o defeito era a consulta.
+    const pegar = async (tabela) => {
+      if (!tabela) return new Map();
+      try {
+        return await lerTabela(tabela, codigos);
+      } catch (erro) {
+        if (funil.erros.length < 3) funil.erros.push(erro.message);
+        return new Map();
+      }
+    };
+    const [pib, renda] = await Promise.all([pegar(tabelas.pib), pegar(tabelas.renda)]);
 
     for (const { m, codigo } of fatia) {
       const dados = economiaDoMunicipio(pib.get(codigo), renda.get(codigo), tabelas);

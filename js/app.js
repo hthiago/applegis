@@ -738,7 +738,12 @@ function extrasDosMunicipios() {
       btn.disabled = true;
       btn.textContent = 'Lendo…';
       try {
-        await executar(arquivo);
+        // Os arquivos do TSE passam de cem megabytes e a leitura leva minutos.
+        // Sem a porcentagem andando, um botão parado por três minutos é
+        // indistinguível de um botão quebrado — e a pessoa recarrega a página.
+        await executar(arquivo, (lido, total) => {
+          btn.textContent = `Lendo ${Math.round((lido / total) * 100)}%…`;
+        });
         recarregar();
       } catch (erro) {
         console.error(erro);
@@ -759,29 +764,32 @@ function extrasDosMunicipios() {
     importador(
       'Importar candidaturas (TSE)',
       'O arquivo "consulta_cand" da eleição municipal: traz prefeito, vice e os vereadores eleitos do partido',
-      async (arquivo) => {
+      async (arquivo, aoAndar) => {
         const tse = await import('./tse.js');
         const g = nucleo.sessaoMod.sessao.gabinete;
-        const r = await tse.importarCandidatos(arquivo, { partidoAliado: g?.partido || null });
+        const r = await tse.importarCandidatos(arquivo, { partidoAliado: g?.partido || null, aoAndar });
         aviso([
           `${r.municipios} municípios (${r.novos} novos, ${r.atualizados} atualizados)`,
-          `${r.prefeitos} prefeitos e ${r.vices} vices`,
+          `${r.prefeitos} eleitos prefeitos e ${r.vices} vices`,
           r.partidoAliado
             ? `${r.aliados} vereadores do ${r.partidoAliado}, de ${r.vereadores} eleitos`
             // Dito, e não silenciado: sem o partido a coluna de aliados fica
             // vazia e alguém acharia que o arquivo estava incompleto.
             : `${r.vereadores} vereadores lidos, nenhum guardado — informe o partido em Acessos → Dados do gabinete`,
-        ].join(' · '), r.partidoAliado ? 'ok' : 'erro');
+          // Quem o gabinete já conferiu não é tocado, e isso precisa aparecer:
+          // do contrário parece que a importação falhou naquelas cidades.
+          r.confirmados ? `${r.confirmados} preservados por já estarem confirmados pelo gabinete` : null,
+        ].filter(Boolean).join(' · '), r.partidoAliado ? 'ok' : 'erro');
       },
     ),
     // Quanto votou: o que diz se aquilo é um reduto ou um lugar a conquistar.
     importador(
       'Importar votação (TSE)',
       'O arquivo de votação por município do repositório de dados eleitorais do TSE',
-      async (arquivo) => {
+      async (arquivo, aoAndar) => {
         const tse = await import('./tse.js');
         const g = nucleo.sessaoMod.sessao.gabinete;
-        const r = await tse.importarVotacao(arquivo, { nomeAutor: g?.deputado || null });
+        const r = await tse.importarVotacao(arquivo, { nomeAutor: g?.deputado || null, aoAndar });
         aviso([
           `${r.municipios} municípios (${r.novos} novos, ${r.atualizados} atualizados)`,
           `${r.votos.toLocaleString('pt-BR')} votos em ${r.linhas} linhas lidas`,
@@ -817,6 +825,10 @@ function extrasDosMunicipios() {
               r.semDado ? `${r.semDado} sem dado publicado` : null,
               r.semCodigo ? `${r.semCodigo} não reconhecidos no IBGE` : null,
               r.tabelas.length ? `tabelas: ${r.tabelas.join('; ')}` : null,
+              // O que a varredura procurou e não achou vale mais que o silêncio:
+              // é a diferença entre "o IBGE não tem" e "eu procurei errado".
+              r.faltando?.length ? `não resolvido — ${r.faltando.join('; ')}` : null,
+              r.erros?.length ? `falhas de consulta: ${r.erros.join('; ')}` : null,
             ].filter(Boolean).join(' · '), r.preenchidos ? 'ok' : 'erro');
             recarregar();
           } catch (erro) {

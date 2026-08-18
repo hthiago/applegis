@@ -1,4 +1,4 @@
-import { decodificar, lerCsv, chaveDoRotulo, numeroBr } from './planilha.js';
+import { lerCsvEmFluxo, chaveDoRotulo, numeroBr } from './planilha.js';
 import { nomePadrao } from './crm.js';
 
 /**
@@ -72,60 +72,74 @@ export function mesmoCandidato(daUrna, procurado) {
  * mais votos naquela cidade. É o número que diz se aquele é um reduto ou um
  * lugar a conquistar — e é o que muda a conversa de uma visita.
  */
-export function apurarPorMunicipio(linhas, mapa, { nomeAutor, numero = null, cargo = null }) {
+export function apuradorDeVotacao(mapa, { nomeAutor, numero = null, cargo = null }) {
   const porMunicipio = new Map();
-
   const campo = (linha, nome) => (mapa[nome] === undefined ? '' : String(linha[mapa[nome]] ?? '').trim());
+  const cargoAlvo = cargo ? semAcento(cargo) : null;
 
-  for (const linha of linhas) {
-    const cargoDaLinha = campo(linha, 'cargo');
-    if (cargo && cargoDaLinha && !semAcento(cargoDaLinha).includes(semAcento(cargo))) continue;
+  return {
+    linha(linha) {
+      const cargoDaLinha = campo(linha, 'cargo');
+      if (cargoAlvo && cargoDaLinha && !semAcento(cargoDaLinha).includes(cargoAlvo)) return;
 
-    const cidade = campo(linha, 'municipio');
-    if (!cidade) continue;
-    const votos = numeroBr(campo(linha, 'votos')) || 0;
-    if (!votos) continue;
+      const cidade = campo(linha, 'municipio');
+      if (!cidade) return;
+      const votos = numeroBr(campo(linha, 'votos')) || 0;
+      if (!votos) return;
 
-    const chave = semAcento(cidade);
-    if (!porMunicipio.has(chave)) {
-      porMunicipio.set(chave, {
-        nome: nomePadrao(cidade),
-        uf: campo(linha, 'uf') || null,
-        ano: numeroBr(campo(linha, 'ano')) || null,
-        votosParlamentar: 0,
-        votosValidos: 0,
-        // A colocação precisa de todos os candidatos, não só do nosso — por isso
-        // os demais são contados aqui e descartados no fim.
-        outros: new Map(),
-      });
-    }
-    const m = porMunicipio.get(chave);
-    m.votosValidos += votos;
+      const chave = semAcento(cidade);
+      if (!porMunicipio.has(chave)) {
+        porMunicipio.set(chave, {
+          nome: nomePadrao(cidade),
+          uf: campo(linha, 'uf') || null,
+          ano: numeroBr(campo(linha, 'ano')) || null,
+          votosParlamentar: 0,
+          votosValidos: 0,
+          // A colocação precisa de todos os candidatos, não só do nosso — por
+          // isso os demais são contados aqui e descartados no fim.
+          outros: new Map(),
+        });
+      }
+      const m = porMunicipio.get(chave);
+      m.votosValidos += votos;
 
-    const nosso = mesmoCandidato(campo(linha, 'candidato'), nomeAutor)
-      || (numero && campo(linha, 'numero') === String(numero));
+      const nosso = mesmoCandidato(campo(linha, 'candidato'), nomeAutor)
+        || (numero && campo(linha, 'numero') === String(numero));
 
-    if (nosso) {
-      m.votosParlamentar += votos;
-      m.partido = m.partido || campo(linha, 'partido') || null;
-    } else {
-      const quem = campo(linha, 'candidato') || campo(linha, 'numero');
-      m.outros.set(quem, (m.outros.get(quem) || 0) + votos);
-    }
-  }
+      if (nosso) {
+        m.votosParlamentar += votos;
+        m.partido = m.partido || campo(linha, 'partido') || null;
+      } else {
+        // O número do candidato, e não o nome, é a chave dos concorrentes: são
+        // centenas por município e o texto curto é o que mantém a apuração de um
+        // estado inteiro dentro da memória de uma aba.
+        const quem = campo(linha, 'numero') || campo(linha, 'candidato');
+        m.outros.set(quem, (m.outros.get(quem) || 0) + votos);
+      }
+    },
 
-  return [...porMunicipio.values()]
-    .filter((m) => m.votosParlamentar > 0)
-    .map((m) => {
-      const acima = [...m.outros.values()].filter((v) => v > m.votosParlamentar).length;
-      const { outros, ...resto } = m;
-      return {
-        ...resto,
-        colocacao: acima + 1,
-        percentual: m.votosValidos ? (m.votosParlamentar / m.votosValidos) * 100 : null,
-      };
-    })
-    .sort((a, b) => b.votosParlamentar - a.votosParlamentar);
+    resultado() {
+      return [...porMunicipio.values()]
+        .filter((m) => m.votosParlamentar > 0)
+        .map((m) => {
+          const acima = [...m.outros.values()].filter((v) => v > m.votosParlamentar).length;
+          const { outros, ...resto } = m;
+          return {
+            ...resto,
+            colocacao: acima + 1,
+            percentual: m.votosValidos ? (m.votosParlamentar / m.votosValidos) * 100 : null,
+          };
+        })
+        .sort((a, b) => b.votosParlamentar - a.votosParlamentar);
+    },
+  };
+}
+
+/** A mesma apuração sobre uma matriz já em memória — o caminho dos testes. */
+export function apurarPorMunicipio(linhas, mapa, opcoes) {
+  const apurador = apuradorDeVotacao(mapa, opcoes);
+  for (const linha of linhas) apurador.linha(linha);
+  return apurador.resultado();
 }
 
 /**
@@ -167,55 +181,67 @@ export function papelDoCargo(cargo) {
  * O que continua humano, e não tem como não ser: o presidente da Câmara, eleito
  * pelos pares em sessão que o TSE não registra.
  */
-export function apurarEleitos(linhas, mapa, { partidoAliado = null } = {}) {
+export function apuradorDeEleitos(mapa, { partidoAliado = null } = {}) {
   const campo = (linha, nome) => (mapa[nome] === undefined ? '' : String(linha[mapa[nome]] ?? '').trim());
   const porMunicipio = new Map();
   const funil = { eleitos: 0, prefeitos: 0, vices: 0, vereadores: 0, aliados: 0 };
+  const aliado = partidoAliado ? semAcento(partidoAliado) : null;
 
-  for (const linha of linhas) {
-    const papel = papelDoCargo(campo(linha, 'cargo'));
-    if (!papel) continue;
-    if (!foiEleito(campo(linha, 'situacao'))) continue;
+  return {
+    linha(linha) {
+      const papel = papelDoCargo(campo(linha, 'cargo'));
+      if (!papel) return;
+      if (!foiEleito(campo(linha, 'situacao'))) return;
 
-    const cidade = campo(linha, 'municipio');
-    if (!cidade) continue;
+      const cidade = campo(linha, 'municipio');
+      if (!cidade) return;
 
-    const chave = semAcento(cidade);
-    if (!porMunicipio.has(chave)) {
-      porMunicipio.set(chave, {
-        nome: nomePadrao(cidade),
-        uf: campo(linha, 'uf') || null,
-        ano: numeroBr(campo(linha, 'ano')) || null,
-        prefeito: null,
-        partidoPrefeito: null,
-        vicePrefeito: null,
-        vereadores: [],
-      });
-    }
-    const m = porMunicipio.get(chave);
-    const nome = nomePadrao(campo(linha, 'urna') || campo(linha, 'candidato'));
-    const partido = campo(linha, 'partido') || null;
-    if (!nome) continue;
-    funil.eleitos += 1;
-
-    if (papel === 'prefeito') {
-      m.prefeito = nome;
-      m.partidoPrefeito = partido;
-      funil.prefeitos += 1;
-    } else if (papel === 'vice') {
-      m.vicePrefeito = nome;
-      funil.vices += 1;
-    } else {
-      funil.vereadores += 1;
-      if (partidoAliado && semAcento(partido) === semAcento(partidoAliado)) {
-        m.vereadores.push(nome);
-        funil.aliados += 1;
+      const chave = semAcento(cidade);
+      if (!porMunicipio.has(chave)) {
+        porMunicipio.set(chave, {
+          nome: nomePadrao(cidade),
+          uf: campo(linha, 'uf') || null,
+          ano: numeroBr(campo(linha, 'ano')) || null,
+          prefeito: null,
+          partidoPrefeito: null,
+          vicePrefeito: null,
+          vereadores: [],
+        });
       }
-    }
-  }
+      const m = porMunicipio.get(chave);
+      const nome = nomePadrao(campo(linha, 'urna') || campo(linha, 'candidato'));
+      const partido = campo(linha, 'partido') || null;
+      if (!nome) return;
+      funil.eleitos += 1;
 
-  for (const m of porMunicipio.values()) m.vereadores.sort((a, b) => a.localeCompare(b, 'pt-BR'));
-  return { municipios: [...porMunicipio.values()], funil };
+      if (papel === 'prefeito') {
+        m.prefeito = nome;
+        m.partidoPrefeito = partido;
+        funil.prefeitos += 1;
+      } else if (papel === 'vice') {
+        m.vicePrefeito = nome;
+        funil.vices += 1;
+      } else {
+        funil.vereadores += 1;
+        if (aliado && semAcento(partido) === aliado) {
+          m.vereadores.push(nome);
+          funil.aliados += 1;
+        }
+      }
+    },
+
+    resultado() {
+      for (const m of porMunicipio.values()) m.vereadores.sort((a, b) => a.localeCompare(b, 'pt-BR'));
+      return { municipios: [...porMunicipio.values()], funil };
+    },
+  };
+}
+
+/** A mesma apuração sobre uma matriz já em memória — o caminho dos testes. */
+export function apurarEleitos(linhas, mapa, opcoes = {}) {
+  const apurador = apuradorDeEleitos(mapa, opcoes);
+  for (const linha of linhas) apurador.linha(linha);
+  return apurador.resultado();
 }
 
 /**
@@ -225,29 +251,50 @@ export function apurarEleitos(linhas, mapa, { partidoAliado = null } = {}) {
  * econômico e as observações do gabinete continuam onde estavam: foram
  * escritos por gente, e uma importação não tem por que apagá-los.
  */
-export async function importarCandidatos(arquivo, { partidoAliado = null } = {}) {
-  const texto = decodificar(await arquivo.arrayBuffer());
-  const { cabecalho, linhas } = lerCsv(texto);
+export async function importarCandidatos(arquivo, { partidoAliado = null, aoAndar = null } = {}) {
+  let apurador = null;
+  let colunas = null;
+
+  const { cabecalho, registros: lidas } = await lerCsvEmFluxo(arquivo, (linha, cab) => {
+    if (!apurador) {
+      colunas = mapearColunasDoTse(cab);
+      if (colunas.municipio === undefined || colunas.cargo === undefined || colunas.situacao === undefined) {
+        throw new Error(`Não reconheci o formato de candidaturas do TSE em "${cab.slice(0, 6).join(', ')}…". O arquivo precisa ter município, cargo e o resultado da candidatura (DS_SIT_TOT_TURNO) — é o "consulta_cand" da eleição municipal, não o de votação.`);
+      }
+      apurador = apuradorDeEleitos(colunas, { partidoAliado });
+    }
+    apurador.linha(linha);
+  }, { aoAndar });
+
   if (!cabecalho.length) throw new Error('O arquivo está vazio ou não é uma planilha de texto.');
+  if (!apurador) throw new Error('O arquivo tem cabeçalho mas nenhuma linha de dados.');
 
-  const mapa = mapearColunasDoTse(cabecalho);
-  if (mapa.municipio === undefined || mapa.cargo === undefined || mapa.situacao === undefined) {
-    throw new Error(`Não reconheci o formato de candidaturas do TSE em "${cabecalho.slice(0, 6).join(', ')}…". O arquivo precisa ter município, cargo e o resultado da candidatura (DS_SIT_TOT_TURNO) — é o "consulta_cand" da eleição municipal, não o de votação.`);
-  }
-
-  const { municipios, funil } = apurarEleitos(linhas, mapa, { partidoAliado });
+  const { municipios, funil } = apurador.resultado();
   if (!municipios.length) {
     throw new Error('Nenhum eleito encontrado neste arquivo. Confira se é o arquivo de candidaturas (consulta_cand) de uma eleição municipal.');
   }
 
   const { salvarEmLote, listar } = await import('./dados.js');
-  const existentes = new Set((await listar('municipios', { recarregar: true })).map((m) => m.id));
+  const guardados = await listar('municipios', { recarregar: true });
+  const porId = new Map(guardados.map((m) => [m.id, m]));
 
   let novos = 0;
   let atualizados = 0;
+  let confirmados = 0;
   const registros = municipios.map((m) => {
     const id = chaveDoMunicipio(m.nome, m.uf);
-    if (existentes.has(id)) atualizados += 1; else novos += 1;
+    const antigo = porId.get(id);
+
+    // Eleito não é o mesmo que empossado, e quatro anos é tempo de muita coisa:
+    // renúncia, cassação, morte, o vice assumindo. Quando alguém do gabinete
+    // confirmou quem governa, essa informação é melhor que a do TSE e a
+    // importação não passa por cima dela.
+    if (antigo?.governoConfirmado) {
+      confirmados += 1;
+      return { id, dados: { nome: m.nome, uf: m.uf, anoEleicaoMunicipal: m.ano } };
+    }
+
+    if (antigo) atualizados += 1; else novos += 1;
     return {
       id,
       dados: {
@@ -260,7 +307,7 @@ export async function importarCandidatos(arquivo, { partidoAliado = null } = {})
         // uma lista velha de outro partido que sobreviveria à importação.
         vereadores: m.vereadores,
         anoEleicaoMunicipal: m.ano,
-        fonteGoverno: `TSE — candidaturas ${m.ano || ''}`.trim(),
+        fonteGoverno: `TSE — eleito em ${m.ano || 's/ ano'}`,
       },
     };
   }).filter((r) => r.id);
@@ -269,10 +316,11 @@ export async function importarCandidatos(arquivo, { partidoAliado = null } = {})
   if (gravacao.falhas.length) throw gravacao.falhas[0];
 
   return {
-    linhas: linhas.length,
+    linhas: lidas,
     municipios: registros.length,
     novos,
     atualizados,
+    confirmados,
     partidoAliado,
     ...funil,
   };
@@ -292,23 +340,31 @@ export function chaveDoMunicipio(nome, uf) {
  * econômico continuam como estão — foram preenchidos por gente, e uma
  * importação de votos não tem por que apagá-los.
  */
-export async function importarVotacao(arquivo, { nomeAutor, numero = null, cargo = 'DEPUTADO FEDERAL' } = {}) {
+export async function importarVotacao(arquivo, {
+  nomeAutor, numero = null, cargo = 'DEPUTADO FEDERAL', aoAndar = null,
+} = {}) {
   if (!nomeAutor && !numero) {
     throw new Error('Informe o nome do parlamentar em Acessos → Dados do gabinete, ou o número na urna.');
   }
 
-  const texto = decodificar(await arquivo.arrayBuffer());
-  const { cabecalho, linhas } = lerCsv(texto);
+  let apurador = null;
+  const { cabecalho, registros: lidas } = await lerCsvEmFluxo(arquivo, (linha, cab) => {
+    if (!apurador) {
+      const colunas = mapearColunasDoTse(cab);
+      if (colunas.municipio === undefined || colunas.votos === undefined) {
+        throw new Error(`Não reconheci o formato do TSE em "${cab.slice(0, 6).join(', ')}…". O arquivo precisa ter município e quantidade de votos.`);
+      }
+      apurador = apuradorDeVotacao(colunas, { nomeAutor, numero, cargo });
+    }
+    apurador.linha(linha);
+  }, { aoAndar });
+
   if (!cabecalho.length) throw new Error('O arquivo está vazio ou não é uma planilha de texto.');
+  if (!apurador) throw new Error('O arquivo tem cabeçalho mas nenhuma linha de dados.');
 
-  const mapa = mapearColunasDoTse(cabecalho);
-  if (mapa.municipio === undefined || mapa.votos === undefined) {
-    throw new Error(`Não reconheci o formato do TSE em "${cabecalho.slice(0, 6).join(', ')}…". O arquivo precisa ter município e quantidade de votos.`);
-  }
-
-  const apurado = apurarPorMunicipio(linhas, mapa, { nomeAutor, numero, cargo });
+  const apurado = apurador.resultado();
   const funil = {
-    linhas: linhas.length,
+    linhas: lidas,
     municipios: apurado.length,
     votos: apurado.reduce((t, m) => t + m.votosParlamentar, 0),
     novos: 0,
