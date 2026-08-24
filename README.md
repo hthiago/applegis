@@ -23,7 +23,8 @@ falam direto com o Firebase pelo navegador — publicar é copiar a pasta.
 | `js/config.js` | Chaves do Firebase, áreas, papéis e regra de permissão |
 | `js/modulos.js` | **Catálogo dos módulos.** Descreve os campos de cada tela |
 | `js/crud.js` | Gera listagem e formulário a partir do catálogo |
-| `js/paineis.js` | Painéis consolidados (gabinete, emendas, cota) |
+| `js/paineis.js` | Painéis consolidados (gabinete, emendas por município, cota) |
+| `js/painel.js` | Leitura da planilha do painel de transferências — a fonte das emendas |
 | `js/sessao.js` | Login, lista de autorizados e vínculo com o gabinete |
 | `js/admin.js` | Tela de liberação de acessos |
 | `js/camara.js` | Integração com os dados abertos da Câmara |
@@ -138,83 +139,88 @@ Duas exceções deliberadas à regra geral, ambas registradas em `firestore.rule
 
 ---
 
-## Integrações
+## Orçamento: uma tela, uma fonte
+
+A área do Orçamento tem **uma tela** — *Por município* — e **um botão**: importar a
+planilha do painel de transferências.
+
+Havia mais: consulta ao Portal da Transparência, varredura do Transferegov, sondagem de
+fontes, leitura ao vivo do painel do SERPRO por WebSocket. Tudo isso saiu. Aquelas
+integrações foram escritas contra bases que não dava para exercitar de verdade durante o
+desenvolvimento, e o resultado eram telas que **pareciam** funcionar: banco aparecendo
+como maior destino, filtros com milhares de linhas vazias, totais que ninguém sabia
+defender numa reunião. Uma fonte conferível vale mais que seis fontes que ninguém
+confere.
+
+### Como importar
+
+1. Abra o painel público de transferências do governo (`dd-publico.serpro.gov.br`).
+2. Selecione o parlamentar.
+3. Abra a tabela **"Lista de emendas com instrumentos celebrados"** e exporte.
+4. Em *Orçamento › Por município*, clique em **Importar planilha do painel** e escolha o
+   arquivo. `.xlsx` e `.csv` funcionam.
+
+O arquivo chega pronto: emenda, instrumento, município, proponente, objeto, empenhado e
+desembolsado numa linha só, já ligados por quem tem a base — mais o link da página do
+convênio no Transferegov. Preenche destinos e emendas ao mesmo tempo, e **reimportar
+atualiza em vez de duplicar**: a chave é o número do instrumento, o identificador que o
+próprio governo usa.
+
+### O que a leitura da planilha resolve sozinha
+
+- **`.xlsx` é lido nativamente**, pelo `DecompressionStream` do navegador. Nenhuma
+  biblioteca foi acrescentada — o projeto continua se publicando por cópia da pasta.
+- **"Desembolsado" é o nome que o painel dá ao pago.** Sem esse sinônimo toda linha
+  entraria com pago zerado, e a pergunta que justifica a tela — *já foi pago?* —
+  responderia errado em silêncio.
+- **Um convênio pode ser custeado por duas emendas**, e o painel repete a linha inteira
+  com os mesmos valores. Somar contaria o mesmo repasse duas vezes (no arquivo real eram
+  R$ 1.495.221,40 em dobro). O dinheiro é contado uma vez, no instrumento, e as emendas
+  que o custeiam ficam todas registradas. No total por emenda, instrumento compartilhado
+  não entra em nenhuma: a fonte não diz quanto cada uma pôs, e repartir seria inventar o
+  número — ele aparece à parte, declarado.
+- **Banco nunca nomeia um destino nem um município.** Ninguém destina emenda ao Banco do
+  Brasil; é ele quem opera o repasse. Onde o município é conhecido, a linha é daquela
+  cidade e o banco fica como caminho; onde não é, vira "Destino não identificado", com o
+  dinheiro somado e a incógnita declarada.
+
+### As listas de Emendas e Destinos
+
+Continuam existindo, fora da navegação, para consulta e anotação:
+
+- `#/orcamento/emendas` — uma linha por emenda
+- `#/orcamento/transferencias` — uma linha por destino
+
+Para trazê-las de volta à barra de abas, tire `oculto: true` do módulo correspondente em
+`js/modulos.js`.
+
+---
+
+## Outras integrações
 
 **Dados abertos da Câmara** (ativa, sem cadastro). Em *Legislativo › Proposições
 acompanhadas*, o botão **Buscar na Câmara** importa uma proposição pelo tipo, número e
 ano; **Atualizar situações** relê a situação e o órgão de tudo que está na lista.
 Em *Produção do gabinete*, **Importar da Câmara** traz tudo que o parlamentar assinou.
-
-### Por que "Banco do Brasil" não aparece como destino
-
-Num repasse a município, o favorecido do documento de pagamento no SIAFI é o **banco** —
-é ele quem opera a transferência. Ninguém destina emenda ao Banco do Brasil, mas é o
-nome dele que a fonte publica.
-
-Tratá-lo como destino fazia dele **o maior destino do mandato**, porque todo repasse
-passa por lá. Pior: sem município conhecido, ele também virava um "município" no painel
-por cidade. As regras agora são:
-
-- **Banco nunca nomeia um destino.** Quando o município é conhecido, a linha é daquela
-  cidade e o banco fica registrado como caminho (`Página no Transferegov` → *via*).
-- **Sem município, a linha vira "Destino não identificado"**, uma por emenda, com o
-  banco declarado no objeto. O dinheiro continua somado — sumir com a linha faria o
-  total encolher sem explicação —, mas ele não é atribuído a quem não recebeu.
-- **Só o município nomeia um lugar** no painel por cidade. O que não tem município vai
-  para "Sem município identificado", e não vira uma cidade inventada.
-
-Se os seus dados foram importados antes desta correção, rode **Reorganizar** em
-*Destinos*: ele reaplica as regras ao que já está gravado e diz quantas linhas entraram
-e quantas saíram.
-
-### As três abas do Orçamento
-
-Elas parecem responder a mesma coisa, e não respondem. A diferença é o nível:
-
-| Aba | Uma linha é | A pergunta que ela responde |
-| --- | --- | --- |
-| **Emendas** | uma emenda | O que o mandato indicou, e quanto foi executado no total. **É por aqui que se importa e se atualiza** — as outras duas leem o que sai daqui |
-| **Por município** | uma cidade | Para onde o dinheiro foi, o que travou. Mapa em cima, tabela buscável embaixo |
-| **Destinos** | um destino | Quem exatamente recebeu, para quê, em que fase. O nível mais fino: quando "Por município" mostra um número e alguém pergunta "de onde saiu isso" |
-
-No fluxo normal: importa em **Emendas**, lê em **Por município**, confere em **Destinos**.
-
-*Havia uma quarta, "Dashboard", que era "Por município" com outro desenho — mesma
-consolidação, mesmos números, mesmo detalhamento. As duas viraram uma. O endereço
-`#/orcamento/dashboard` continua respondendo, para não quebrar link já salvo.*
-
----
-
-**Emendas por planilha** (ativa, sem cadastro). Em *Orçamento › Emendas*, o botão
-**Importar planilha** lê as exportações do Portal da Transparência, do Transferegov, do
-SIOP e do Fundo Nacional de Saúde. Reconhece o formato pelo cabeçalho, concilia por
-código e ano — reimportar atualiza em vez de duplicar — e filtra pelo nome do
-parlamentar, dizendo quantas linhas descartou e com qual nome.
-
-**Emendas por consulta direta** (precisa das Cloud Functions; veja abaixo). Duas
-camadas: *Emendas* traz o consolidado por emenda — empenhado, liquidado, pago e
-restos —, e *Transferências* traz a emenda discriminada, uma linha por documento
-de execução, com quem recebeu, para quê e em que fase.
+Em *Administrativo › Cota parlamentar*, **Buscar na Câmara** traz as despesas da CEAP.
 
 **Municípios: três importações, três fontes** (ativas, sem cadastro). Em
 *Administrativo › Municípios*, o cadastro que alimenta a ficha de apresentação se
 preenche sozinho para o estado inteiro. Cada botão escreve só os seus campos, então as
-três convivem no mesmo registro sem se apagarem, e nenhuma delas toca no que é do
-gabinete.
+três convivem no mesmo registro sem se apagarem.
 
 | Botão | Arquivo / fonte | Preenche |
 |---|---|---|
 | **Importar candidaturas (TSE)** | `consulta_cand_<ano>_<UF>.csv` da eleição **municipal** (2024), em [dadosabertos.tse.jus.br](https://dadosabertos.tse.jus.br) | Prefeito, partido, vice e os vereadores eleitos **do partido do parlamentar** |
 | **Importar votação (TSE)** | `votacao_candidato_munzona_<ano>_<UF>.csv` da eleição **geral** (2022) | Votos na cidade, votos válidos, colocação e percentual |
-| **Atualizar economia (IBGE)** | API do IBGE, sem arquivo | PIB per capita, renda média e de onde vem a produção ("agropecuária 40%, serviços 30%…") |
+| **Atualizar economia (IBGE)** | API do IBGE, sem arquivo | PIB per capita, renda média e de onde vem a produção |
 
 Para os vereadores aliados, informe o **partido** em *Acessos › Dados do gabinete* — sem
 ele a importação traz prefeito e vice, e diz na tela que não guardou vereador nenhum.
 
-Os arquivos do TSE passam de cem megabytes e a votação de um estado tem mais de um
-milhão de linhas. Eles são lidos **em fluxo**, pedaço a pedaço, somando o que interessa
-e descartando o resto — carregar o arquivo inteiro derrubava a aba. O botão mostra a
-porcentagem enquanto lê; num arquivo grande isso leva alguns minutos.
+Os arquivos do TSE passam de cem megabytes. Eles são lidos **em fluxo**, pedaço a pedaço,
+somando o que interessa e descartando o resto — carregar o arquivo inteiro derrubava a
+aba. O botão mostra a porcentagem enquanto lê.
 
 **Eleito não é o mesmo que empossado.** O TSE publica quem ganhou a eleição, e entre ela
 e a visita cabem renúncia, cassação, morte e o vice assumindo — não existe base pública
@@ -223,157 +229,63 @@ que ano. Quando alguém do gabinete confere, marque **"Confirmado pelo gabinete"
 município: o rótulo passa a ser "Prefeito" e as importações seguintes do TSE não mexem
 mais naqueles nomes.
 
-A varredura do IBGE **não sobrescreve o que já está preenchido**: alguém pode ter
-corrigido um número à mão por saber de coisa que a tabela não sabe. Ela também não
-adivinha os códigos das tabelas do SIDRA — lê o catálogo que o próprio IBGE publica,
-acha a tabela e as variáveis pelo nome, e diz quando não acha. Número de tabela errado
-devolve resposta vazia sem erro nenhum, que é o pior modo de falhar.
-
-**O que continua sendo do gabinete**, e nenhuma base pública tem: o **presidente da
-Câmara** (eleito pelos vereadores em sessão que o TSE não registra) e **"o que importa
-nesta cidade"**, que é leitura política. A ficha diz isso na tela em vez de deixar o
-campo vazio parecendo defeito.
-
 **Ficha de apresentação** (ativa). Em *Administrativo › Ficha de apresentação*, o
 município em uma folha: população e região (IBGE), um minimapa mostrando onde a cidade
-fica no estado, quem governa e os vereadores aliados (cadastro de *Municípios*), a
-votação do parlamentar ali (TSE), renda e produção, as emendas com o valor por
-habitante, o que está travado e os contatos do gabinete na cidade. **Imprimir** gera a
-folha física em A4, sem barra nem botões. **Enviar por WhatsApp** monta a versão curta
-e abre a conversa com a mensagem pronta.
+fica no estado, quem governa e os vereadores aliados, a votação do parlamentar ali, renda
+e produção, as emendas com o valor por habitante, o que está travado e os contatos do
+gabinete na cidade. **Imprimir** gera a folha física em A4. **Enviar por WhatsApp** monta
+a versão curta e abre a conversa com a mensagem pronta.
 
 O envio é restrito ao **parlamentar e à equipe do gabinete** — a ficha traz pendências,
 impedimentos e a leitura interna da cidade, e não é material de divulgação. O CRM não
-aparece nessa lista, e não há campo de número livre: um toque errado num seletor de
-trezentos contatos mandaria para o prefeito o que foi escrito sobre ele. O número do
-parlamentar fica em *Acessos › Dados do gabinete*; o da equipe, no cadastro de *Equipe*
-(fora da navegação, acessível por `#/administrativo/equipe`). Quem está desligado ou sem
-número não aparece. O envio usa hoje o link `wa.me`, que funciona sem chave e sem
-cadastro; quando a API oficial do gabinete for definida, muda só a função
-`linkDoWhatsapp`.
+aparece nessa lista, e não há campo de número livre. O número do parlamentar fica em
+*Acessos › Dados do gabinete*; o da equipe, no cadastro de *Equipe* (fora da navegação,
+acessível por `#/administrativo/equipe`).
 
-**Exportação do painel do SERPRO** (o caminho mais curto, e o recomendado). No painel
-público `dd-publico.serpro.gov.br`, selecione o parlamentar, exporte a tabela **"Lista de
-emendas com instrumentos celebrados"** e solte o `.xlsx` no botão **Importar planilha**
-de *Orçamento › Emendas*. O formato é reconhecido sozinho — não há botão separado.
+**Contatos (CRM)** (ativa). Em *Administrativo › Contatos*, **Importar lista** lê uma
+planilha em CSV e padroniza telefone, nome, município e categoria na entrada.
 
-Ele traz de uma vez a junção que custou semanas montar das tabelas cruas: emenda,
-instrumento, município, proponente, objeto, empenhado e desembolsado, numa linha só, com
-o link da página do convênio no Transferegov. Preenche **Destinos** e **Emendas** ao
-mesmo tempo, e reimportar atualiza em vez de duplicar — a chave é o número do
-instrumento, que é o identificador que o próprio governo usa.
-
-Dois cuidados que o arquivo real ensinou:
-
-- **`.xlsx` é lido nativamente.** Antes só entrava texto, e a mensagem "o arquivo está
-  vazio ou não é uma planilha de texto" era verdadeira e inútil — o arquivo estava
-  certo. O leitor usa o `DecompressionStream` do navegador; nenhuma biblioteca foi
-  acrescentada.
-- **Um convênio pode ser custeado por duas emendas**, e o painel repete a linha inteira,
-  com os mesmos valores. Somar contaria o mesmo repasse duas vezes (no arquivo do
-  gabinete eram R$ 1.495.221,40 em dobro). O dinheiro é contado uma vez, no instrumento,
-  e as emendas que o custeiam ficam todas registradas. No total por emenda, instrumento
-  compartilhado não entra em nenhuma: a fonte não diz quanto cada uma pôs, e repartir
-  seria inventar o número — ele aparece à parte, declarado.
-
-**Painel do SERPRO ao vivo** (alternativa, sem exportar à mão). O botão **Painel do
-SERPRO**, em *Emendas*, busca a mesma tabela direto do serviço e a passa pelo mesmo
-importador.
-
-Como funciona, porque não é óbvio: o painel é um aplicativo **Qlik Sense** público. Os
-números não vêm por endereço HTTP; vêm por **WebSocket**, num protocolo JSON-RPC
-próprio, endereçados por identificadores de aplicativo e de objeto. Isso parece
-proibitivo e não é — os identificadores estão escritos no `config.js` que o próprio
-painel publica, com descrição de cada objeto, e WebSocket não passa por CORS nem exige
-chave. O navegador conversa direto, sem a ponte no servidor.
-
-O painel exige selecionar um parlamentar antes de exibir a tabela, então o nome em
-*Acessos › Dados do gabinete* precisa ser exatamente como o Transferegov o escreve. Se
-nenhuma grafia de campo for aceita, o recado diz quais foram tentadas.
-
-**Este é o segundo caminho, não o primeiro.** O painel se descreve como "emendas
-parlamentares operacionalizadas no Transferegov.br" — é a mesma base que o sistema já
-consulta pela API documentada, não uma fonte nova. O que ele acrescenta é a junção
-pronta: emenda ligada a instrumento, beneficiário, município e situação. Serve de
-conferência, e de atalho quando a junção pela API não fecha.
-
-**Sondagem de outras bases.** O botão **Sondar fontes** consulta também o SIOP e o
-catálogo federal de dados abertos, e relata o que cada um respondeu. Nenhuma chave do
-gabinete é enviada para esses hosts.
-
-**Ainda por ligar:** Google Agenda (leitura para o gabinete, escrita para a chefia),
-Google Drive (documentos guardam o link, não o arquivo) e as despesas da cota
-(`/deputados/{id}/despesas`), que a Câmara publica com atraso e por isso servem de
-conferência, nunca de saldo ao vivo.
+**Ainda por ligar:** Google Agenda (leitura para o gabinete, escrita para a chefia) e
+Google Drive (documentos guardam o link, não o arquivo).
 
 ---
 
-## Consulta automática (Cloud Functions)
+## Cloud Functions
 
-O navegador não alcança as bases de execução orçamentária, e não é limitação
-contornável: o **Portal da Transparência exige chave de API** — que em código de
-navegador ficaria visível para qualquer visitante, com a cota correndo por conta do
-gabinete — e **nenhuma dessas bases autoriza chamada vinda de outra origem**, o que o
-navegador recusa antes mesmo de a resposta chegar.
+Sobrou **uma** função no servidor: a leitura de bilhete de passagem por imagem
+(*Administrativo › Viagens › Ler bilhete*). Ela precisa estar lá por um motivo só — a
+chave da API de leitura não pode ficar em código de navegador, onde ficaria visível para
+qualquer visitante da página.
 
-A pasta `functions/` resolve os dois: a chave vive como segredo do projeto e a chamada
-parte do servidor, onde a regra de origem não se aplica. Quem pode usá-la são as contas
-que já constam em `autorizados` — a mesma lista que abre o sistema.
-
-Enquanto isto não estiver no ar, a importação por planilha continua funcionando e traz
-exatamente os mesmos números.
+A ponte de consulta às bases de execução orçamentária saiu junto com as importações
+automáticas. Uma ponte que ninguém chama é superfície de ataque sem contrapartida, mesmo
+fechada por lista de hosts e por lista de autorizados.
 
 ### Passo a passo
 
 1. **Mude o projeto para o plano Blaze.** Cloud Functions exige cartão cadastrado. O
-   plano é por uso e tem cota gratuita generosa; o volume de um gabinete — algumas
-   dezenas de consultas por mês — fica dentro dela.
-
-2. **Obtenha a chave do Portal da Transparência**, gratuita, em
-   `portaldatransparencia.gov.br/api-de-dados/cadastrar-email`. Ela chega por e-mail.
-
-3. **Guarde a chave como segredo** (ela nunca entra no repositório):
+   plano é por uso e tem cota gratuita generosa.
+2. Cadastre a chave do provedor de leitura:
 
    ```
-   firebase functions:secrets:set CHAVE_PORTAL_TRANSPARENCIA
+   firebase functions:secrets:set CHAVE_OPENAI
    ```
 
-4. **Implante:**
+   Ou `CHAVE_ANTHROPIC`, se preferir. A função usa a que existir, OpenAI primeiro.
+3. Implante:
 
    ```
-   cd functions && npm install && cd ..
    firebase deploy --only functions
    ```
+4. Ligue `CONSULTA_AUTOMATICA` em `js/config.js` e publique o site.
 
-   O nome do banco (`appgab`) já vai em `functions/.env`, que não é segredo —
-   só a chave é.
+Se você já usou as importações automáticas de emenda, a chave do Portal ficou sem uso e
+pode ser removida:
 
-   **Se o deploy falhar com `iam.serviceaccounts.actAs denied`**, é a conta de
-   serviço padrão do Compute que ainda não existe: projetos do Firebase não a
-   criam até a API do Compute Engine ser ativada. Rode
-   `gcloud services enable compute.googleapis.com`, espere um minuto e repita o
-   deploy.
+```
+firebase functions:secrets:destroy CHAVE_PORTAL_TRANSPARENCIA
+```
 
-5. **Ligue no cliente.** Em `js/config.js`, mude `CONSULTA_AUTOMATICA` para `true` e
-   confira que `REGIAO_FUNCOES` é a mesma região declarada em `functions/index.js`
-   (`southamerica-east1`). Região divergente não dá erro de configuração: dá
-   "função não encontrada", que parece falta de implantação e não é.
-
-6. Publique o site. O botão **Consultar Portal** passa a aparecer em *Orçamento ›
-   Emendas*.
-
-### O que a função faz e o que ela não faz
-
-Ela **repassa** — não interpreta. Devolve o que a fonte respondeu, com o status e o
-corpo do erro quando há erro, e toda a leitura acontece no cliente, onde há teste. Um
-proxy que também interpretasse esconderia de qual dos dois lados veio o problema.
-
-Só aceita as fontes declaradas em `FONTES`, dentro de `functions/index.js`, e descarta
-parâmetro fora da lista de cada uma. Sem isso ela seria um proxy aberto: qualquer conta
-autenticada poderia usá-la para buscar qualquer endereço da internet com o projeto do
-gabinete no meio.
-
----
 
 ## Dados pessoais
 

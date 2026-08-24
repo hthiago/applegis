@@ -787,6 +787,10 @@ export const MODULOS = [
   // ────────────────────────────── ORÇAMENTO ──────────────────────────────
   {
     id: 'emendas',
+    // Fora da navegação: a área do Orçamento passou a ser uma tela só, o painel
+    // por município, alimentado pela planilha. A coleção continua, o endereço
+    // continua respondendo, e a lista volta tirando este `oculto`.
+    oculto: true,
     area: 'orcamento',
     nome: 'Emendas',
     singular: 'emenda',
@@ -806,10 +810,8 @@ export const MODULOS = [
       campos: ['municipio', 'favorecido', 'objeto', 'metas', 'acao', 'situacao',
         'documento', 'localizador', 'area'],
     },
-    importaEmendas: true,
     // Uma emenda que se reparte entre municípios aparece como "MÚLTIPLO" na
     // fonte. A sanfona abre a repartição sem tirar ninguém da lista.
-    temSanfona: true,
     facetas: [
       { campo: 'tipo', l: 'Tipo' },
       { campo: 'ano', l: 'Ano', ordem: 'valor-desc' },
@@ -899,13 +901,13 @@ export const MODULOS = [
   },
   {
     id: 'transferencias',
+    oculto: true,
     area: 'orcamento',
     nome: 'Destinos',
     singular: 'destino',
     descricao: 'Uma linha por destino: quem exatamente recebeu, para quê, e em que fase. É o nível mais fino — quando "Por município" mostra um número e alguém pergunta "de onde saiu isso", a resposta está aqui.',
     ordenar: { campo: 'valor', dir: 'desc' },
     busca: ['favorecido', 'municipio', 'objeto', 'metas', 'acao', 'documentos', 'codigoEmenda', 'processo'],
-    importaTransferencias: true,
     semCriacao: true,
     // Faceta só serve quando toda linha tem classificação. A versão em grão de
     // documento produzia 5752 opções "sem classificação", que não filtram nada —

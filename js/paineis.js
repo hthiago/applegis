@@ -342,6 +342,74 @@ export function detalhesDeUmLugar(m) {
 
 const semAcento = (t) => String(t ?? '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 
+/**
+ * O único caminho de entrada das emendas: a planilha do painel.
+ *
+ * As consultas automáticas saíram. Elas foram escritas contra bases que este
+ * projeto nunca conseguiu exercitar de verdade, e o resultado eram telas que
+ * pareciam funcionar e não funcionavam: banco como maior destino, filtros com
+ * milhares de linhas vazias, totais que ninguém sabia defender numa reunião.
+ *
+ * A exportação do painel de transferências resolve tudo isso de uma vez porque
+ * chega pronta — emenda, instrumento, município, proponente, objeto, empenhado
+ * e desembolsado numa linha só, já ligados por quem tem a base. Três cliques no
+ * painel valem mais que uma integração que ninguém consegue conferir.
+ *
+ * Um botão, uma fonte. Quando há uma fonte só, não há divergência para
+ * conciliar nem dúvida sobre de onde veio o número.
+ */
+function importadorDoPainel(recarregar) {
+  const escolher = el('input', {
+    type: 'file',
+    accept: '.xlsx,.csv,.txt',
+    class: 'oculto-visual',
+  });
+
+  const btn = el('button', {
+    class: 'btn btn--primario',
+    type: 'button',
+    texto: 'Importar planilha do painel',
+    title: 'A exportação da tabela "Lista de emendas com instrumentos celebrados" do painel de transferências',
+    onclick: () => escolher.click(),
+  });
+
+  escolher.addEventListener('change', async () => {
+    const arquivo = escolher.files?.[0];
+    if (!arquivo) return;
+    btn.disabled = true;
+    btn.textContent = 'Lendo a planilha…';
+    try {
+      const { importarDoPainel } = await import('./painel.js');
+      const r = await importarDoPainel(arquivo);
+      aviso([
+        `${r.destinos} destinos e ${r.emendas} emendas, em ${r.municipios} municípios`,
+        `empenhado ${fmtDinheiroCurto(r.empenhado)}, pago ${fmtDinheiroCurto(r.pago)}`,
+        r.repetidos ? `${r.repetidos} linha(s) eram o mesmo convênio custeado por duas emendas — contado uma vez` : null,
+        r.semMunicipio ? `${r.semMunicipio} sem município` : null,
+      ].filter(Boolean).join(' · '), 'ok');
+      recarregar();
+    } catch (erro) {
+      console.error(erro);
+      aviso(erro.message || 'Não foi possível importar a planilha.', 'erro');
+    } finally {
+      escolher.value = '';
+      btn.disabled = false;
+      btn.textContent = 'Importar planilha do painel';
+    }
+  });
+
+  return el('div', { class: 'modulo-acoes' }, [
+    btn,
+    escolher,
+    el('p', {
+      class: 'campo-dica',
+      // Dito na tela porque quem abre esta aba pela primeira vez não sabe de
+      // onde tirar o arquivo, e procurar isso num README é atrito desnecessário.
+      texto: 'No painel de transferências do governo, selecione o parlamentar, abra "Lista de emendas com instrumentos celebrados" e exporte. Reimportar atualiza, não duplica.',
+    }),
+  ]);
+}
+
 export async function painelEmendas(container) {
   limpar(container).appendChild(carregando());
   const { sessao } = await import('./sessao.js');
@@ -385,6 +453,8 @@ export async function painelEmendas(container) {
     'aria-label': 'Buscar município',
     oninput: () => desenhar(),
   });
+
+  container.appendChild(importadorDoPainel(() => painelEmendas(container)));
 
   // O mapa vem antes da tabela porque responde outra pergunta, e antes: onde o
   // mandato chegou e onde não chegou. A tabela responde "quanto foi para

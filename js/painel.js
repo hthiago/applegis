@@ -1,6 +1,10 @@
 import { lerPlanilha, chaveDoRotulo, numeroBr } from './planilha.js';
 import { classificarDestino, situacaoDaExecucao } from './posprocessamento.js';
-import { normalizarCodigo } from './emendas.js';
+
+/** Só os dígitos do código da emenda: as fontes pontuam de jeitos diferentes. */
+export function normalizarCodigo(codigo) {
+  return String(codigo ?? '').replace(/\D/g, '');
+}
 
 /**
  * Importa a planilha exportada do painel de transferências do SERPRO.
