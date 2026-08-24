@@ -1845,6 +1845,46 @@ console.log('\nPlanilhas de emenda\n');
   await pagina.close();
 }
 
+// ── o andar de cima da emenda: ler o painel antes de supor como ele funciona ──
+//
+// O painel de emendas discricionárias do SERPRO é uma casca de Qlik Sense: os
+// números chegam por WebSocket, num protocolo próprio, endereçados por um
+// identificador de aplicativo. Não há endereço que devolva linhas — mas a casca
+// diz qual é o serviço, e é isso que a sonda extrai.
+{
+  const em = await import('../js/emendas.js');
+
+  const casca = [
+    '<!DOCTYPE html><html><head>',
+    '<script src="/resources/assets/external/requirejs/require.js"></script>',
+    '</head><body><script>',
+    ' var config = { host: "dd-publico.serpro.gov.br", isSecure: true };',
+    ' require(["js/qlik"], function(qlik){',
+    '   var app = qlik.openApp("a1b2c3d4-1111-2222-3333-abcdefabcdef", config);',
+    ' });',
+    ' fetch("/api/v1/apps");',
+    ' var ws = new WebSocket("wss://dd-publico.serpro.gov.br/app/a1b2c3d4-1111-2222-3333-abcdefabcdef");',
+    '</script></body></html>',
+  ].join('\n');
+
+  const pistas = em.pistasDeQlik(casca);
+  conferir('a casca do painel é reconhecida como Qlik, e não como API',
+    pistas.qlik === true);
+  conferir('o identificador do aplicativo sai da própria página',
+    pistas.guids[0] === 'a1b2c3d4-1111-2222-3333-abcdefabcdef'
+    && pistas.aplicativos[0] === 'a1b2c3d4-1111-2222-3333-abcdefabcdef',
+    JSON.stringify(pistas.guids));
+  conferir('e o endereço do serviço, que é o que diz se dá para integrar',
+    /^wss:\/\/dd-publico\.serpro\.gov\.br\/app\//.test(pistas.sockets[0] || ''),
+    JSON.stringify(pistas.sockets));
+  conferir('chamadas de dados da própria casca são listadas',
+    pistas.chamadas.includes('/api/v1/apps'), JSON.stringify(pistas.chamadas));
+  // Sem pista nenhuma não há o que integrar, e insistir seria voltar a
+  // adivinhar — que é o que custou caro neste projeto.
+  conferir('página que não diz de onde tira o número é relatada como tal',
+    em.pistasDeQlik('<html><body>Em manutenção</body></html>').achouAlgo === false);
+}
+
 // ── leitura em fluxo: o arquivo do TSE não cabe na memória ──
 //
 // A votação por município e zona de um estado passa de um milhão de linhas. Lida

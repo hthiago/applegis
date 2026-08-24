@@ -212,6 +212,19 @@ número não aparece. O envio usa hoje o link `wa.me`, que funciona sem chave e 
 cadastro; quando a API oficial do gabinete for definida, muda só a função
 `linkDoWhatsapp`.
 
+**Painéis do SERPRO e do SIOP** (em sondagem). O painel de emendas discricionárias
+(`dd-publico.serpro.gov.br`) mostra a emenda um andar acima do Portal: dotação, empenho
+por ação e impedimento — onde ela existe antes de virar documento de execução. O botão
+**Sondar fontes**, em *Emendas*, agora consulta também esse host, o SIOP e o catálogo
+federal de dados abertos, e relata o que cada um respondeu.
+
+Painel desse tipo costuma ser uma casca de Qlik Sense: os números não vêm por um
+endereço, vêm por WebSocket num protocolo próprio, endereçados por um identificador de
+aplicativo. Não dá para "puxar" com uma consulta HTTP. A sondagem lê a casca e extrai o
+identificador, o endereço do serviço e as chamadas que ela faz — que é o que decide se
+há integração possível ou se o caminho é outra base. Nenhuma chave do gabinete é enviada
+para esses hosts.
+
 **Ainda por ligar:** Google Agenda (leitura para o gabinete, escrita para a chefia),
 Google Drive (documentos guardam o link, não o arquivo) e as despesas da cota
 (`/deputados/{id}/despesas`), que a Câmara publica com atraso e por isso servem de

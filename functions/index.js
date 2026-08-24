@@ -89,6 +89,47 @@ const FONTES = {
   },
 
   /**
+   * Onde a emenda aparece antes de virar documento de execução.
+   *
+   * O painel de emendas discricionárias do SERPRO e o SIOP mostram a emenda no
+   * nível do orçamento — dotação, empenho por ação, impedimento —, que é um
+   * andar acima do que o Portal publica. O gabinete perguntou se dá para puxar
+   * dali; daqui não dá nem para olhar, porque o ambiente não alcança gov.br.
+   *
+   * Estas três entradas existem para a sondagem descobrir do navegador de quem
+   * usa: o host continua sendo lista fechada, o caminho é peneirado como nas
+   * demais, e nenhuma chave é enviada para eles. Se um deles responder JSON, a
+   * integração deixa de ser palpite.
+   */
+  'serpro-painel': {
+    base: 'https://dd-publico.serpro.gov.br',
+    permiteSufixo: true,
+    parametrosLivres: true,
+    cabecalhos: () => ({}),
+    exigeChave: false,
+  },
+  'siop-livre': {
+    base: 'https://www.siop.planejamento.gov.br',
+    permiteSufixo: true,
+    parametrosLivres: true,
+    cabecalhos: () => ({}),
+    exigeChave: false,
+  },
+  /**
+   * O catálogo federal de dados abertos: quem publica o quê, e em qual arquivo.
+   * É a mesma lição do Transferegov — ler o catálogo em vez de adivinhar o
+   * endereço —, agora um nível acima: em vez de descobrir o endpoint de uma
+   * base, descobrir qual base tem o dado.
+   */
+  'dados-gov': {
+    base: 'https://dados.gov.br',
+    permiteSufixo: true,
+    parametrosLivres: true,
+    cabecalhos: () => ({}),
+    exigeChave: false,
+  },
+
+  /**
    * A documentação da própria API, que é o fim do adivinhar.
    *
    * O Portal publica um OpenAPI com todos os endereços e todos os parâmetros de
@@ -252,8 +293,23 @@ exports.consultarFonte = onCall(
     try {
       dados = JSON.parse(corpo);
     } catch {
-      throw new HttpsError('internal',
-        `${fonte} devolveu algo que não é JSON: ${corpo.slice(0, 200)}`);
+      // Fonte fixa que devolve não-JSON é defeito: quem a consulta espera
+      // registros. Fonte exploratória é outra coisa — ela existe para descobrir
+      // o que há do outro lado, e um painel entrega HTML com o identificador do
+      // aplicativo e o endereço do serviço dentro. Recusar esse texto seria
+      // recusar justamente a resposta que se foi buscar.
+      if (!config.parametrosLivres) {
+        throw new HttpsError('internal',
+          `${fonte} devolveu algo que não é JSON: ${corpo.slice(0, 200)}`);
+      }
+      return {
+        fonte,
+        quantidade: 0,
+        dados: null,
+        tipo: resposta.headers.get('content-type') || null,
+        bruto: corpo.slice(0, 8000),
+        tamanho: corpo.length,
+      };
     }
 
     // A URL volta sem a chave — ela nunca entra na query, mas o hábito de

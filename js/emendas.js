@@ -1722,6 +1722,47 @@ export function enderecosDe(openapi, filtro = /emenda|despesa|documento/i) {
     });
 }
 
+/**
+ * O que uma página de painel entrega sobre o serviço que está por trás dela.
+ *
+ * O painel de emendas discricionárias do SERPRO é um mashup do Qlik Sense: a
+ * página é uma casca, e os números chegam por WebSocket ao motor do Qlik, num
+ * protocolo próprio, endereçado por um identificador de aplicativo. Não existe
+ * endereço que devolva as linhas — mas o identificador, o host do serviço e os
+ * caminhos que a casca chama estão escritos nela.
+ *
+ * Isto não puxa dado nenhum: transforma "tem como puxar dali?" em uma resposta
+ * verificável, com o que a própria página diz de si. É a mesma escolha que
+ * encerrou o adivinhar no Transferegov — ler o que o serviço publica antes de
+ * supor como ele funciona.
+ */
+export function pistasDeQlik(texto) {
+  const t = String(texto || '');
+  const unico = (lista, limite = 8) => [...new Set(lista)].slice(0, limite);
+
+  const guids = unico((t.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi) || []));
+  const sockets = unico((t.match(/wss?:\/\/[^\s"'<>)]+/gi) || []));
+  const aplicativos = unico((t.match(/(?:openApp|appId|app_id|appid)\s*[:=(]\s*["']([^"']{4,80})["']/gi) || [])
+    .map((m) => m.replace(/^.*["']([^"']+)["']$/, '$1')));
+  const chamadas = unico((t.match(/["'](\/(?:api|rest|dados|servico|services|data)\/[A-Za-z0-9\-_/.]{1,80})["']/gi) || [])
+    .map((m) => m.slice(1, -1)), 12);
+  const roteiros = unico((t.match(/<script[^>]+src=["']([^"']+)["']/gi) || [])
+    .map((m) => m.replace(/^.*src=["']([^"']+)["'].*$/i, '$1')), 10);
+
+  const qlik = /qlik|enigma|requirejs|\/resources\/|hypercube/i.test(t);
+  return {
+    qlik,
+    guids,
+    sockets,
+    aplicativos,
+    chamadas,
+    roteiros,
+    // Sem nenhuma das quatro pistas não há o que integrar: a página não diz
+    // de onde tira o número, e insistir seria voltar a adivinhar.
+    achouAlgo: !!(guids.length || sockets.length || aplicativos.length || chamadas.length),
+  };
+}
+
 export function tabelasDe(dados) {
   if (!dados || typeof dados !== 'object' || Array.isArray(dados)) return null;
   const nomes = dados.paths ? Object.keys(dados.paths) : (dados.definitions && Object.keys(dados.definitions));
@@ -1776,7 +1817,9 @@ export async function sondarFontes(codigoEmenda, { nomeAutor = null, aoProgredir
   const tentar = async (fonte, caminho, parametros) => {
     try {
       const r = await consultarFonte(fonte, parametros, caminho);
-      return { ok: true, dados: r.dados };
+      // `bruto` só vem quando a resposta não é JSON — é a casca de um painel, e
+      // é dela que se tira o endereço do serviço que está por trás.
+      return { ok: true, dados: r.dados, bruto: r.bruto || null };
     } catch (erro) {
       return { ok: false, erro: String(erro.message || erro).slice(0, 320) };
     }
@@ -1806,6 +1849,62 @@ export async function sondarFontes(codigoEmenda, { nomeAutor = null, aoProgredir
       raiz: true,
     });
   }, (f, t) => aoProgredir({ etapa: 'Documentação', feitos: f, total: t }));
+
+  // ── O andar de cima da emenda: painel do SERPRO, SIOP e o catálogo federal ──
+  //
+  // O Portal publica a emenda depois de virar documento de execução. O painel de
+  // discricionárias e o SIOP mostram um andar acima — dotação, empenho por ação,
+  // impedimento —, que é onde a emenda existe antes de sair dinheiro. A pergunta
+  // é se dá para puxar de lá; daqui não dá nem para olhar, então quem pergunta é
+  // o navegador de quem usa, e o relatório diz o que cada endereço respondeu.
+  const PAINEIS = [
+    { fonte: 'serpro-painel', caminho: '/extensions/painel/DiscricionariasEmendas.html', pistas: true },
+    { fonte: 'serpro-painel', caminho: '/api/v1/apps' },
+    { fonte: 'serpro-painel', caminho: '/' , pistas: true },
+    { fonte: 'siop-livre', caminho: '/api/v1/emendas' },
+    { fonte: 'siop-livre', caminho: '/sioplod' , pistas: true },
+    // O catálogo federal é o nível acima de todos: em vez de descobrir o
+    // endereço de uma base, descobre qual base tem o dado — e com qual arquivo.
+    { fonte: 'dados-gov', caminho: '/api/3/action/package_search', parametros: { q: 'emendas parlamentares', rows: '10' } },
+    { fonte: 'dados-gov', caminho: '/dados/api/publico/conjuntos-dados', parametros: { nomeConjuntoDados: 'emendas' } },
+  ];
+
+  await emLevas(PAINEIS, 3, async (alvo) => {
+    const r = await tentar(alvo.fonte, alvo.caminho, alvo.parametros || {});
+    const rotulo = `${alvo.fonte}${alvo.caminho}`;
+    if (!r.ok) {
+      achados.push({ caminho: rotulo, ok: false, erro: r.erro });
+      return;
+    }
+    // A ponte devolve o texto cru quando a resposta não é JSON: é o caso da
+    // casca do painel, e é justamente dela que sai o identificador do serviço.
+    const bruto = r.bruto || (typeof r.dados === 'string' ? r.dados : null);
+    if (bruto) {
+      const pistas = pistasDeQlik(bruto);
+      achados.push({
+        caminho: rotulo,
+        ok: true,
+        raiz: true,
+        tabelas: [
+          pistas.qlik ? 'painel Qlik Sense (dados por WebSocket, não por endereço)' : null,
+          ...pistas.aplicativos.map((a) => `aplicativo: ${a}`),
+          ...pistas.guids.map((g) => `identificador: ${g}`),
+          ...pistas.sockets.map((s) => `socket: ${s}`),
+          ...pistas.chamadas.map((c) => `chama: ${c}`),
+        ].filter(Boolean),
+        amostra: pistas.achouAlgo ? null : bruto.slice(0, 300),
+      });
+      return;
+    }
+    const lote = [].concat(r.dados).filter(Boolean);
+    achados.push({
+      caminho: rotulo,
+      ok: true,
+      quantidade: lote.length,
+      campos: Object.keys(lote[0] || {}),
+      amostra: lote.length ? recorteDaLinha(lote[0], 600) : null,
+    });
+  }, (f, t) => aoProgredir({ etapa: 'Painéis', feitos: f, total: t }));
 
   // ── Portal: sem catálogo, só hipóteses ──
   //
