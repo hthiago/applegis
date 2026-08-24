@@ -230,10 +230,33 @@ número não aparece. O envio usa hoje o link `wa.me`, que funciona sem chave e 
 cadastro; quando a API oficial do gabinete for definida, muda só a função
 `linkDoWhatsapp`.
 
-**Painel de transferências do SERPRO** (ativo, sem cadastro). O botão **Painel do
-SERPRO**, em *Emendas*, baixa a "Lista de emendas com instrumentos celebrados" do painel
-público em `dd-publico.serpro.gov.br` e a passa pelo mesmo importador das planilhas —
-reimportar atualiza, não duplica.
+**Exportação do painel do SERPRO** (o caminho mais curto, e o recomendado). No painel
+público `dd-publico.serpro.gov.br`, selecione o parlamentar, exporte a tabela **"Lista de
+emendas com instrumentos celebrados"** e solte o `.xlsx` no botão **Importar planilha**
+de *Orçamento › Emendas*. O formato é reconhecido sozinho — não há botão separado.
+
+Ele traz de uma vez a junção que custou semanas montar das tabelas cruas: emenda,
+instrumento, município, proponente, objeto, empenhado e desembolsado, numa linha só, com
+o link da página do convênio no Transferegov. Preenche **Destinos** e **Emendas** ao
+mesmo tempo, e reimportar atualiza em vez de duplicar — a chave é o número do
+instrumento, que é o identificador que o próprio governo usa.
+
+Dois cuidados que o arquivo real ensinou:
+
+- **`.xlsx` é lido nativamente.** Antes só entrava texto, e a mensagem "o arquivo está
+  vazio ou não é uma planilha de texto" era verdadeira e inútil — o arquivo estava
+  certo. O leitor usa o `DecompressionStream` do navegador; nenhuma biblioteca foi
+  acrescentada.
+- **Um convênio pode ser custeado por duas emendas**, e o painel repete a linha inteira,
+  com os mesmos valores. Somar contaria o mesmo repasse duas vezes (no arquivo do
+  gabinete eram R$ 1.495.221,40 em dobro). O dinheiro é contado uma vez, no instrumento,
+  e as emendas que o custeiam ficam todas registradas. No total por emenda, instrumento
+  compartilhado não entra em nenhuma: a fonte não diz quanto cada uma pôs, e repartir
+  seria inventar o número — ele aparece à parte, declarado.
+
+**Painel do SERPRO ao vivo** (alternativa, sem exportar à mão). O botão **Painel do
+SERPRO**, em *Emendas*, busca a mesma tabela direto do serviço e a passa pelo mesmo
+importador.
 
 Como funciona, porque não é óbvio: o painel é um aplicativo **Qlik Sense** público. Os
 números não vêm por endereço HTTP; vêm por **WebSocket**, num protocolo JSON-RPC

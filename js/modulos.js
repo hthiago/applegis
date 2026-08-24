@@ -846,6 +846,12 @@ export const MODULOS = [
       { k: 'valorEmpenhado', l: 'Empenhado', t: 'dinheiro', lista: true },
       { k: 'valorLiquidado', l: 'Liquidado', t: 'dinheiro' },
       { k: 'valorPago', l: 'Pago', t: 'dinheiro', lista: true },
+      // Instrumento custeado por mais de uma emenda não entra no total de
+      // nenhuma: a fonte não diz quanto cada uma pôs, e repartir seria inventar
+      // o número. Fica à parte, declarado, para ninguém somar duas vezes.
+      { k: 'valorCompartilhado', l: 'Em instrumentos com outras emendas', t: 'dinheiro' },
+      { k: 'instrumentosCompartilhados', l: 'Instrumentos compartilhados', t: 'numero' },
+      { k: 'qtdMunicipios', l: 'Municípios atendidos', t: 'numero', lista: true },
       { k: 'restosInscritos', l: 'Restos a pagar inscritos', t: 'dinheiro' },
       { k: 'restosPagos', l: 'Restos a pagar pagos', t: 'dinheiro' },
       // Resto cancelado é dinheiro que voltou ao caixa da União sem ser gasto:
@@ -965,6 +971,14 @@ export const MODULOS = [
       { k: 'documentos', l: 'Números dos documentos', t: 'area' },
       { k: 'processo', l: 'Processo', t: 'texto' },
       { k: 'proposta', l: 'Proposta', t: 'texto' },
+      // O número que o próprio governo usa para o convênio — e o link que abre
+      // a página dele no Transferegov. É a prova documental de cada linha.
+      { k: 'instrumento', l: 'Nº do instrumento', t: 'texto' },
+      { k: 'link', l: 'Página no Transferegov', t: 'url', lista: true },
+      { k: 'orgao', l: 'Órgão concedente', t: 'texto' },
+      // Um convênio custeado por duas emendas: o dinheiro é dele e se conta uma
+      // vez, mas perder a ligação com as duas seria trocar um erro por outro.
+      { k: 'emendasDoInstrumento', l: 'Emendas que custeiam', t: 'texto' },
       { k: 'primeiraData', l: 'Primeiro movimento', t: 'data' },
       { k: 'ultimaData', l: 'Último movimento', t: 'data', lista: true },
       { k: 'fonte', l: 'Origem do dado', t: 'texto' },

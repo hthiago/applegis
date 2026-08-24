@@ -1885,6 +1885,98 @@ console.log('\nPlanilhas de emenda\n');
     em.pistasDeQlik('<html><body>Em manutenção</body></html>').achouAlgo === false);
 }
 
+// ── a exportação do painel: o caminho que realmente funciona ──
+//
+// O painel tem botão de exportar, e o que ele exporta é a junção que custou
+// semanas montar das tabelas cruas: emenda, instrumento, município, proponente,
+// objeto, empenhado e desembolsado, numa linha só. O arquivo aqui é o exportado
+// pelo gabinete de verdade — 198 linhas do mandato.
+{
+  const pl = await import('../js/planilha.js');
+  const pn = await import('../js/painel.js');
+  const bytes = fs.readFileSync(path.join(RAIZ, 'teste', 'amostras', 'painel-emendas.xlsx'));
+  const buffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+
+  // Isto é o que travava: .xlsx é um ZIP, e o leitor só de texto devolvia "o
+  // arquivo está vazio ou não é uma planilha de texto" — verdade que não
+  // ajudava, porque o arquivo estava certo.
+  const { cabecalho, linhas } = await pl.lerXlsx(buffer);
+  conferir('o .xlsx é lido sem biblioteca nenhuma',
+    linhas.length === 198 && cabecalho[0] === 'Autor',
+    `${linhas.length} linhas, cabeçalho ${cabecalho.slice(0, 3).join('|')}`);
+  conferir('e os acentos chegam inteiros',
+    linhas.some((l) => l.includes('MUÇUM')) && linhas.some((l) => l.includes('CAMPINA DAS MISSÕES')));
+  // "BC12" → 54: sem isso, célula vazia no meio desloca a linha inteira e o
+  // valor de uma coluna aparece na outra.
+  conferir('a coluna de uma célula é lida da referência dela',
+    pl.indiceDaColuna('A1') === 0 && pl.indiceDaColuna('Z9') === 25
+    && pl.indiceDaColuna('AA1') === 26 && pl.indiceDaColuna('BC12') === 54);
+
+  conferir('o formato do painel é reconhecido pelo cabeçalho',
+    pn.ehDoPainel(cabecalho) === true
+    && pn.ehDoPainel(['Autor', 'Valor Empenhado']) === false);
+
+  // O painel escreve "41160007"; o Portal escreve "202341160007". Sem juntar os
+  // dois, a mesma emenda entra duas vezes e nenhuma bate com a outra fonte.
+  conferir('o número curto do painel vira o código completo, com o ano na frente',
+    pn.codigoCompleto('41160007', '2023') === '202341160007'
+    && pn.codigoCompleto('202341160007', '2023') === '202341160007'
+    && pn.codigoCompleto('', '2023') === null);
+
+  const mapa = pn.mapearColunasDoPainel(cabecalho);
+  // "Desembolsado" é como o painel chama o pago. Sem este sinônimo, toda linha
+  // entrava com pago zerado e a pergunta "já foi pago?" respondia errado.
+  conferir('"Valor Desembolsado" é reconhecido como o valor pago',
+    mapa.valorPago === 13 && mapa.valorEmpenhado === 12, JSON.stringify(mapa));
+
+  const lidos = linhas.map((l) => pn.destinoDaLinha(l, mapa)).filter(Boolean);
+  conferir('cada linha vira um destino com município, objeto e quem recebeu',
+    lidos.length === 198 && lidos[0].municipio === 'CAMPINA DAS MISSÕES'
+    && lidos[0].codigoEmenda === '202341160007' && lidos[0].valorPago === 186791.97,
+    JSON.stringify(lidos[0]).slice(0, 200));
+
+  // A armadilha do arquivo real: um convênio custeado por duas emendas aparece
+  // duas vezes, com os mesmos valores. Somar contaria o mesmo repasse duas
+  // vezes — R$ 1.056.193,40 dobrados em Porto Alegre.
+  const destinos = pn.reunirPorInstrumento(lidos);
+  conferir('linha repetida pelo mesmo convênio é reunida, não somada',
+    destinos.length === 196
+    && destinos.filter((d) => d.qtdEmendas > 1).length === 2,
+    `${destinos.length} instrumentos`);
+  const dobrado = destinos.find((d) => d.qtdEmendas > 1);
+  conferir('e as duas emendas que custeiam o convênio ficam registradas',
+    /202041160002, 202041160011|202041160008, 202041160010/.test(dobrado.emendasDoInstrumento),
+    dobrado.emendasDoInstrumento);
+  const pagoUmaVez = destinos.reduce((t, d) => t + d.valorPago, 0);
+  const pagoDobrado = lidos.reduce((t, d) => t + d.valorPago, 0);
+  conferir('o total pago deixa de contar o mesmo real duas vezes',
+    Math.round(pagoDobrado - pagoUmaVez) === 1495221,
+    `dobrado ${pagoDobrado.toFixed(2)} · uma vez ${pagoUmaVez.toFixed(2)}`);
+
+  conferir('o instrumento é a chave, e ela não colide',
+    new Set(destinos.map(pn.chaveDoInstrumento)).size === destinos.length);
+
+  const emendas = pn.emendasDosDestinos(destinos, 'MARCEL VAN HATTEM');
+  conferir('as emendas saem consolidadas dos instrumentos',
+    emendas.length === 25, `${emendas.length} emendas`);
+  // A fonte não diz quanto cada emenda pôs no convênio compartilhado, e
+  // repartir seria inventar o número: fica à parte, declarado.
+  const comCompartilhado = emendas.filter((e) => e.instrumentosCompartilhados);
+  conferir('instrumento compartilhado não entra no total de nenhuma emenda',
+    comCompartilhado.length === 4
+    && comCompartilhado.every((e) => e.valorCompartilhado > 0),
+    JSON.stringify(comCompartilhado.map((e) => [e.codigo, e.valorCompartilhado])));
+  // Uma emenda para vinte cidades não tem "um" município: dizer qual seria
+  // escolher um por acaso.
+  const espalhada = emendas.find((e) => e.qtdMunicipios > 1);
+  conferir('emenda espalhada por várias cidades não finge ter uma só',
+    espalhada.municipio === null && espalhada.qtdMunicipios > 1,
+    `${espalhada.codigo}: ${espalhada.qtdMunicipios} cidades`);
+
+  conferir('o arquivo cobre o mandato inteiro, em municípios distintos',
+    new Set(destinos.map((d) => d.municipio)).size === 117);
+}
+
 // ── o painel do SERPRO: falar o protocolo dele sem ter o serviço à mão ──
 //
 // O painel é um Qlik Sense público: sem login, e a conversa por WebSocket, que

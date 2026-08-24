@@ -1,6 +1,6 @@
 import { CONFIGURADO, AREAS, PAPEIS, podeEditar, podeEditarAgenda, podeEditarTarefas, ehAdmin } from './config.js';
 import { modulosDaArea, porId } from './modulos.js';
-import { el, limpar, aviso, carregando, vazio, fmtDinheiro, modal } from './ui.js';
+import { el, limpar, aviso, carregando, vazio, fmtDinheiro, fmtDinheiroCurto, modal } from './ui.js';
 
 /**
  * Montagem da aplicação.
@@ -530,6 +530,20 @@ function extrasDasEmendas() {
           // O funil inteiro. O passo que mais falha em silêncio é o filtro por
           // autor: o nome parlamentar nem sempre é o nome cadastrado aqui, e
           // sem esse número uma importação vazia parece um arquivo errado.
+          // A exportação do painel entra por este mesmo botão e tem outro grão:
+          // uma linha por instrumento. Relatar igual à planilha de emendas
+          // esconderia o que ela fez — que é preencher a aba Destinos.
+          if (r.origem === 'painel') {
+            aviso([
+              `${r.destinos} destinos e ${r.emendas} emendas, em ${r.municipios} municípios`,
+              `empenhado ${fmtDinheiroCurto(r.empenhado)}, pago ${fmtDinheiroCurto(r.pago)}`,
+              r.repetidos ? `${r.repetidos} linha(s) eram o mesmo convênio custeado por duas emendas — contado uma vez` : null,
+              r.semMunicipio ? `${r.semMunicipio} sem município` : null,
+              r.autor ? `autor: ${r.autor}` : null,
+            ].filter(Boolean).join(' · '), 'ok');
+            recarregar();
+            return;
+          }
           aviso([
             `${r.novas} emendas novas, ${r.atualizadas} atualizadas.`,
             `Planilha lida como ${r.origem}, ${r.linhas} linhas`,

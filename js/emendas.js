@@ -1,5 +1,5 @@
 import {
-  decodificar, lerCsv, chaveDoRotulo, numeroBr, dataBr, mesmoNome, nomeParaBusca,
+  decodificar, lerCsv, lerPlanilha, chaveDoRotulo, numeroBr, dataBr, mesmoNome, nomeParaBusca,
 } from './planilha.js';
 
 /**
@@ -267,10 +267,18 @@ async function conciliar(brutas, funil, { autoritativa = false } = {}) {
  * contado e relatado.
  */
 export async function importarPlanilha(arquivo, { nomeAutor = null } = {}) {
-  const texto = decodificar(await arquivo.arrayBuffer());
-  const { cabecalho, linhas } = lerCsv(texto);
+  // Lê .csv e .xlsx: quem exporta de um painel do governo recebe .xlsx, e o
+  // leitor só de texto devolvia "o arquivo está vazio ou não é uma planilha de
+  // texto" — verdade que não ajudava, porque o arquivo estava certo.
+  const { cabecalho, linhas } = await lerPlanilha(arquivo);
 
-  if (!cabecalho.length) throw new Error('O arquivo está vazio ou não é uma planilha de texto.');
+  if (!cabecalho.length) throw new Error('O arquivo está vazio ou não é uma planilha reconhecível.');
+
+  // A exportação do painel de transferências tem outro formato e outro grão —
+  // uma linha por instrumento, não por emenda. Reconhecê-la aqui evita obrigar
+  // quem usa a saber de antemão em qual botão o arquivo dele entra.
+  const { ehDoPainel, importarDoPainel } = await import('./painel.js');
+  if (ehDoPainel(cabecalho)) return { ...(await importarDoPainel(arquivo)), origem: 'painel' };
 
   const mapa = mapearColunas(cabecalho);
   const origem = origemDaPlanilha(cabecalho);
