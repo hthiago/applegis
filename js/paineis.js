@@ -226,7 +226,12 @@ export function consolidarPorMunicipio(emendas, transferencias) {
   const comDestino = new Set();
 
   for (const t of transferencias) {
-    const m = lugar(t.municipio || t.favorecido, t.uf);
+    // Só o município nomeia um lugar. O `|| t.favorecido` que estava aqui
+    // transformava em "município" tudo que não tinha um: bancos, ministérios e
+    // associações viravam cidades do estado, e o banco — por onde passa todo
+    // repasse — virava a maior delas. Sem município conhecido, a linha vai para
+    // o balde que diz isso com todas as letras.
+    const m = lugar(t.municipio, t.uf);
     if (t.codigoEmenda) {
       m.emendas.add(String(t.codigoEmenda));
       comDestino.add(String(t.codigoEmenda));

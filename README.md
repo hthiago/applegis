@@ -145,6 +145,28 @@ acompanhadas*, o botão **Buscar na Câmara** importa uma proposição pelo tipo
 ano; **Atualizar situações** relê a situação e o órgão de tudo que está na lista.
 Em *Produção do gabinete*, **Importar da Câmara** traz tudo que o parlamentar assinou.
 
+### Por que "Banco do Brasil" não aparece como destino
+
+Num repasse a município, o favorecido do documento de pagamento no SIAFI é o **banco** —
+é ele quem opera a transferência. Ninguém destina emenda ao Banco do Brasil, mas é o
+nome dele que a fonte publica.
+
+Tratá-lo como destino fazia dele **o maior destino do mandato**, porque todo repasse
+passa por lá. Pior: sem município conhecido, ele também virava um "município" no painel
+por cidade. As regras agora são:
+
+- **Banco nunca nomeia um destino.** Quando o município é conhecido, a linha é daquela
+  cidade e o banco fica registrado como caminho (`Página no Transferegov` → *via*).
+- **Sem município, a linha vira "Destino não identificado"**, uma por emenda, com o
+  banco declarado no objeto. O dinheiro continua somado — sumir com a linha faria o
+  total encolher sem explicação —, mas ele não é atribuído a quem não recebeu.
+- **Só o município nomeia um lugar** no painel por cidade. O que não tem município vai
+  para "Sem município identificado", e não vira uma cidade inventada.
+
+Se os seus dados foram importados antes desta correção, rode **Reorganizar** em
+*Destinos*: ele reaplica as regras ao que já está gravado e diz quantas linhas entraram
+e quantas saíram.
+
 ### As três abas do Orçamento
 
 Elas parecem responder a mesma coisa, e não respondem. A diferença é o nível:

@@ -2707,6 +2707,58 @@ const nomesFalsos = [
     reunidos[0].situacaoExecucao === 'pago', reunidos[0].situacaoExecucao);
   conferir('o objeto sobrevive mesmo vindo de uma fase só',
     reunidos[0].objeto === 'ATENCAO BASICA EM SAUDE');
+  // O banco é o caminho, não quem recebeu — nem quando é o único nome que o
+  // documento traz.
+  conferir('e o banco fica registrado como caminho, não como recebedor',
+    reunidos[0].favorecidoIntermediario === 'BANCO DO BRASIL SA'
+    && reunidos[0].favorecido !== 'BANCO DO BRASIL SA',
+    `recebeu ${reunidos[0].favorecido} · via ${reunidos[0].favorecidoIntermediario}`);
+
+  // ── ninguém destina emenda ao Banco do Brasil ──
+  //
+  // No documento de pagamento do SIAFI o favorecido é o banco, porque é ele
+  // quem opera o repasse. Tratá-lo como destino fazia dele o MAIOR destino do
+  // mandato — todo repasse passa por lá. Um número que ninguém sabe explicar
+  // numa reunião é pior que um número ausente.
+  const comBanco = pp.reunirDestinos([
+    { codigoEmenda: '202341160007', favorecido: 'BANCO DO BRASIL SA', tipo: 'pagamento', valor: 500000, documento: 'D1' },
+    { codigoEmenda: '202341160007', favorecido: 'BANCO DO BRASIL SA', tipo: 'pagamento', valor: 300000, documento: 'D2' },
+    { codigoEmenda: '202341160006', favorecido: 'BANCO DO BRASIL SA', tipo: 'pagamento', valor: 900000, documento: 'D3' },
+    { codigoEmenda: '202341160007', favorecido: 'MUNICIPIO DE GRAMADO', tipo: 'empenho', valor: 250000, documento: 'D4' },
+  ]);
+  conferir('banco sem município não vira destino nem aparece como recebedor',
+    comBanco.every((d) => d.favorecido !== 'BANCO DO BRASIL SA'),
+    JSON.stringify(comBanco.map((d) => d.favorecido)));
+  const naoIdentificado = comBanco.filter((d) => d.destinoTipo === 'intermediario');
+  conferir('as linhas de banco viram "destino não identificado", uma por emenda',
+    naoIdentificado.length === 2
+    && naoIdentificado.every((d) => /destino final não informado/.test(d.objeto || '')),
+    JSON.stringify(naoIdentificado.map((d) => [d.codigoEmenda, d.valorPago])));
+  // O total não pode encolher em silêncio: o dinheiro saiu, só não se sabe para
+  // onde. Sumir com a linha trocaria um erro por outro.
+  conferir('e o dinheiro continua somado, sem sumir da conta',
+    comBanco.reduce((t, d) => t + d.valorPago, 0) === 1700000);
+
+  // O empenho nomeia a prefeitura e o pagamento sai pelo banco: é o mesmo
+  // dinheiro em duas fases, e virava duas linhas.
+  const duasFases = pp.reunirDestinos([
+    { codigoEmenda: '202341160005', favorecido: 'MUNICIPIO DE MUÇUM', tipo: 'empenho', valor: 70000, documento: 'E1' },
+    { codigoEmenda: '202341160005', favorecido: 'CAIXA ECONOMICA FEDERAL', municipio: 'MUÇUM', tipo: 'pagamento', valor: 70000, documento: 'P1' },
+  ]);
+  conferir('empenho da prefeitura e pagamento pelo banco são uma linha só',
+    duasFases.length === 1 && duasFases[0].valorEmpenhado === 70000
+    && duasFases[0].valorPago === 70000 && duasFases[0].municipio === 'MUÇUM',
+    JSON.stringify(duasFases.map((d) => [d.municipio, d.valorEmpenhado, d.valorPago])));
+
+  // Duas entidades da mesma cidade continuam sendo dois destinos, com objetos
+  // diferentes — e nenhuma delas é "Município".
+  const duasEntidades = pp.reunirDestinos([
+    { codigoEmenda: '202341160009', favorecido: 'ASSOCIACAO BENEFICENTE DE MUCUM', municipio: 'MUÇUM', tipo: 'empenho', valor: 20000, documento: 'A1' },
+    { codigoEmenda: '202341160009', favorecido: 'HOSPITAL SANTO ANTONIO', municipio: 'MUÇUM', tipo: 'empenho', valor: 30000, documento: 'A2' },
+  ]);
+  conferir('entidade com município conhecido não vira "Município" no filtro',
+    duasEntidades.length === 2 && duasEntidades.every((d) => d.destinoTipo === 'entidade'),
+    JSON.stringify(duasEntidades.map((d) => [d.favorecido, d.destinoTipo])));
 
   // Dois executores da mesma cidade são dois destinos, com objetos diferentes.
   conferir('favorecido de verdade não se funde com outro da mesma cidade',

@@ -147,18 +147,46 @@ export function situacaoDaExecucao({
 export function chaveDoDestino(linha) {
   const emenda = String(linha.codigoEmenda || 'sem-emenda').replace(/\D/g, '') || 'sem-emenda';
   const classe = classificarDestino(linha.favorecido);
-  // O intermediário não é destino, mas o pagamento existe: ele se junta ao
-  // município quando este é conhecido, e fica em grupo próprio quando não é.
-  // O favorecido de verdade manda: dois executores da mesma cidade são dois
-  // destinos, com objetos diferentes. Já o banco não é destino — as linhas dele
-  // se juntam ao município por onde o dinheiro passou.
-  const quem = (classe.tipo !== 'intermediario' && linha.favorecido)
+
+  // O banco nunca dá nome ao destino.
+  //
+  // Ninguém destina emenda ao Banco do Brasil — mas no documento de pagamento
+  // do SIAFI é o nome dele que aparece, porque é ele quem opera o repasse.
+  // A versão anterior caía no nome do favorecido quando não havia município, e
+  // o banco virava um destino: como todo repasse passa por ele, virava *o
+  // maior* destino do mandato. Um número que ninguém sabe explicar numa
+  // reunião é pior que um número ausente.
+  //
+  // Quando o município é conhecido, a linha se junta a ele. Quando não é, ela
+  // se junta às outras linhas de banco da mesma emenda, num grupo que se chama
+  // pelo que de fato se sabe: destino não identificado.
+  if (classe.tipo === 'intermediario') {
+    const onde = linha.municipio || classe.municipio;
+    return `${emenda}|${onde ? chavear(onde) : 'SEMDESTINOIDENTIFICADO'}`;
+  }
+
+  // Quando o destino é a própria cidade, a chave é a cidade — e não o nome que
+  // o documento usou para ela. "MUNICIPIO DE MUÇUM" no empenho e um pagamento
+  // via Caixa com município MUÇUM são o mesmo dinheiro em duas fases; com o
+  // nome do favorecido como chave, viravam duas linhas e a escada do dinheiro
+  // se perdia, que é justamente o que esta reunião existe para evitar.
+  if (classe.tipo === 'municipio') {
+    const onde = classe.municipio || linha.municipio;
+    if (onde) return `${emenda}|${chavear(onde)}`;
+  }
+
+  // Fora isso, o favorecido manda: dois executores da mesma cidade são dois
+  // destinos, com objetos diferentes.
+  const quem = linha.favorecido
     || linha.municipio
     || classe.municipio
     || classe.entidade
     || 'sem-destino';
-  return `${emenda}|${String(quem).toUpperCase().replace(/[^\w]/g, '')}`;
+  return `${emenda}|${chavear(quem)}`;
 }
+
+const chavear = (t) => String(t).toUpperCase().normalize('NFD')
+  .replace(/[̀-ͯ]/g, '').replace(/[^A-Z0-9]/g, '');
 
 /** O texto mais informativo entre os candidatos: o mais longo que não é vazio. */
 function maisDescritivo(valores) {
@@ -190,15 +218,44 @@ export function reunirDestinos(linhas) {
       doGrupo.map((l) => l.favorecido).find(Boolean) || '',
     );
     const municipio = doGrupo.map((l) => l.municipio).find(Boolean) || classe.municipio || null;
+    // A regra é por linha, não por grupo: nenhuma linha cujo favorecido seja
+    // banco contribui para "quem recebeu". Se sobrar alguém de verdade no
+    // grupo, é ele; se não sobrar ninguém, não se sabe quem recebeu — e é isso
+    // que a linha vai dizer.
+    const daLinha = (l) => classificarDestino(l.favorecido).tipo === 'intermediario';
+    const recebedor = doGrupo.filter((l) => !daLinha(l)).map((l) => l.favorecido).find(Boolean) || null;
+    const banco = doGrupo.filter(daLinha).map((l) => l.favorecido).find(Boolean) || null;
+    // Só é "destino não identificado" quando não se sabe nem quem nem onde. Um
+    // pagamento via banco com o município conhecido é um repasse àquela cidade
+    // — o banco é o caminho, não a incógnita.
+    const viaBanco = !recebedor && !!banco && !municipio;
 
     const destino = {
       id: `d-${chave.toLowerCase().replace(/\|/g, '-').slice(0, 120)}`,
       codigoEmenda: doGrupo.map((l) => l.codigoEmenda).find(Boolean) || null,
       modalidade: doGrupo.map((l) => l.modalidade || l.tipo).find((t) => t && !FASE[t]) || 'execucao',
-      destinoTipo: municipio ? 'municipio' : classe.tipo,
+      // O tipo diz o que é quem recebeu; o município diz onde.
+      //
+      // Quando o nome já revela a natureza — associação, hospital, estado —,
+      // ela manda: marcar como "Município" todo destino com cidade conhecida
+      // punha o Hospital Santo Antônio no mesmo balde da prefeitura, e o filtro
+      // "Tipo de destino" deixava de separar as duas coisas que o gabinete mais
+      // precisa separar.
+      //
+      // Quando o nome não revela nada — banco, ou nome irreconhecível —, o que
+      // se sabe é a cidade, e é ela que classifica. Um repasse a Erechim pago
+      // pelo Banco do Brasil é um repasse a Erechim.
+      destinoTipo: (classe.tipo === 'intermediario' || classe.tipo === 'indefinido') && municipio
+        ? 'municipio'
+        : classe.tipo,
       municipio,
       uf: doGrupo.map((l) => l.uf).find(Boolean) || null,
-      favorecido: doGrupo.map((l) => l.favorecido).find(Boolean) || null,
+      // Quem recebeu fica vazio quando só se sabe por qual banco passou. Pôr o
+      // nome do banco ali é responder "quem recebeu?" com uma informação que
+      // não é a resposta — e que soma, ordena e engana.
+      favorecido: recebedor,
+      favorecidoIntermediario: banco
+        || doGrupo.map((l) => l.favorecidoIntermediario).find(Boolean) || null,
       favorecidoDoc: doGrupo.map((l) => l.favorecidoDoc).find(Boolean) || null,
       objeto: maisDescritivo(doGrupo.map((l) => l.objeto)),
       metas: maisDescritivo(doGrupo.map((l) => l.metas)),
@@ -240,10 +297,18 @@ export function reunirDestinos(linhas) {
     destino.valor = destino.valorPago || destino.valorEmpenhado || destino.valorDestinado || null;
     destino.situacaoExecucao = situacaoDaExecucao(destino);
 
-    // O intermediário sozinho não é destino, mas o dinheiro passou por ele. A
-    // linha fica, marcada como tal, para o total não encolher sem explicação.
-    if (destino.destinoTipo === 'intermediario' && !destino.municipio) {
-      destino.favorecidoIntermediario = destino.favorecido;
+    // O dinheiro passou pelo banco e a linha fica — tirá-la faria o total
+    // encolher sem explicação. O que muda é o que ela diz de si: não "o Banco
+    // do Brasil recebeu", e sim "saiu por este banco, e a fonte não informou
+    // para quem". A diferença é entre um número errado e um número honesto.
+    if (viaBanco) {
+      destino.destinoTipo = 'intermediario';
+      // Uma linha em branco com R$ 900 mil ao lado é pior que o nome do banco:
+      // parece defeito. "Destino não identificado" não é nome de ninguém — é a
+      // resposta certa para "quem recebeu?" quando a fonte não informou.
+      destino.favorecido = 'Destino não identificado';
+      destino.objeto = destino.objeto
+        || `Repasse operado por ${destino.favorecidoIntermediario || 'instituição financeira'} — destino final não informado no documento`;
     }
 
     saida.push(destino);
