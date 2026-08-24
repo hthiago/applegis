@@ -212,18 +212,31 @@ número não aparece. O envio usa hoje o link `wa.me`, que funciona sem chave e 
 cadastro; quando a API oficial do gabinete for definida, muda só a função
 `linkDoWhatsapp`.
 
-**Painéis do SERPRO e do SIOP** (em sondagem). O painel de emendas discricionárias
-(`dd-publico.serpro.gov.br`) mostra a emenda um andar acima do Portal: dotação, empenho
-por ação e impedimento — onde ela existe antes de virar documento de execução. O botão
-**Sondar fontes**, em *Emendas*, agora consulta também esse host, o SIOP e o catálogo
-federal de dados abertos, e relata o que cada um respondeu.
+**Painel de transferências do SERPRO** (ativo, sem cadastro). O botão **Painel do
+SERPRO**, em *Emendas*, baixa a "Lista de emendas com instrumentos celebrados" do painel
+público em `dd-publico.serpro.gov.br` e a passa pelo mesmo importador das planilhas —
+reimportar atualiza, não duplica.
 
-Painel desse tipo costuma ser uma casca de Qlik Sense: os números não vêm por um
-endereço, vêm por WebSocket num protocolo próprio, endereçados por um identificador de
-aplicativo. Não dá para "puxar" com uma consulta HTTP. A sondagem lê a casca e extrai o
-identificador, o endereço do serviço e as chamadas que ela faz — que é o que decide se
-há integração possível ou se o caminho é outra base. Nenhuma chave do gabinete é enviada
-para esses hosts.
+Como funciona, porque não é óbvio: o painel é um aplicativo **Qlik Sense** público. Os
+números não vêm por endereço HTTP; vêm por **WebSocket**, num protocolo JSON-RPC
+próprio, endereçados por identificadores de aplicativo e de objeto. Isso parece
+proibitivo e não é — os identificadores estão escritos no `config.js` que o próprio
+painel publica, com descrição de cada objeto, e WebSocket não passa por CORS nem exige
+chave. O navegador conversa direto, sem a ponte no servidor.
+
+O painel exige selecionar um parlamentar antes de exibir a tabela, então o nome em
+*Acessos › Dados do gabinete* precisa ser exatamente como o Transferegov o escreve. Se
+nenhuma grafia de campo for aceita, o recado diz quais foram tentadas.
+
+**Este é o segundo caminho, não o primeiro.** O painel se descreve como "emendas
+parlamentares operacionalizadas no Transferegov.br" — é a mesma base que o sistema já
+consulta pela API documentada, não uma fonte nova. O que ele acrescenta é a junção
+pronta: emenda ligada a instrumento, beneficiário, município e situação. Serve de
+conferência, e de atalho quando a junção pela API não fecha.
+
+**Sondagem de outras bases.** O botão **Sondar fontes** consulta também o SIOP e o
+catálogo federal de dados abertos, e relata o que cada um respondeu. Nenhuma chave do
+gabinete é enviada para esses hosts.
 
 **Ainda por ligar:** Google Agenda (leitura para o gabinete, escrita para a chefia),
 Google Drive (documentos guardam o link, não o arquivo) e as despesas da cota

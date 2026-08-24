@@ -1885,6 +1885,132 @@ console.log('\nPlanilhas de emenda\n');
     em.pistasDeQlik('<html><body>Em manutenção</body></html>').achouAlgo === false);
 }
 
+// ── o painel do SERPRO: falar o protocolo dele sem ter o serviço à mão ──
+//
+// O painel é um Qlik Sense público: sem login, e a conversa por WebSocket, que
+// não passa por CORS. O protocolo fica isolado em funções puras justamente
+// porque este ambiente não alcança gov.br — o que dá para exercitar aqui é a
+// gramática da conversa, contra um WebSocket de mentira.
+{
+  const q = await import('../js/qlik.js');
+
+  conferir('os identificadores do painel são os do config publicado por ele',
+    q.PAINEL.apps.discricionarias === '37c409c6-51a4-405a-9098-2d426367c982'
+    && q.PAINEL.objetos.emendas === 'LhzUJw');
+
+  // qHandle 0 é handle legítimo: um `||` aqui mandaria as chamadas seguintes
+  // para o handle global, que responde vazio sem erro nenhum.
+  conferir('o handle zero é lido como handle, não como ausência',
+    q.handleDe({ result: { qReturn: { qHandle: 0 } } }) === 0
+    && q.handleDe({ result: { qReturn: {} } }) === null
+    && q.handleDe({}) === null);
+
+  const layout = { qHyperCube: {
+    qSize: { qcx: 3, qcy: 1200 },
+    qDimensionInfo: [{ qFallbackTitle: 'Nº Emenda' }, { qFallbackTitle: 'Município Beneficiário Emenda' }],
+    qMeasureInfo: [{ qFallbackTitle: 'Valor' }],
+  } };
+  const cols = q.colunasDoLayout(layout);
+  conferir('os títulos das colunas saem do layout, dimensões antes das medidas',
+    cols.titulos.join('|') === 'Nº Emenda|Município Beneficiário Emenda|Valor'
+    && cols.linhas === 1200 && cols.colunas === 3, JSON.stringify(cols));
+
+  // O motor recusa página acima de dez mil células; fixar um número de linhas
+  // faria a varredura estourar no meio, e não no começo.
+  conferir('a altura da página sai da largura real da tabela',
+    q.alturaDaPagina(3) === 3333 && q.alturaDaPagina(20) === 500 && q.alturaDaPagina(0) === 10000);
+
+  conferir('célula sem texto cai no número, e sem número vira vazio',
+    JSON.stringify(q.lerMatriz({ result: { qDataPages: [{ qMatrix: [
+      [{ qText: '202641160003' }, { qText: '', qNum: 1500.5 }, { qText: '', qNum: 'NaN' }],
+    ] }] } })) === '[["202641160003","1500.5",""]]');
+
+  conferir('a tabela vira CSV com o separador que o importador já lê',
+    q.paraCsv(['a', 'b'], [['1', 'tem;ponto'], ['2', 'com "aspas"']])
+    === 'a;b\n1;"tem;ponto"\n2;"com ""aspas"""');
+
+  // ── a conversa inteira, contra um motor de mentira ──
+  //
+  // O motor responde fora de ordem e intercala avisos sem id. Casar por id em
+  // vez de assumir ordem é o que impede uma resposta ser lida como outra.
+  class SocketFalso {
+    constructor() {
+      this.ouvintes = {};
+      this.enviadas = [];
+      setTimeout(() => this.disparar('open', {}), 0);
+    }
+
+    addEventListener(nome, fn) { (this.ouvintes[nome] = this.ouvintes[nome] || []).push(fn); }
+
+    disparar(nome, evento) { (this.ouvintes[nome] || []).forEach((fn) => fn(evento)); }
+
+    responder(objeto) { this.disparar('message', { data: JSON.stringify(objeto) }); }
+
+    send(texto) {
+      const p = JSON.parse(texto);
+      this.enviadas.push(p);
+      setTimeout(() => {
+        // Um aviso sem id, que o canal precisa ignorar em vez de casar.
+        this.disparar('message', { data: JSON.stringify({ jsonrpc: '2.0', method: 'OnConnected' }) });
+        if (p.method === 'OpenDoc') this.responder({ id: p.id, result: { qReturn: { qHandle: 1 } } });
+        else if (p.method === 'GetField') {
+          // Só a segunda grafia responde: é o caso real, e é por isso que o
+          // painel tenta várias.
+          if (p.params[0] !== 'Parlamentar Autor Emenda') this.responder({ id: p.id, error: { code: 2, message: 'campo inexistente' } });
+          else this.responder({ id: p.id, result: { qReturn: { qHandle: 5 } } });
+        } else if (p.method === 'Select') this.responder({ id: p.id, result: { qReturn: true } });
+        else if (p.method === 'GetObject') this.responder({ id: p.id, result: { qReturn: { qHandle: 9 } } });
+        else if (p.method === 'GetLayout') this.responder({ id: p.id, result: { qLayout: layout.qHyperCube ? { qHyperCube: { ...layout.qHyperCube, qSize: { qcx: 3, qcy: 2 } } } : null } });
+        else if (p.method === 'GetHyperCubeData') {
+          const topo = p.params[1][0].qTop;
+          this.responder({ id: p.id, result: { qDataPages: topo > 0 ? [{ qMatrix: [] }] : [{ qMatrix: [
+            [{ qText: '202641160003' }, { qText: 'ERECHIM' }, { qText: 'R$ 300.000,00' }],
+            [{ qText: '202641160008' }, { qText: 'GRAMADO' }, { qText: 'R$ 100.000,00' }],
+          ] }] } });
+        } else this.responder({ id: p.id, error: { code: 1, message: `método ${p.method} não previsto` } });
+      }, 0);
+    }
+
+    close() { this.disparar('close', {}); }
+  }
+
+  let criado = null;
+  const Fabrica = function Fabrica(url) { criado = new SocketFalso(); criado.url = url; return criado; };
+
+  const r = await q.baixarTabela({ parlamentar: 'MARCEL VAN HATTEM', WebSocketCtor: Fabrica });
+  conferir('a conexão vai para o aplicativo certo, por wss',
+    criado.url === 'wss://dd-publico.serpro.gov.br/app/37c409c6-51a4-405a-9098-2d426367c982',
+    criado.url);
+  conferir('a tabela chega com títulos e linhas',
+    r.titulos[0] === 'Nº Emenda' && r.linhas.length === 2 && r.linhas[0][1] === 'ERECHIM',
+    JSON.stringify(r.linhas));
+  // A grafia do campo é tentada até uma responder — mesma lição do nome de urna
+  // no TSE: exigir a grafia exata devolve vazio sem erro.
+  conferir('a seleção insiste nas outras grafias quando a primeira não existe',
+    /Parlamentar Autor Emenda/.test(r.passos.join(' ')), JSON.stringify(r.passos));
+  conferir('aviso sem id não é confundido com resposta de chamada',
+    r.linhas.length === 2);
+
+  // Sem parlamentar nenhum aceito, o relato diz o que foi tentado — em vez de
+  // devolver tabela vazia e deixar procurar defeito onde não há.
+  const Recusa = function Recusa() {
+    const s = new SocketFalso();
+    const originalSend = s.send.bind(s);
+    s.send = (t) => {
+      const p = JSON.parse(t);
+      if (p.method === 'GetField') { s.enviadas.push(p); setTimeout(() => s.responder({ id: p.id, error: { code: 2, message: 'não existe' } }), 0); return; }
+      originalSend(t);
+    };
+    return s;
+  };
+  let recado = '';
+  try {
+    await q.baixarTabela({ parlamentar: 'FULANO', WebSocketCtor: Recusa });
+  } catch (erro) { recado = erro.message; }
+  conferir('nome que o painel não conhece vira recado com os campos tentados',
+    /FULANO/.test(recado) && /Nome Parlamentar Emenda/.test(recado), recado);
+}
+
 // ── leitura em fluxo: o arquivo do TSE não cabe na memória ──
 //
 // A votação por município e zona de um estado passa de um milhão de linhas. Lida

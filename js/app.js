@@ -588,6 +588,59 @@ function extrasDasEmendas() {
     // esta emenda" nasce aqui, olhando a lista — e era aqui que o botão faltava.
     botaoDetalhar,
 
+    /**
+     * O painel do SERPRO, direto do navegador.
+     *
+     * Não precisa da ponte no servidor: o painel é público e a conversa é por
+     * WebSocket, que não passa por CORS nem por chave. O que ele traz e a API
+     * do Transferegov não traz de graça é a junção pronta — emenda ligada a
+     * instrumento, beneficiário, município e situação.
+     *
+     * Segundo caminho, e não primeiro: a fonte continua sendo a API. Isto é a
+     * conferência, e o atalho quando a junção pela API não fecha.
+     */
+    (recarregar) => el('button', {
+      class: 'btn btn--fantasma',
+      texto: 'Painel do SERPRO',
+      title: 'Baixa a lista de emendas com instrumentos celebrados do painel de transferências, sem sair da tela',
+      onclick: async (e) => {
+        const btn = e.currentTarget;
+        const nome = nucleo.sessaoMod.sessao.gabinete?.deputado || null;
+        if (!nome) {
+          aviso('Informe o parlamentar em Acessos → Dados do gabinete: o painel só mostra a tabela depois de escolher um.', 'erro');
+          return;
+        }
+        btn.disabled = true;
+        btn.textContent = 'Conectando…';
+        try {
+          const qlik = await import('./qlik.js');
+          const r = await qlik.planilhaDoPainel({
+            parlamentar: nome,
+            aoAndar: (feitas, total) => { btn.textContent = `Painel ${feitas}/${total}`; },
+          });
+          if (!r.quantidade) {
+            aviso(`O painel abriu e respondeu, mas sem linha nenhuma para "${nome}". O nome precisa ser como o Transferegov o escreve. Passos: ${r.passos.join(' · ')}`, 'erro');
+            return;
+          }
+          const { importarPlanilha } = await import('./emendas.js');
+          const f = await importarPlanilha(r.arquivo, { nomeAutor: nome });
+          aviso([
+            `${r.quantidade} linhas do painel`,
+            `colunas: ${r.titulos.slice(0, 6).join(', ')}`,
+            f?.novas != null ? `${f.novas} novas, ${f.atualizadas} atualizadas` : null,
+            r.truncado ? 'lista truncada — refine por ano' : null,
+          ].filter(Boolean).join(' · '), 'ok');
+          recarregar();
+        } catch (erro) {
+          console.error(erro);
+          aviso(`Painel do SERPRO: ${erro.message || erro}`, 'erro');
+        } finally {
+          btn.disabled = false;
+          btn.textContent = 'Painel do SERPRO';
+        }
+      },
+    }),
+
     // A consulta direta só aparece quando a ponte no servidor está no ar. Um
     // botão que só sabe explicar por que não funciona é pior do que botão
     // nenhum — a importação por planilha continua ali, ao lado, funcionando.
