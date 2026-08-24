@@ -347,7 +347,7 @@ console.log('\nUso normal, como chefe de gabinete\n');
     ['administrativo', 'Cota parlamentar'],
     ['legislativo', 'Proposições acompanhadas'],
     ['comunicacao', 'Calendário editorial'],
-    ['orcamento', 'Dashboard'],
+    ['orcamento', 'Por município'],
   ]) {
     await pagina.goto(`${BASE}/#/${area}`, { waitUntil: 'domcontentloaded' });
     await pagina.waitForSelector('.modulo-topo h1', { timeout: 10000 });
@@ -2486,11 +2486,27 @@ const nomesFalsos = [
       .catch(async () => pagina.locator('.mapa-municipio--com-emenda title').first().textContent())),
     await pagina.locator('.mapa-municipio--com-emenda title').first().textContent());
 
+  // O endereço antigo do dashboard tem de continuar respondendo: fundir duas
+  // telas é melhoria, quebrar o link que já circula no gabinete não é.
+  conferir('o endereço /dashboard leva à mesma tela, agora única',
+    /Por município/.test(await pagina.locator('.modulo-titulo h1').innerText()),
+    await pagina.locator('.modulo-titulo h1').innerText());
+  // Mapa e tabela na mesma tela: o mapa responde "onde chegou", a tabela
+  // responde "quanto foi para Erechim". Eram duas abas para um trabalho só.
+  conferir('a mesma tela traz o mapa e a tabela por município',
+    (await pagina.locator('.tabela--municipios').count()) === 1);
+
   await pagina.locator('.mapa-municipio--com-emenda').first().click();
-  await pagina.waitForTimeout(400);
-  const detalhe = (await pagina.locator('.bloco--detalhe-mapa').innerText()).replace(/\s+/g, ' ');
-  conferir('clicar no município mostra as emendas dele',
-    /Erechim/i.test(detalhe) && /emenda/i.test(detalhe), detalhe.slice(0, 200));
+  await pagina.waitForTimeout(500);
+  // Clicar no mapa não abre um segundo painel de detalhe — leva à linha
+  // daquele município, já aberta. Duas telas de detalhe para o mesmo dado é
+  // como as duas abas divergiam sem ninguém perceber.
+  const alvo = (await pagina.locator('.linha-municipio--alvo').innerText()).replace(/\s+/g, ' ');
+  conferir('clicar no município leva à linha dele, marcada',
+    /Erechim/i.test(alvo), alvo.slice(0, 120));
+  const aberto = (await pagina.locator('.linha-detalhe:not([hidden])').first().innerText()).replace(/\s+/g, ' ');
+  conferir('e com as emendas dele já abertas',
+    /emenda|R\$/i.test(aberto), aberto.slice(0, 200));
 
   await pagina.close();
 }
@@ -2507,8 +2523,12 @@ const nomesFalsos = [
     (await pagina.locator('.mapa').count()) === 0
     && /IBGE não respondeu/.test(await pagina.locator('.bloco').first().innerText()),
     (await pagina.locator('.bloco').first().innerText()).replace(/\s+/g, ' ').slice(0, 160));
-  conferir('e o município continua a um clique de distância',
-    (await pagina.locator('.bloco--detalhe-mapa').innerText()).length > 10);
+  // O mapa é o que torna a leitura instantânea, não o que a torna possível: a
+  // tabela por município responde tudo mesmo com o IBGE fora do ar.
+  conferir('e a tabela por município responde de qualquer jeito',
+    (await pagina.locator('.tabela--municipios tbody tr').count()) > 0
+    && /Erechim/.test(await pagina.locator('.tabela--municipios').innerText()),
+    (await pagina.locator('.tabela--municipios').innerText()).replace(/\s+/g, ' ').slice(0, 120));
   await pagina.close();
 }
 

@@ -1127,6 +1127,10 @@ input:focus, select:focus, textarea:focus { border-color: var(--verde); outline:
 .mapa-legenda { display: flex; align-items: center; gap: .35rem; margin-top: .6rem; flex-wrap: wrap; }
 .mapa-tom { width: 1.6rem; height: .7rem; display: inline-block; border-radius: 2px; }
 .bloco--detalhe-mapa { margin-top: 1rem; }
+.bloco--mapa { margin-bottom: 1rem; }
+/* A linha que o clique no mapa foi buscar: sem a marca, o município aberto se
+   perde no meio da tabela e o clique parece não ter feito nada. */
+.linha-municipio--alvo > td { background: rgba(117, 167, 191, .16); }
 
 /* ── ficha de apresentação ───────────────────────────────────────────────
    Feita para ser levada em papel a uma reunião: uma coluna, seções curtas, e

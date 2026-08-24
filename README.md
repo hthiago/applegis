@@ -145,6 +145,24 @@ acompanhadas*, o botão **Buscar na Câmara** importa uma proposição pelo tipo
 ano; **Atualizar situações** relê a situação e o órgão de tudo que está na lista.
 Em *Produção do gabinete*, **Importar da Câmara** traz tudo que o parlamentar assinou.
 
+### As três abas do Orçamento
+
+Elas parecem responder a mesma coisa, e não respondem. A diferença é o nível:
+
+| Aba | Uma linha é | A pergunta que ela responde |
+| --- | --- | --- |
+| **Emendas** | uma emenda | O que o mandato indicou, e quanto foi executado no total. **É por aqui que se importa e se atualiza** — as outras duas leem o que sai daqui |
+| **Por município** | uma cidade | Para onde o dinheiro foi, o que travou. Mapa em cima, tabela buscável embaixo |
+| **Destinos** | um destino | Quem exatamente recebeu, para quê, em que fase. O nível mais fino: quando "Por município" mostra um número e alguém pergunta "de onde saiu isso" |
+
+No fluxo normal: importa em **Emendas**, lê em **Por município**, confere em **Destinos**.
+
+*Havia uma quarta, "Dashboard", que era "Por município" com outro desenho — mesma
+consolidação, mesmos números, mesmo detalhamento. As duas viraram uma. O endereço
+`#/orcamento/dashboard` continua respondendo, para não quebrar link já salvo.*
+
+---
+
 **Emendas por planilha** (ativa, sem cadastro). Em *Orçamento › Emendas*, o botão
 **Importar planilha** lê as exportações do Portal da Transparência, do Transferegov, do
 SIOP e do Fundo Nacional de Saúde. Reconhece o formato pelo cabeçalho, concilia por

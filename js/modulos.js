@@ -790,7 +790,7 @@ export const MODULOS = [
     area: 'orcamento',
     nome: 'Emendas',
     singular: 'emenda',
-    descricao: 'Emendas do mandato — individuais, de bancada e de comissão — com a execução conferida contra a planilha oficial.',
+    descricao: 'Uma linha por emenda: o que o mandato indicou, de que tipo e quanto foi executado no total. É por aqui que se importa e se atualiza — as outras duas abas do Orçamento leem o que sai daqui.',
     ordenar: { campo: 'ano', dir: 'desc' },
     // A busca alcança o que identifica a emenda, o que ela é e para onde foi —
     // inclusive o que está nos destinos pendurados nela, que é onde moram o
@@ -896,7 +896,7 @@ export const MODULOS = [
     area: 'orcamento',
     nome: 'Destinos',
     singular: 'destino',
-    descricao: 'Um destino por linha: quem recebeu, para quê, quanto foi empenhado e quanto já foi pago. Os documentos de execução de cada destino vêm reunidos, não repetidos.',
+    descricao: 'Uma linha por destino: quem exatamente recebeu, para quê, e em que fase. É o nível mais fino — quando "Por município" mostra um número e alguém pergunta "de onde saiu isso", a resposta está aqui.',
     ordenar: { campo: 'valor', dir: 'desc' },
     busca: ['favorecido', 'municipio', 'objeto', 'metas', 'acao', 'documentos', 'codigoEmenda', 'processo'],
     importaTransferencias: true,

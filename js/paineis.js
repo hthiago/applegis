@@ -339,6 +339,7 @@ const semAcento = (t) => String(t ?? '').toLowerCase().normalize('NFD').replace(
 
 export async function painelEmendas(container) {
   limpar(container).appendChild(carregando());
+  const { sessao } = await import('./sessao.js');
   const [emendas, transferencias] = await Promise.all([
     listar('emendas', { recarregar: true }),
     listar('transferencias', { recarregar: true }).catch(() => []),
@@ -346,12 +347,13 @@ export async function painelEmendas(container) {
 
   const lugares = consolidarPorMunicipio(emendas, transferencias);
   const total = (k) => lugares.reduce((t, m) => t + m[k], 0);
+  const uf = sessao.gabinete?.uf || null;
 
   limpar(container);
   container.appendChild(el('header', { class: 'modulo-topo' }, [
     el('div', { class: 'modulo-titulo' }, [
-      el('h1', { texto: 'Emendas por município' }),
-      el('p', { texto: 'Quanto foi para cada lugar, em que pé está e o que travou. Clique num município para ver emenda por emenda.' }),
+      el('h1', { texto: 'Por município' }),
+      el('p', { texto: 'Onde o mandato chegou, quanto foi para cada lugar e o que travou. Clique no mapa ou numa linha para ver emenda por emenda.' }),
     ]),
   ]));
 
@@ -379,6 +381,15 @@ export async function painelEmendas(container) {
     oninput: () => desenhar(),
   });
 
+  // O mapa vem antes da tabela porque responde outra pergunta, e antes: onde o
+  // mandato chegou e onde não chegou. A tabela responde "quanto foi para
+  // Erechim", que só se pergunta depois de saber que é Erechim. Eram duas abas
+  // — a mesma consolidação, os mesmos números, o mesmo detalhamento, mudando só
+  // o desenho. Duas telas para um trabalho só é uma escolha a mais para quem
+  // usa, e nenhuma resposta a mais.
+  const caixaMapa = el('section', { class: 'bloco bloco--mapa' });
+  container.appendChild(caixaMapa);
+
   container.appendChild(el('div', { class: 'modulo-acoes' }, [busca]));
   container.appendChild(el('div', { class: 'tabela-rolagem' }, [
     el('table', { class: 'tabela tabela--municipios' }, [
@@ -395,6 +406,10 @@ export async function painelEmendas(container) {
   ]));
 
   const detalhesDoLugar = detalhesDeUmLugar;
+  // Clicar no mapa não abre um segundo painel de detalhe: leva à linha daquele
+  // município, já aberta. Um mesmo dado com duas telas de detalhe diferentes é
+  // como as duas abas divergem sem ninguém perceber.
+  let abrir = null;
 
   function desenhar() {
     const termos = semAcento(busca.value).split(/\s+/).filter(Boolean);
@@ -439,92 +454,39 @@ export async function painelEmendas(container) {
       ]);
       corpo.appendChild(linha);
       corpo.appendChild(detalhe);
+      if (abrir && semAcento(m.municipio) === abrir) {
+        detalhe.hidden = false;
+        linha.classList.add('linha-municipio--alvo');
+      }
     });
   }
 
   desenhar();
-}
 
-/**
- * O dashboard: o estado inteiro de uma vez, e o município a um clique.
- *
- * O painel por município responde "quanto foi para Erechim" para quem já sabe
- * que é Erechim. Esta tela responde a outra pergunta, que o gabinete faz com a
- * mesma frequência: onde o mandato chegou e onde não chegou. Um mapa responde
- * isso num olhar; uma tabela de quatrocentas linhas, não.
- *
- * O mapa não é obrigatório. Se a malha do IBGE não vier, a mesma leitura aparece
- * em lista ordenada — a resposta não pode depender de um serviço externo estar
- * de pé.
- */
-export async function painelDashboard(container) {
-  limpar(container).appendChild(carregando());
-
-  const { sessao } = await import('./sessao.js');
-  const [emendas, transferencias] = await Promise.all([
-    listar('emendas', { recarregar: true }),
-    listar('transferencias', { recarregar: true }).catch(() => []),
-  ]);
-
-  const lugares = consolidarPorMunicipio(emendas, transferencias);
-  const uf = sessao.gabinete?.uf || null;
-
-  limpar(container);
-  container.appendChild(el('header', { class: 'modulo-topo' }, [
-    el('div', { class: 'modulo-titulo' }, [
-      el('h1', { texto: 'Dashboard' }),
-      el('p', { texto: 'Onde o mandato chegou. Clique num município para ver as emendas dele.' }),
-    ]),
-  ]));
-
-  if (!lugares.length) {
-    container.appendChild(nada('Nada importado ainda. Comece pela aba Emendas: "Consultar Portal" e depois "Detalhar emendas".'));
-    return;
-  }
-
-  const soma = (k) => lugares.reduce((t, m) => t + m[k], 0);
+  // ── o mapa, depois da tabela estar de pé ──
+  //
+  // Desenhado por último e sem bloquear: a resposta não pode depender de o IBGE
+  // estar no ar. Sem malha, a tabela acima já responde tudo — o mapa é o que
+  // torna a leitura instantânea, não o que a torna possível.
   const atendidos = lugares.filter((m) => m.municipio && !/^A detalhar/.test(m.municipio));
-
-  container.appendChild(el('div', { class: 'indicadores' }, [
-    indicador('Municípios atendidos', String(atendidos.length), 'ok'),
-    indicador('Destinado', fmtDinheiroCurto(soma('destinado')), 'info', fmtDinheiro(soma('destinado'))),
-    indicador('Pago', fmtDinheiroCurto(soma('pago')), 'ok', fmtDinheiro(soma('pago'))),
-    soma('impedido')
-      ? indicador('Impedido', fmtDinheiroCurto(soma('impedido')), 'critico', fmtDinheiro(soma('impedido')))
-      : null,
-  ].filter(Boolean)));
-
-  const detalhe = el('section', { class: 'bloco bloco--detalhe-mapa' });
-  const mostrarLugar = (nome) => {
-    const { semAcento } = mapaMod;
-    const achado = lugares.find((m) => semAcento(m.municipio) === semAcento(nome));
-    limpar(detalhe);
-    if (!achado) {
-      detalhe.appendChild(el('h2', { texto: nome }));
-      detalhe.appendChild(nada('Sem emenda registrada para este município.'));
-      return;
-    }
-    const sit = situacaoDoLugar(achado);
-    detalhe.appendChild(el('header', { class: 'bloco-topo' }, [
-      el('h2', { texto: `${achado.municipio}${achado.uf ? ` · ${achado.uf}` : ''}` }),
-      etiqueta(sit.texto, sit.cor),
-    ]));
-    detalhe.appendChild(el('p', { class: 'municipio-numeros' }, [
-      achado.destinado ? el('span', { texto: `Destinado ${fmtDinheiro(achado.destinado)}` }) : null,
-      achado.empenhado ? el('span', { texto: `Empenhado ${fmtDinheiro(achado.empenhado)}` }) : null,
-      el('span', { class: achado.pago ? 'municipio-pago' : null, texto: `Pago ${fmtDinheiro(achado.pago)}` }),
-      el('span', { texto: `${achado.emendas.length} emenda(s)` }),
-    ].filter(Boolean)));
-    detalhe.appendChild(detalhesDeUmLugar(achado));
-  };
-
-  let mapaMod;
+  let mapaMod = null;
   try {
     mapaMod = await import('./mapa.js');
   } catch (erro) {
-    console.error(erro);
-    mapaMod = null;
+    console.warn('mapa indisponível:', erro.message);
   }
+
+  const irPara = (nome) => {
+    abrir = semAcento(nome);
+    busca.value = nome;
+    desenhar();
+    corpo.querySelector('.linha-municipio--alvo')?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  };
+
+  limpar(caixaMapa).appendChild(el('header', { class: 'bloco-topo' }, [
+    el('h2', { texto: uf ? `Distribuição em ${uf}` : 'Distribuição' }),
+    el('span', { class: 'bloco-contagem', texto: `${atendidos.length} municípios atendidos` }),
+  ]));
 
   const valores = new Map();
   if (mapaMod) {
@@ -535,22 +497,8 @@ export async function painelDashboard(container) {
     }
   }
 
-  const caixaMapa = el('section', { class: 'bloco' }, [
-    el('header', { class: 'bloco-topo' }, [
-      el('h2', { texto: uf ? `Distribuição em ${uf}` : 'Distribuição' }),
-    ]),
-    el('p', { class: 'campo-dica', texto: 'Carregando a malha municipal do IBGE…' }),
-  ]);
-  container.appendChild(caixaMapa);
-  container.appendChild(detalhe);
-
   const malha = mapaMod && uf ? await mapaMod.malhaDoEstado(uf) : null;
-  const desenho = malha ? mapaMod.desenharMalha(malha, { valores, aoClicar: mostrarLugar }) : null;
-
-  limpar(caixaMapa).appendChild(el('header', { class: 'bloco-topo' }, [
-    el('h2', { texto: uf ? `Distribuição em ${uf}` : 'Distribuição' }),
-    el('span', { class: 'bloco-contagem', texto: `${atendidos.length} atendidos` }),
-  ]));
+  const desenho = malha ? mapaMod.desenharMalha(malha, { valores, aoClicar: irPara }) : null;
 
   if (desenho) {
     caixaMapa.appendChild(el('div', { class: 'mapa-caixa' }, [desenho.svg]));
@@ -558,16 +506,24 @@ export async function painelDashboard(container) {
   } else {
     // Um mapa que não carrega não pode levar embora a resposta.
     caixaMapa.appendChild(el('p', { class: 'campo-dica', texto: uf
-      ? 'A malha municipal do IBGE não respondeu agora. A distribuição está abaixo, em lista.'
-      : 'Informe a UF do gabinete em Acessos → Dados do gabinete para desenhar o mapa. Por ora, a distribuição em lista.' }));
+      ? 'A malha municipal do IBGE não respondeu agora. A distribuição está na tabela abaixo.'
+      : 'Informe a UF do gabinete em Acessos → Dados do gabinete para desenhar o mapa. Por ora, a distribuição está na tabela abaixo.' }));
     caixaMapa.appendChild(barrasValor(
-      atendidos.slice(0, 25).map((m) => ({ rotulo: m.municipio, valor: m.total })),
+      atendidos.slice(0, 15).map((m) => ({ rotulo: m.municipio, valor: m.total })),
       atendidos[0]?.total || 0,
     ));
   }
-
-  mostrarLugar(atendidos[0]?.municipio || lugares[0].municipio);
 }
+
+/**
+ * O endereço antigo do dashboard, que virou a mesma tela.
+ *
+ * Eram duas abas para um trabalho só. Fundir sem manter este nome quebraria os
+ * links que já circulam no gabinete — e um endereço que deixa de responder é
+ * pior que uma aba a mais.
+ */
+export const painelDashboard = painelEmendas;
+
 
 function legendaDoMapa(cortes, tons) {
   return el('div', { class: 'mapa-legenda' }, [

@@ -197,10 +197,16 @@ function paineisDisponiveis() {
     { id: 'painel', area: 'chefia', nome: 'Painel', render: nucleo.paineis.painelChefia },
     { id: 'resumo-cota', area: 'administrativo', nome: 'Resumo da cota', render: nucleo.paineis.painelCota },
     { id: 'ficha', area: 'administrativo', nome: 'Ficha de apresentação', render: nucleo.ficha.painelFicha },
-    { id: 'dashboard', area: 'orcamento', nome: 'Dashboard', render: nucleo.paineis.painelDashboard },
+    // "Dashboard" e "Por município" eram duas abas para o mesmo trabalho: a
+    // mesma consolidação, os mesmos números e o mesmo detalhamento, mudando só
+    // o desenho. Viraram uma, com o mapa em cima da tabela. O endereço antigo
+    // continua respondendo — ver `abaPorId`.
     { id: 'painel-emendas', area: 'orcamento', nome: 'Por município', render: nucleo.paineis.painelEmendas },
   ];
 }
+
+/** Endereços que mudaram de nome mas não podem deixar de responder. */
+const APELIDOS = { dashboard: 'painel-emendas' };
 
 function abasDaArea(areaId) {
   return [
@@ -218,9 +224,13 @@ function abasDaArea(areaId) {
  * transformaria "tire esta aba do caminho" em "perca este cadastro".
  */
 function abaPorId(areaId, abaId) {
-  const naBarra = abasDaArea(areaId).find((a) => a.id === abaId);
+  // Um endereço que já circula no gabinete não pode deixar de responder porque
+  // a aba mudou de nome. Fundir duas telas é melhoria; quebrar o link de quem
+  // já tinha a resposta salva, não.
+  const alvo = APELIDOS[abaId] || abaId;
+  const naBarra = abasDaArea(areaId).find((a) => a.id === alvo);
   if (naBarra) return naBarra;
-  const escondido = porId[abaId];
+  const escondido = porId[alvo];
   return escondido && escondido.area === areaId
     ? { id: escondido.id, nome: escondido.nome, modulo: escondido }
     : null;
