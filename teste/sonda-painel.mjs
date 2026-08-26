@@ -199,13 +199,24 @@ function apertoDeMao(caminho, extras = {}) {
       'Sec-WebSocket-Key': chave,
       'Sec-WebSocket-Version': '13',
       'User-Agent': CABECALHOS['User-Agent'],
+      // Um WAF que separa navegador de robô olha justamente para estes.
+      'Accept-Encoding': 'gzip, deflate, br',
+      'Accept-Language': 'pt-BR,pt;q=0.9',
+      'Cache-Control': 'no-cache',
+      Pragma: 'no-cache',
+      'Sec-WebSocket-Extensions': 'permessage-deflate; client_max_window_bits',
       ...extras,
     };
     const pedido = `GET ${caminho} HTTP/1.1\r\n`
       + Object.entries(cabecalhos).map(([k, v]) => `${k}: ${v}`).join('\r\n')
       + '\r\n\r\n';
 
-    const s = tls.connect({ host: HOST, port: 443, servername: HOST, timeout: 15000 }, () => s.write(pedido));
+    // ALPN explícito: sem negociar, o servidor pode responder em HTTP/2, onde
+    // um upgrade escrito em HTTP/1.1 é inválido e vira 403 sem explicação. O
+    // navegador negocia; escrevendo o aperto de mão à mão é preciso pedir.
+    const s = tls.connect({
+      host: HOST, port: 443, servername: HOST, timeout: 15000, ALPNProtocols: ['http/1.1'],
+    }, () => s.write(pedido));
     let buffer = Buffer.alloc(0);
     const terminar = (r) => { try { s.destroy(); } catch { /* já fechado */ } ok(r); };
     s.on('data', (d) => {
@@ -221,7 +232,11 @@ function apertoDeMao(caminho, extras = {}) {
 }
 
 const origem = `https://${HOST}`;
+// O cookie chama-se X-Qlik-Session-Publico. No Qlik, esse sufixo é o nome do
+// proxy virtual — e proxy virtual com nome costuma ter prefixo no caminho. Se
+// for o caso, o motor não está em /app mas em /publico/app.
 const variantes = [
+  { nome: 'publico/app + cookie + Origin', caminho: `/publico/app/${APP}`, extras: { Cookie: cookieAtual(), Origin: origem } },
   { nome: 'app + cookie + Origin', caminho: `/app/${APP}`, extras: { Cookie: cookieAtual(), Origin: origem } },
   { nome: 'app + cookie, sem Origin', caminho: `/app/${APP}`, extras: { Cookie: cookieAtual() } },
   { nome: 'app + Origin, sem cookie', caminho: `/app/${APP}`, extras: { Origin: origem } },
@@ -237,10 +252,11 @@ for (const v of variantes) {
   const aceitou = /\b101\b/.test(r.status);
   anotar(4, `${aceitou ? 'ACEITOU' : 'recusou'} · ${v.nome} → ${r.status}`);
   if (!aceitou) {
-    // O motivo costuma estar num cabeçalho de redirecionamento ou no corpo.
-    const uteis = r.cabecalhos.filter((c) => /^(location|www-authenticate|x-|set-cookie|content-type)/i.test(c));
-    uteis.slice(0, 4).forEach((c) => anotar(4, `    ${c.slice(0, 150)}`));
-    if (r.corpo.trim()) anotar(4, `    corpo: ${r.corpo.replace(/\s+/g, ' ').trim().slice(0, 180)}`);
+    // Sem filtro: a rodada anterior escondeu a explicação porque nenhum cabeçalho
+    // passou pela peneira que eu tinha inventado. Um 403 mudo não existe — a
+    // explicação está em algum cabeçalho, e adivinhar qual foi o erro.
+    r.cabecalhos.forEach((c) => anotar(4, `    ${c.slice(0, 160)}`));
+    anotar(4, `    corpo: ${r.corpo.trim() ? r.corpo.replace(/\s+/g, ' ').trim().slice(0, 200) : '(vazio)'}`);
   }
   if (aceitou && !bom) bom = v;
 }
