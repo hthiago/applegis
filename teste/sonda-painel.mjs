@@ -174,59 +174,104 @@ for (const caminho of ['/api/v1/csrftoken', '/qps/user', '/api/v1/user']) {
   }
 }
 
-// ─────────────────────── 4. o WebSocket, em variantes ───────────────────────
+// ─────────────────── 4. o aperto de mão do WebSocket, na mão ───────────────────
 //
-// O código 1006 da rodada anterior é "fechou sem dizer por quê", que não
-// distingue origem recusada de endereço errado. Em vez de adivinhar qual das
-// duas, tenta-se a matriz e relata-se qual passou.
+// O `WebSocket` nativo do Node segue o padrão do navegador, e nesse padrão o
+// segundo argumento são os subprotocolos — não opções. Ele não aceita
+// cabeçalhos, então o cookie nunca chegou a ser enviado nas rodadas anteriores:
+// o 1006 e o TypeError diziam isso, e eu li como recusa do servidor.
+//
+// Aqui o aperto de mão é escrito à mão sobre TLS. Não é elegante e não precisa
+// ser: ele transforma um código opaco de fechamento numa resposta HTTP com
+// status e cabeçalhos, que é o que permite distinguir "origem recusada" de
+// "sessão inválida" de "endereço errado".
 
-if (typeof WebSocket === 'undefined') {
-  anotar(4, `Node ${process.version} não tem WebSocket global — precisa de v22+.`);
-  fim('✗ Atualize o Node: nvm install 22 && nvm use 22');
+const tls = await import('node:tls');
+const crypto = await import('node:crypto');
+
+function apertoDeMao(caminho, extras = {}) {
+  return new Promise((ok) => {
+    const chave = crypto.randomBytes(16).toString('base64');
+    const cabecalhos = {
+      Host: HOST,
+      Upgrade: 'websocket',
+      Connection: 'Upgrade',
+      'Sec-WebSocket-Key': chave,
+      'Sec-WebSocket-Version': '13',
+      'User-Agent': CABECALHOS['User-Agent'],
+      ...extras,
+    };
+    const pedido = `GET ${caminho} HTTP/1.1\r\n`
+      + Object.entries(cabecalhos).map(([k, v]) => `${k}: ${v}`).join('\r\n')
+      + '\r\n\r\n';
+
+    const s = tls.connect({ host: HOST, port: 443, servername: HOST, timeout: 15000 }, () => s.write(pedido));
+    let buffer = Buffer.alloc(0);
+    const terminar = (r) => { try { s.destroy(); } catch { /* já fechado */ } ok(r); };
+    s.on('data', (d) => {
+      buffer = Buffer.concat([buffer, d]);
+      const fim = buffer.indexOf('\r\n\r\n');
+      if (fim === -1) return;
+      const cru = buffer.subarray(0, fim).toString('latin1').split('\r\n');
+      terminar({ status: cru[0], cabecalhos: cru.slice(1), corpo: buffer.subarray(fim + 4).toString('latin1').slice(0, 300) });
+    });
+    s.on('error', (e) => terminar({ erro: porQue(e) }));
+    s.on('timeout', () => terminar({ erro: 'sem resposta em 15s' }));
+  });
 }
 
-const aleatorio = () => Math.random().toString(36).slice(2, 10);
+const origem = `https://${HOST}`;
 const variantes = [
-  { nome: 'app + Origin', url: `wss://${HOST}/app/${APP}`, origem: true },
-  { nome: 'app + Origin + Xrfkey', url: `wss://${HOST}/app/${APP}?Xrfkey=${XRF}`, origem: true, xrf: true },
-  { nome: 'app/identity + Origin', url: `wss://${HOST}/app/${APP}/identity/${aleatorio()}`, origem: true },
-  { nome: 'engineData + Origin', url: `wss://${HOST}/app/engineData`, origem: true },
-  { nome: 'app sem Origin (o que falhou antes)', url: `wss://${HOST}/app/${APP}`, origem: false },
+  { nome: 'app + cookie + Origin', caminho: `/app/${APP}`, extras: { Cookie: cookieAtual(), Origin: origem } },
+  { nome: 'app + cookie, sem Origin', caminho: `/app/${APP}`, extras: { Cookie: cookieAtual() } },
+  { nome: 'app + Origin, sem cookie', caminho: `/app/${APP}`, extras: { Origin: origem } },
+  { nome: 'app/identity + cookie + Origin', caminho: `/app/${APP}/identity/${Math.random().toString(36).slice(2, 10)}`, extras: { Cookie: cookieAtual(), Origin: origem } },
+  { nome: 'engineData + cookie + Origin', caminho: '/app/engineData', extras: { Cookie: cookieAtual(), Origin: origem } },
 ];
 
-async function tentarSocket(v) {
-  const headers = { Cookie: cookieAtual() };
-  if (v.origem) headers.Origin = `https://${HOST}`;
-  if (v.xrf) headers['X-Qlik-Xrfkey'] = XRF;
-  if (csrf) headers['qlik-csrf-token'] = csrf;
-
-  let s;
-  try {
-    s = new WebSocket(v.url, { headers });
-  } catch (erro) {
-    return { ok: false, motivo: porQue(erro) };
-  }
-  const desfecho = await new Promise((ok) => {
-    let motivo = null;
-    s.addEventListener('open', () => ok({ ok: true, socket: s }), { once: true });
-    s.addEventListener('error', (e) => { motivo = porQue(e.error || e); }, { once: true });
-    s.addEventListener('close', (e) => ok({ ok: false, motivo: motivo || `código ${e.code}${e.reason ? ` — ${e.reason}` : ''}` }), { once: true });
-    setTimeout(() => ok({ ok: false, motivo: 'sem resposta em 15s' }), 15000);
-  });
-  if (!desfecho.ok) { try { s.close(); } catch { /* já fechado */ } }
-  return desfecho;
-}
-
-let socket = null;
+let bom = null;
 for (const v of variantes) {
   // eslint-disable-next-line no-await-in-loop
-  const r = await tentarSocket(v);
-  anotar(4, `${r.ok ? 'ABRIU  ' : 'recusou'} · ${v.nome}${r.ok ? '' : ` · ${r.motivo}`}`);
-  if (r.ok) { socket = r.socket; anotar(4, `→ o endereço que funciona é ${v.url.replace(`wss://${HOST}`, '')}`); break; }
+  const r = await apertoDeMao(v.caminho, v.extras);
+  if (r.erro) { anotar(4, `${v.nome} → ${r.erro}`); continue; }
+  const aceitou = /\b101\b/.test(r.status);
+  anotar(4, `${aceitou ? 'ACEITOU' : 'recusou'} · ${v.nome} → ${r.status}`);
+  if (!aceitou) {
+    // O motivo costuma estar num cabeçalho de redirecionamento ou no corpo.
+    const uteis = r.cabecalhos.filter((c) => /^(location|www-authenticate|x-|set-cookie|content-type)/i.test(c));
+    uteis.slice(0, 4).forEach((c) => anotar(4, `    ${c.slice(0, 150)}`));
+    if (r.corpo.trim()) anotar(4, `    corpo: ${r.corpo.replace(/\s+/g, ' ').trim().slice(0, 180)}`);
+  }
+  if (aceitou && !bom) bom = v;
 }
-if (!socket) {
-  fim('✗ Nenhuma variante abriu. O painel exige sessão de navegador de verdade — a coleta terá de acontecer na própria aba dele.');
+
+if (!bom) {
+  anotar(4, 'A sessão anônima existe (o /qps/user respondeu), mas o motor recusa o socket.');
+  fim('✗ Nenhuma variante fez o aperto de mão. A coleta terá de acontecer na própria aba do painel.');
 }
+anotar(4, `→ funciona em ${bom.caminho}`);
+
+// Para falar o protocolo é preciso montar e ler quadros, e aí uma biblioteca
+// paga a pena. Só se chega aqui quando o aperto de mão já deu certo, então
+// instalar deixou de ser aposta.
+let WS = null;
+try {
+  ({ default: WS } = await import('ws'));
+} catch {
+  console.log('\n✓ O APERTO DE MÃO FUNCIONA — o caminho automático é viável.');
+  console.log('  Para ler as linhas, falta a biblioteca de quadros. Rode:');
+  console.log('    npm install ws --no-save && node teste/sonda-painel.mjs');
+  fim('  (mande esta saída de qualquer forma — o aperto de mão já é a resposta que eu precisava)');
+}
+
+const socket = new WS(`wss://${HOST}${bom.caminho}`, { headers: bom.extras });
+const abriu = await new Promise((ok) => {
+  socket.on('open', () => ok(true));
+  socket.on('error', (e) => { anotar(4, `erro: ${porQue(e)}`); ok(false); });
+  setTimeout(() => ok(false), 15000);
+});
+if (!abriu) fim('✗ O aperto de mão passa, mas a biblioteca não abriu. Mande esta saída.');
+anotar(4, 'WebSocket aberto com a biblioteca.');
 
 // ─────────────────────────── 5. o protocolo ───────────────────────────
 
@@ -245,9 +290,9 @@ const chamar = (handle, metodo, params = []) => {
   });
 };
 
-socket.addEventListener('message', (e) => {
+socket.on('message', (dado) => {
   let msg;
-  try { msg = JSON.parse(e.data); } catch { return; }
+  try { msg = JSON.parse(dado.toString()); } catch { return; }
   if (msg.id === undefined) return; // aviso do motor, não resposta
   const espera = pendentes.get(msg.id);
   if (!espera) return;
