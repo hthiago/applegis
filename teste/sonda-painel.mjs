@@ -199,12 +199,6 @@ function apertoDeMao(caminho, extras = {}) {
       'Sec-WebSocket-Key': chave,
       'Sec-WebSocket-Version': '13',
       'User-Agent': CABECALHOS['User-Agent'],
-      // Um WAF que separa navegador de robô olha justamente para estes.
-      'Accept-Encoding': 'gzip, deflate, br',
-      'Accept-Language': 'pt-BR,pt;q=0.9',
-      'Cache-Control': 'no-cache',
-      Pragma: 'no-cache',
-      'Sec-WebSocket-Extensions': 'permessage-deflate; client_max_window_bits',
       ...extras,
     };
     const pedido = `GET ${caminho} HTTP/1.1\r\n`
@@ -235,9 +229,26 @@ const origem = `https://${HOST}`;
 // O cookie chama-se X-Qlik-Session-Publico. No Qlik, esse sufixo é o nome do
 // proxy virtual — e proxy virtual com nome costuma ter prefixo no caminho. Se
 // for o caso, o motor não está em /app mas em /publico/app.
+// O que "parecer navegador" me custou: com estes cabeçalhos, o /publico/app
+// respondeu 400 reclamando do cabeçalho. Sem eles, é o mínimo que a norma pede.
+const enfeites = {
+  'Accept-Encoding': 'gzip, deflate, br',
+  'Accept-Language': 'pt-BR,pt;q=0.9',
+  'Cache-Control': 'no-cache',
+  Pragma: 'no-cache',
+  'Sec-WebSocket-Extensions': 'permessage-deflate; client_max_window_bits',
+};
+
 const variantes = [
-  { nome: 'publico/app + cookie + Origin', caminho: `/publico/app/${APP}`, extras: { Cookie: cookieAtual(), Origin: origem } },
-  { nome: 'app + cookie + Origin', caminho: `/app/${APP}`, extras: { Cookie: cookieAtual(), Origin: origem } },
+  // O prefixo do proxy virtual, que foi o único a chegar num servidor de
+  // verdade — agora com o cabeçalho mínimo, sem os enfeites que ele recusou.
+  { nome: 'publico/app · mínimo', caminho: `/publico/app/${APP}`, extras: { Cookie: cookieAtual(), Origin: origem } },
+  { nome: 'publico/app · mínimo, sem Origin', caminho: `/publico/app/${APP}`, extras: { Cookie: cookieAtual() } },
+  { nome: 'publico/app · sem Sec-WebSocket-Extensions', caminho: `/publico/app/${APP}`, extras: { Cookie: cookieAtual(), Origin: origem, 'Accept-Encoding': 'gzip, deflate, br', 'Accept-Language': 'pt-BR,pt;q=0.9' } },
+  { nome: 'publico/app · com todos os enfeites (o que deu 400)', caminho: `/publico/app/${APP}`, extras: { Cookie: cookieAtual(), Origin: origem, ...enfeites } },
+  { nome: 'publico/app/identity · mínimo', caminho: `/publico/app/${APP}/identity/${Math.random().toString(36).slice(2, 10)}`, extras: { Cookie: cookieAtual(), Origin: origem } },
+  { nome: 'publico/app/engineData · mínimo', caminho: '/publico/app/engineData', extras: { Cookie: cookieAtual(), Origin: origem } },
+  { nome: 'app + cookie + Origin (controle)', caminho: `/app/${APP}`, extras: { Cookie: cookieAtual(), Origin: origem } },
   { nome: 'app + cookie, sem Origin', caminho: `/app/${APP}`, extras: { Cookie: cookieAtual() } },
   { nome: 'app + Origin, sem cookie', caminho: `/app/${APP}`, extras: { Origin: origem } },
   { nome: 'app/identity + cookie + Origin', caminho: `/app/${APP}/identity/${Math.random().toString(36).slice(2, 10)}`, extras: { Cookie: cookieAtual(), Origin: origem } },
@@ -256,7 +267,9 @@ for (const v of variantes) {
     // passou pela peneira que eu tinha inventado. Um 403 mudo não existe — a
     // explicação está em algum cabeçalho, e adivinhar qual foi o erro.
     r.cabecalhos.forEach((c) => anotar(4, `    ${c.slice(0, 160)}`));
-    anotar(4, `    corpo: ${r.corpo.trim() ? r.corpo.replace(/\s+/g, ' ').trim().slice(0, 200) : '(vazio)'}`);
+    const titulo = /<title>([\s\S]*?)<\/title>|<h[12][^>]*>([\s\S]*?)<\/h[12]>/i.exec(r.corpo);
+    if (titulo) anotar(4, `    título do erro: ${(titulo[1] || titulo[2]).replace(/\s+/g, ' ').trim().slice(0, 120)}`);
+    else anotar(4, `    corpo: ${r.corpo.trim() ? r.corpo.replace(/\s+/g, ' ').trim().slice(0, 200) : '(vazio)'}`);
   }
   if (aceitou && !bom) bom = v;
 }
@@ -280,6 +293,7 @@ try {
   fim('  (mande esta saída de qualquer forma — o aperto de mão já é a resposta que eu precisava)');
 }
 
+anotar(4, `abrindo com a biblioteca: wss://${HOST}${bom.caminho}`);
 const socket = new WS(`wss://${HOST}${bom.caminho}`, { headers: bom.extras });
 const abriu = await new Promise((ok) => {
   socket.on('open', () => ok(true));
