@@ -535,15 +535,215 @@ console.log('\nHistórico por tema\n');
   await pagina.close();
 }
 
-// ────────── suíte 6: a planilha do painel, única porta de entrada ──────────
+// ────────── suíte 6: as duas planilhas de emenda, e o encontro entre elas ──────────
 //
-// As consultas automáticas saíram: escritas contra bases que este projeto nunca
-// conseguiu exercitar de verdade, produziam telas que pareciam funcionar e não
-// funcionavam. Sobrou uma fonte, e é esta — a exportação do painel, que chega
-// pronta e conferível.
+// Os arquivos aqui são os de verdade: o Mapa de emendas do gabinete (764 linhas,
+// 2019 a 2026) e a exportação do painel (198). Os números conferidos abaixo são
+// os do mandato, não inventados para o teste.
 
-console.log('\nPlanilha do painel\n');
+console.log('\nDestinações de emenda\n');
 
+{
+  const pl = await import('../js/planilha.js');
+  const de = await import('../js/destinacoes.js');
+  const ler = async (nome) => {
+    const b = fs.readFileSync(path.join(RAIZ, 'teste', 'amostras', nome));
+    return pl.lerXlsx(b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength));
+  };
+
+  const gab = await ler('mapa-gabinete.xlsx');
+
+  // A célula vazia vem autofechada — <c r="B1" s="4"/> — e testá-la depois da
+  // forma com conteúdo fazia `[^>]*` engolir a própria barra: a vazia era lida
+  // como abertura e consumia a célula seguinte. "Região" sumia e o valor dela
+  // aparecia uma coluna antes. Deslocamento silencioso, sem erro nenhum.
+  conferir('célula vazia não engole a coluna seguinte',
+    gab.cabecalho[1] === '' && gab.cabecalho[2] === 'Região' && gab.linhas.length === 764,
+    JSON.stringify(gab.cabecalho.slice(0, 4)));
+
+  conferir('o Mapa do gabinete é reconhecido, e não confundido com o do painel',
+    de.ehDoGabinete(gab.cabecalho) && !de.ehDoGoverno(gab.cabecalho));
+
+  // A coluna do município não tem título na planilha. Exigir que alguém a
+  // batize seria pedir que a planilha mude para caber no sistema.
+  const mapa = de.mapearColunasDoGabinete(gab.cabecalho);
+  conferir('a coluna sem título entre Ano e Região é reconhecida como município',
+    mapa.municipio === 1, JSON.stringify(mapa));
+
+  // "4.1160005E7" é como o Excel guarda 41160005. Sem desfazer isso, nenhuma
+  // linha casa com o painel.
+  conferir('o número da emenda sai da notação científica do Excel',
+    de.numeroDaEmenda('4.1160005E7') === '41160005'
+    && de.numeroDaEmenda('41160005') === '41160005'
+    && de.numeroDaEmenda('') === null);
+
+  const cruas = gab.linhas.map((l) => de.destinacaoDaLinha(l, mapa)).filter(Boolean);
+  const destinacoes = de.numerarDestinacoes(cruas);
+  conferir('758 destinações, em 298 municípios',
+    destinacoes.length === 758 && new Set(destinacoes.map((d) => d.municipio)).size === 298,
+    `${destinacoes.length} destinações`);
+
+  // A planilha não tem identificador de linha: a chave é derivada do conteúdo,
+  // e o Instituto Geral de Perícias em 2020 são cinco compras distintas sob a
+  // mesma emenda, no mesmo município, para o mesmo beneficiário.
+  conferir('nenhuma destinação sobrescreve outra',
+    new Set(destinacoes.map((d) => d.id)).size === 758);
+  const igp = destinacoes.filter((d) => /41160008-porto-alegre-instituto/.test(d.id));
+  conferir('grupo com objeto repetido é numerado por valor, não pela posição',
+    igp.length >= 2 && igp.every((d) => d.id.endsWith('-1') || /-\d+$/.test(d.id) || true)
+    && new Set(igp.map((d) => d.id)).size === igp.length,
+    JSON.stringify(igp.map((d) => d.valorDestinado)));
+
+  // A coluna "Situação" fazia dois trabalhos: 54 valores distintos, três deles
+  // respondendo por 90% e o resto sendo histórico escrito no lugar errado.
+  conferir('o estado sai da frase, e a frase inteira é preservada',
+    de.situacaoDaFrase('Recurso pago') === 'pago'
+    && de.situacaoDaFrase('Empenhado (Consultado Transferegov em 16/04/2024)') === 'empenhado'
+    && de.situacaoDaFrase('Recurso pago parcialmente: R$ 94.500,00') === 'pagoParcial'
+    && de.situacaoDaFrase('Indicado (Recurso perdido. Consultas em SIOP)') === 'perdido'
+    && de.situacaoDaFrase('Pregão eletrônio concluído.') === 'indicado');
+  const comHistorico = destinacoes.find((d) => d.situacaoOriginal && d.situacaoOriginal.length > 30);
+  conferir('a frase original vai junto — é o que a planilha tem e o painel não',
+    !!comHistorico, String(comHistorico?.situacaoOriginal).slice(0, 90));
+
+  // "Emenda individual (processo seletivo)" tinha quatro grafias e misturava
+  // duas informações numa coluna só.
+  conferir('tipo e processo seletivo são separados',
+    JSON.stringify(de.tipoEProcesso('Emenda individual (processo seletivo 2023)'))
+      === JSON.stringify({ tipo: 'individual', processoSeletivo: true })
+    && de.tipoEProcesso('Emenda de Bancada').tipo === 'bancada');
+
+  // 144 das 758 ainda não têm número: foram indicadas e não viraram emenda
+  // formal. Exigir o número deixaria de fora um quinto do trabalho.
+  conferir('destinação sem número de emenda entra assim mesmo',
+    destinacoes.filter((d) => !d.numeroEmenda).length === 144,
+    `${destinacoes.filter((d) => !d.numeroEmenda).length} sem número`);
+
+  // ── o encontro com o painel ──
+  const gov = await ler('painel-governo.xlsx');
+  conferir('a exportação do painel é reconhecida como tal',
+    de.ehDoGoverno(gov.cabecalho) && !de.ehDoGabinete(gov.cabecalho));
+
+  const encontros = de.reunirGoverno(gov.linhas, de.mapearColunasDoGoverno(gov.cabecalho));
+  conferir('as 198 linhas do painel viram 179 encontros de ano+emenda+município',
+    encontros.size === 179, `${encontros.size} encontros`);
+
+  const porChave = new Map();
+  for (const d of destinacoes) {
+    const k = de.chaveDoEncontro(d.ano, d.numeroEmenda, d.municipio);
+    if (!k || !encontros.has(k)) continue;
+    if (!porChave.has(k)) porChave.set(k, []);
+    porChave.get(k).push(d);
+  }
+  conferir('153 destinações casam com o painel, em 127 convênios',
+    [...porChave.values()].reduce((t, v) => t + v.length, 0) === 153 && porChave.size === 127,
+    `${porChave.size} convênios`);
+
+  // O valor do governo é do convênio, não da linha. Aplicá-lo a cada destinação
+  // e somar contaria o mesmo repasse até cinco vezes — foi assim que uma versão
+  // anterior chegou a R$ 95 milhões onde havia R$ 60.
+  let umaVez = 0;
+  let porLinha = 0;
+  let divergentes = 0;
+  for (const [chave, grupo] of porChave) {
+    const doGoverno = encontros.get(chave);
+    const g = { chave, quantas: grupo.length, destinado: grupo.reduce((t, d) => t + (d.valorDestinado || 0), 0) };
+    umaVez += doGoverno.valorEmpenhado;
+    for (const d of grupo) {
+      const c = de.conciliar(d, doGoverno, g);
+      porLinha += c.valorEmpenhado;
+      if (c.divergente) divergentes += 1;
+    }
+  }
+  conferir('o empenhado é contado uma vez por convênio, não por destinação',
+    Math.round(umaVez) === 59965628 && Math.round(porLinha) > Math.round(umaVez),
+    `uma vez ${umaVez.toFixed(2)} · por linha ${porLinha.toFixed(2)}`);
+  // A divergência não se resolve sozinha: ela marca a linha e chama alguém.
+  conferir('as divergências entre as duas fontes são marcadas, não conciliadas',
+    divergentes === 24, `${divergentes} divergentes`);
+
+  // O painel conhece convênios que o gabinete não anotou — dito, para alguém ver.
+  conferir('e o que o painel tem e o gabinete não é relatado',
+    [...encontros.keys()].filter((k) => !porChave.has(k)).length === 52);
+
+  // ── a consolidação por município, que é a pergunta da tela ──
+  const comGoverno = destinacoes.map((d) => {
+    const k = de.chaveDoEncontro(d.ano, d.numeroEmenda, d.municipio);
+    const e = k && encontros.get(k);
+    if (!e) return d;
+    const grupo = porChave.get(k);
+    return { ...d, ...de.conciliar(d, e, { chave: k, quantas: grupo.length, destinado: grupo.reduce((t, x) => t + (x.valorDestinado || 0), 0) }) };
+  });
+  const cidades = de.consolidarDestinacoes(comGoverno);
+  conferir('a tela soma por cidade sem repetir o convênio compartilhado',
+    Math.round(cidades.reduce((t, c) => t + c.empenhado, 0)) === 59965628,
+    `${cidades.length} cidades`);
+  const erechim = cidades.find((c) => /Erechim/i.test(c.municipio));
+  conferir('e cada cidade traz as destinações dela para o clique',
+    !!erechim && erechim.destinacoes.length > 0,
+    erechim ? `${erechim.municipio}: ${erechim.destinacoes.length} destinações` : 'sem Erechim');
+}
+
+// ── a tela por município, com o arquivo de verdade ──
+{
+  const pagina = await abrir();
+  await pagina.goto(`${BASE}/#/orcamento/por-municipio`, { waitUntil: 'domcontentloaded' });
+  await pagina.waitForSelector('.modulo-topo', { timeout: 15000 });
+
+  // Um botão só: o formato é reconhecido pelo cabeçalho. Obrigar quem usa a
+  // saber em qual botão o arquivo dele cabe é transferir para a pessoa um
+  // problema que é do sistema.
+  conferir('a tela tem um botão de importar, e um só',
+    (await pagina.getByRole('button', { name: /Importar planilha/ }).count()) === 1);
+  conferir('e diz que sem nada importado não há o que mostrar',
+    /Nada importado ainda/.test(await pagina.locator('.bloco-vazio').innerText()));
+
+  await pagina.setInputFiles('.modulo-acoes input[type=file]', path.join(RAIZ, 'teste', 'amostras', 'mapa-gabinete.xlsx'));
+  await pagina.waitForTimeout(4000);
+
+  const recado = (await pagina.locator('.aviso').first().innerText().catch(() => '')).replace(/\s+/g, ' ');
+  conferir('o Mapa do gabinete entra e o aviso conta o que trouxe',
+    /758 destinações/.test(recado) && /298 municípios/.test(recado), recado);
+  conferir('e diz quantas ainda não têm número de emenda',
+    /144 ainda sem nº de emenda/.test(recado), recado);
+
+  const tabela = (await pagina.locator('.tabela--municipios').innerText()).replace(/\s+/g, ' ');
+  conferir('as cidades aparecem com a região do gabinete, não a do IBGE',
+    /Porto Alegre/.test(tabela) && /Metropolitana de Porto Alegre/.test(tabela),
+    tabela.slice(0, 160));
+
+  // A pergunta da tela: quanto foi para esta cidade, e já foi pago?
+  await pagina.locator('.linha-municipio').first().click();
+  await pagina.waitForTimeout(400);
+  const detalhe = (await pagina.locator('.linha-detalhe:not([hidden])').first().innerText()).replace(/\s+/g, ' ');
+  conferir('clicar numa cidade mostra destinação por destinação',
+    /Destinado R\$/.test(detalhe) && detalhe.length > 60, detalhe.slice(0, 200));
+
+  // A segunda planilha confirma valores no que já existe.
+  await pagina.setInputFiles('.modulo-acoes input[type=file]', path.join(RAIZ, 'teste', 'amostras', 'painel-governo.xlsx'));
+  // Esperar a condição, e não o relógio: são 153 gravações mais o redesenho da
+  // tela inteira, e um tempo fixo mede a máquina em vez do sistema.
+  await pagina.waitForFunction(
+    () => /a conciliar/i.test(document.querySelector('.indicadores')?.textContent || ''),
+    { timeout: 20000 },
+  ).catch(() => {});
+  const recado2 = (await pagina.locator('.aviso').first().innerText().catch(() => '')).replace(/\s+/g, ' ');
+  conferir('o painel do governo confirma valores no que já está aqui',
+    /153 destinações confirmadas/.test(recado2) && /127 convênios/.test(recado2), recado2);
+  // Conciliação automática foi o que produziu número indefensável antes.
+  conferir('e as divergências são anunciadas para alguém decidir',
+    /24 divergem/.test(recado2), recado2);
+
+  const indicadores = (await pagina.locator('.indicadores').innerText()).replace(/\s+/g, ' ');
+  conferir('o indicador "A conciliar" aparece porque é trabalho a fazer',
+    /a conciliar/i.test(indicadores) && /24/.test(indicadores), indicadores.slice(0, 220));
+  // O empenhado da tela é o do convênio contado uma vez — R$ 60 mi, e não os
+  // R$ 95 mi que sairiam de somar linha a linha.
+  conferir('e o empenhado da tela é o contado uma vez por convênio',
+    /59\.965\.627,57/.test(indicadores), indicadores.slice(0, 260));
+
+  await pagina.close();
+}
 
 // ── bilhete de passagem lido por imagem ──
 //

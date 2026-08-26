@@ -197,6 +197,7 @@ function paineisDisponiveis() {
     { id: 'painel', area: 'chefia', nome: 'Painel', render: nucleo.paineis.painelChefia },
     { id: 'resumo-cota', area: 'administrativo', nome: 'Resumo da cota', render: nucleo.paineis.painelCota },
     { id: 'ficha', area: 'administrativo', nome: 'Ficha de apresentação', render: nucleo.ficha.painelFicha },
+    { id: 'por-municipio', area: 'orcamento', nome: 'Por município', render: nucleo.paineis.painelDestinacoes },
   ];
 }
 

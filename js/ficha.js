@@ -3,6 +3,7 @@ import { listar } from './dados.js';
 import { semAcento, CODIGO_UF, malhaDoEstado, desenharMinimapa } from './mapa.js';
 import { chaveDoMunicipio } from './tse.js';
 import { telefonePadrao, telefoneVisivel } from './crm.js';
+import { consolidarDestinacoes } from './destinacoes.js';
 
 /**
  * Ficha de apresentação de um município.
@@ -14,6 +15,8 @@ import { telefonePadrao, telefoneVisivel } from './crm.js';
  *
  * O que a ficha reúne, e de onde:
  *
+ *   - O que o mandato destinou: das destinações de emenda, em Orçamento. É a
+ *     parte que interessa politicamente — quanto foi, para quê, e se saiu.
  *   - Retrato da cidade: população e região, do IBGE.
  *   - Política local: prefeito, vice, presidente da Câmara e vereadores
  *     aliados, do cadastro de Municípios. Isso nenhuma API entrega.
@@ -363,12 +366,16 @@ export async function painelFicha(container) {
   limpar(container).appendChild(carregando());
 
   const { sessao } = await import('./sessao.js');
-  const [contatos, cadastros, equipe] = await Promise.all([
+  const [contatos, cadastros, equipe, destinacoes] = await Promise.all([
     listar('contatos', { recarregar: true }).catch(() => []),
     listar('municipios', { recarregar: true }).catch(() => []),
     // Só para o envio: é a equipe, e não o CRM, que pode receber a ficha.
     listar('equipe', { recarregar: true }).catch(() => []),
+    // O que o mandato destinou àquela cidade — a área de Orçamento é a fonte,
+    // e a ficha só mostra. Sem ela a folha vira um retrato sem o essencial.
+    listar('destinacoes', { recarregar: true }).catch(() => []),
   ]);
+  const cidades = consolidarDestinacoes(destinacoes);
 
   const conhecidos = municipiosConhecidos(cadastros);
   const uf = sessao.gabinete?.uf || null;
@@ -519,6 +526,35 @@ export async function painelFicha(container) {
         ].filter(Boolean)),
     ]));
 
+    // ── o que o mandato destinou ──
+    const cidade = cidades.find((c) => semAcento(c.municipio) === semAcento(nome)) || null;
+    folha.appendChild(el('div', { class: 'ficha-secao' }, [
+      el('h3', { texto: 'Emendas do mandato' }),
+      cidade
+        ? el('div', {}, [
+          el('div', { class: 'indicadores indicadores--compactos' }, [
+            indicadorSimples('Destinações', String(cidade.destinacoes.length)),
+            indicadorSimples('Destinado', fmtDinheiroCurto(cidade.destinado)),
+            cidade.empenhado ? indicadorSimples('Empenhado', fmtDinheiroCurto(cidade.empenhado)) : null,
+            cidade.pago ? indicadorSimples('Pago', fmtDinheiroCurto(cidade.pago)) : null,
+            // Um milhão em Aceguá não é um milhão em Porto Alegre.
+            f.populacao ? indicadorSimples('Por habitante', fmtDinheiro(cidade.destinado / f.populacao)) : null,
+          ].filter(Boolean)),
+          el('ul', { class: 'ficha-resumo' }, cidade.destinacoes.slice(0, 12).map((d) => el('li', {}, [
+            el('strong', { texto: d.beneficiario || d.instituicao || 'sem beneficiário' }),
+            el('span', { texto: ` — ${d.objeto || 'objeto não informado'}` }),
+            el('span', { class: 'topo-sub', texto: [d.ano, d.valorDestinado ? fmtDinheiro(d.valorDestinado) : null, ROTULOS_SITUACAO[d.situacao]].filter(Boolean).join(' · ') }),
+          ]))),
+          cidade.destinacoes.length > 12
+            ? el('p', { class: 'campo-dica', texto: `e mais ${cidade.destinacoes.length - 12} destinações — a lista inteira está em Orçamento › Por município.` })
+            : null,
+          cidade.divergentes
+            ? el('p', { class: 'campo-dica', texto: `${cidade.divergentes} destinação(ões) com divergência entre a planilha do gabinete e o painel do governo. Confira antes de citar o número numa reunião.` })
+            : null,
+        ].filter(Boolean))
+        : el('p', { class: 'campo-dica', texto: 'Nenhuma destinação registrada para esta cidade. Importe o Mapa de emendas em Orçamento › Por município.' }),
+    ]));
+
     // ── interlocutores ──
     folha.appendChild(el('div', { class: 'ficha-secao' }, [
       el('h3', { texto: 'Interlocutores no município' }),
@@ -532,7 +568,7 @@ export async function painelFicha(container) {
         : el('p', { class: 'campo-dica', texto: 'Nenhum contato deste município cadastrado em Contatos (CRM).' }),
     ]));
 
-    folha.appendChild(el('p', { class: 'ficha-rodape', texto: `Ficha gerada em ${new Date().toLocaleDateString('pt-BR')} a partir do cadastro de Municípios, do TSE e do IBGE. Nada aqui é estimado.` }));
+    folha.appendChild(el('p', { class: 'ficha-rodape', texto: `Ficha gerada em ${new Date().toLocaleDateString('pt-BR')} a partir do cadastro de Municípios, das destinações de emenda, do TSE e do IBGE. Nada aqui é estimado.` }));
   };
 
   const botao = el('button', {
@@ -602,6 +638,15 @@ async function desenharLocalizacao(caixa, f) {
     console.warn('Minimapa indisponível:', erro.message);
   }
 }
+
+const ROTULOS_SITUACAO = {
+  indicado: 'indicado',
+  empenhado: 'empenhado',
+  pagoParcial: 'pago em parte',
+  pago: 'pago',
+  impedido: 'impedido',
+  perdido: 'recurso perdido',
+};
 
 function indicadorSimples(rotulo, valor) {
   return el('div', { class: 'indicador' }, [

@@ -784,6 +784,142 @@ export const MODULOS = [
   },
 
   // ────────────────────────────── ORÇAMENTO ──────────────────────────────
+  {
+    id: 'destinacoes',
+    area: 'orcamento',
+    nome: 'Destinações',
+    singular: 'destinação',
+    /**
+     * A unidade de trabalho do gabinete não é a emenda — é a destinação.
+     *
+     * Uma emenda se reparte entre várias cidades, e o que o assessor gerencia é
+     * cada pedaço: esta emenda, para esta cidade, para este beneficiário, para
+     * este objeto. É assim que a planilha do gabinete sempre funcionou — 764
+     * linhas para 67 emendas — e foi tratar isso como detalhe de exibição, em
+     * vez de como o modelo, que fez as versões anteriores desta área falharem.
+     *
+     * Os campos abaixo são as colunas dessa planilha, com três acréscimos que
+     * não existiam em lugar nenhum: quem é o responsável na cidade, o andamento
+     * datado, e qual fonte vale quando as duas divergem.
+     */
+    descricao: 'Uma linha por emenda, cidade e beneficiário: quanto foi, para quê, em que pé está e com quem se fala lá.',
+    ordenar: { campo: 'ano', dir: 'desc' },
+    busca: ['municipio', 'beneficiario', 'instituicao', 'objeto', 'numeroEmenda', 'regiao', 'andamento'],
+    importaDestinacoes: true,
+    agruparPor: { campo: 'municipio' },
+    facetas: [
+      { campo: 'situacao', l: 'Em que pé está' },
+      { campo: 'area', l: 'Área' },
+      { campo: 'ano', l: 'Ano' },
+      { campo: 'regiao', l: 'Região' },
+    ],
+    campos: [
+      { k: 'municipio', l: 'Município', t: 'texto', req: true, lista: true,
+        subLinha: { campo: 'regiao' } },
+      { k: 'ano', l: 'Ano', t: 'numero', req: true, lista: true },
+      // A região é a do gabinete, não a do IBGE: 27 recortes próprios, e as
+      // outras abas da planilha são organizadas por eles.
+      { k: 'regiao', l: 'Região', t: 'texto' },
+      { k: 'beneficiario', l: 'Beneficiário', t: 'texto', lista: true },
+      { k: 'instituicao', l: 'Instituição', t: 'texto' },
+      { k: 'cnpj', l: 'CNPJ', t: 'texto' },
+      // Ninguém preenche endereço para relatório. Preenche para chegar lá — e
+      // está em 93% das linhas da planilha do gabinete.
+      { k: 'endereco', l: 'Endereço', t: 'area' },
+      { k: 'objeto', l: 'Objeto', t: 'area', lista: true },
+      // 19% das destinações ainda não têm número: foram indicadas e não viraram
+      // emenda formal. Exigir o número deixaria um quinto do trabalho de fora.
+      { k: 'numeroEmenda', l: 'Nº da emenda', t: 'texto' },
+      { k: 'tipo', l: 'Tipo', t: 'select', lista: true, op: [
+        { v: 'individual', l: 'Individual', cor: 'info' },
+        { v: 'bancada', l: 'Bancada', cor: 'neutro' },
+      ] },
+      // Na planilha isto vinha grudado no tipo, entre parênteses, e com quatro
+      // grafias diferentes. É um qualificador, não um tipo.
+      { k: 'processoSeletivo', l: 'Processo seletivo', t: 'sim-nao' },
+      { k: 'area', l: 'Área', t: 'select', lista: true, op: [
+        { v: 'saude', l: 'Saúde', cor: 'info' },
+        { v: 'seguranca', l: 'Segurança Pública', cor: 'atencao' },
+        { v: 'infraestrutura', l: 'Infraestrutura', cor: 'neutro' },
+        { v: 'turismo', l: 'Infraestrutura Turística', cor: 'neutro' },
+        { v: 'educacao', l: 'Educação', cor: 'info' },
+        { v: 'defesaCivil', l: 'Defesa Civil', cor: 'atencao' },
+        { v: 'outra', l: 'Outra', cor: 'neutro' },
+      ] },
+      { k: 'areaAlocacao', l: 'Área de alocação', t: 'texto' },
+      { k: 'modalidade', l: 'Modalidade', t: 'select', op: [
+        { v: 'investimento', l: 'Investimento' },
+        { v: 'custeio', l: 'Custeio' },
+        { v: 'especial', l: 'Transferência Especial' },
+        { v: 'papCusteio', l: 'PAP Custeio' },
+        { v: 'papInvestimento', l: 'PAP Investimento' },
+        { v: 'macCusteio', l: 'MAC Custeio' },
+        { v: 'macInvestimento', l: 'MAC Investimento' },
+        { v: 'misto', l: 'Misto' },
+      ] },
+
+      // ── dinheiro ──
+      { k: 'valorDestinado', l: 'Destinado', t: 'dinheiro', lista: true },
+      // Estes dois só entram pela planilha do governo: o gabinete não os lança
+      // à mão, e inventá-los seria criar número que ninguém pode defender.
+      { k: 'valorEmpenhado', l: 'Empenhado (governo)', t: 'dinheiro', lista: true },
+      { k: 'valorPago', l: 'Pago (governo)', t: 'dinheiro', lista: true },
+
+      // ── em que pé está ──
+      //
+      // Na planilha esta coluna fazia dois trabalhos: 54 valores distintos, dos
+      // quais três respondiam por 90% e o resto era histórico escrito no lugar
+      // errado. Aqui o estado é curto e o histórico tem coluna própria — que é
+      // por isso que "Andamento" estava preenchida em só 11%.
+      { k: 'situacao', l: 'Em que pé está', t: 'select', lista: true, padrao: 'indicado', op: [
+        { v: 'indicado', l: 'Indicado', cor: 'neutro' },
+        { v: 'empenhado', l: 'Empenhado', cor: 'atencao' },
+        { v: 'pagoParcial', l: 'Pago em parte', cor: 'atencao' },
+        { v: 'pago', l: 'Recurso pago', cor: 'ok' },
+        { v: 'impedido', l: 'Impedido', cor: 'critico' },
+        { v: 'perdido', l: 'Recurso perdido', cor: 'critico' },
+      ] },
+      { k: 'situacaoOriginal', l: 'Situação, como estava na planilha', t: 'area' },
+      { k: 'andamento', l: 'Andamento', t: 'area', inline: true },
+
+      // ── quem se procura lá ──
+      //
+      // A pessoa da cidade, não do gabinete. É quem o assessor liga antes de ir,
+      // e não existia campo para ela em lugar nenhum.
+      { k: 'responsavelNome', l: 'Responsável na cidade', t: 'texto' },
+      { k: 'responsavelCargo', l: 'Cargo', t: 'texto' },
+      { k: 'responsavelTelefone', l: 'Telefone', t: 'tel' },
+
+      // ── o que o governo confirma ──
+      { k: 'numeroInstrumento', l: 'Nº do instrumento', t: 'texto' },
+      { k: 'linkInstrumento', l: 'Página no Transferegov', t: 'url' },
+      { k: 'situacaoInstrumento', l: 'Situação do instrumento', t: 'texto' },
+      { k: 'orgaoConcedente', l: 'Órgão concedente', t: 'texto' },
+      { k: 'proponente', l: 'Proponente no governo', t: 'texto' },
+
+      // ── conciliação ──
+      //
+      // Quando as duas fontes divergem, quem decide é gente — e a decisão fica
+      // registrada com motivo e autor. Conciliar automaticamente foi o que
+      // produziu, nas versões anteriores, número que ninguém sabia defender.
+      // O valor do governo é do encontro (ano+emenda+município), não da linha:
+      // somar por linha contaria o mesmo convênio uma vez por destinação.
+      { k: 'encontroGoverno', l: 'Encontro com o painel', t: 'texto' },
+      { k: 'destinacoesNoEncontro', l: 'Destinações no mesmo convênio', t: 'numero' },
+      { k: 'divergente', l: 'Fontes divergem', t: 'sim-nao', lista: true },
+      { k: 'fonteQueVale', l: 'Qual fonte vale', t: 'select', op: [
+        { v: 'gabinete', l: 'A planilha do gabinete' },
+        { v: 'governo', l: 'O painel do governo' },
+      ] },
+      { k: 'motivoConciliacao', l: 'Por que esta fonte vale', t: 'area' },
+      { k: 'conciliadoPor', l: 'Conciliado por', t: 'texto' },
+      { k: 'conciliadoEm', l: 'Conciliado em', t: 'data' },
+
+      { k: 'observacoes', l: 'Observações', t: 'area' },
+      { k: 'fonte', l: 'Origem do registro', t: 'texto' },
+      { k: 'importadoEm', l: 'Importado em', t: 'data' },
+    ],
+  },
 ];
 
 export const porId = Object.fromEntries(MODULOS.map((m) => [m.id, m]));

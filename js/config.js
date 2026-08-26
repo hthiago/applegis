@@ -50,6 +50,7 @@ export const AREAS = [
   { id: 'chefia', sigla: 'CHF', nome: 'Chefia de gabinete', descricao: 'Painel, tarefas e agenda do deputado' },
   { id: 'administrativo', sigla: 'ADM', nome: 'Administrativo', descricao: 'Equipe, viagens, ofícios, cota e atendimento' },
   { id: 'legislativo', sigla: 'LEG', nome: 'Legislativo', descricao: 'Proposições, produção, pauta e posicionamentos' },
+  { id: 'orcamento', sigla: 'ORC', nome: 'Orçamento', descricao: 'Emendas parlamentares, destinação por destinação' },
   { id: 'comunicacao', sigla: 'COM', nome: 'Comunicação', descricao: 'Editorial, clipping, imprensa e mídia' },
 ];
 
@@ -57,13 +58,13 @@ export const PAPEIS = {
   deputado: { nome: 'Deputado', descricao: 'Acesso total a todas as áreas' },
   chefe: { nome: 'Chefe de gabinete', descricao: 'Acesso total, incluindo a agenda do deputado' },
   assessor: { nome: 'Assessor', descricao: 'Edita apenas as áreas atribuídas', pedeAreas: true },
-  escritorio: { nome: 'Escritório no estado', descricao: 'Edita o administrativo: atendimento, CRM e municípios' },
+  escritorio: { nome: 'Escritório no estado', descricao: 'Edita o administrativo e o orçamento' },
   leitor: { nome: 'Somente leitura', descricao: 'Visualiza tudo, não altera nada' },
   admin: { nome: 'Administrador do sistema', descricao: 'Gerencia acessos e gabinetes' },
 };
 
 // Áreas que o escritório no estado edita: é quem fala com prefeituras e com o cidadão.
-export const AREAS_ESCRITORIO = ['administrativo'];
+export const AREAS_ESCRITORIO = ['administrativo', 'orcamento'];
 
 /** A agenda do deputado é a única exceção à regra geral: só chefia e deputado escrevem. */
 export function podeEditarAgenda(membro) {

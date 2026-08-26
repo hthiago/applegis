@@ -326,9 +326,15 @@ export async function lerXlsx(buffer) {
   const linhas = [];
   for (const bruto of folha.split(/<row[\s>]/).slice(1)) {
     const celulas = [];
-    for (const m of bruto.matchAll(/<c\b([^>]*)>([\s\S]*?)<\/c>|<c\b([^>]*)\/>/g)) {
-      const atributos = m[1] ?? m[3] ?? '';
-      const corpo = m[2] ?? '';
+    // A célula vazia vem autofechada — `<c r="B1" s="4"/>` — e a forma com
+    // conteúdo precisa ser testada DEPOIS dela. Na ordem inversa, `[^>]*`
+    // engolia a própria barra: a vazia era lida como abertura e consumia a
+    // célula seguinte como conteúdo. O efeito era uma coluna sumir e o valor
+    // dela aparecer na anterior — deslocamento silencioso, sem erro nenhum, em
+    // qualquer planilha com buraco no meio.
+    for (const m of bruto.matchAll(/<c\b([^>]*?)\/>|<c\b([^>]*?)>([\s\S]*?)<\/c>/g)) {
+      const atributos = m[1] ?? m[2] ?? '';
+      const corpo = m[3] ?? '';
       const onde = indiceDaColuna(/r="([A-Z]+\d+)"/.exec(atributos)?.[1]);
       const tipo = /t="([^"]+)"/.exec(atributos)?.[1];
       let valor = '';

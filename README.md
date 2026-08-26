@@ -1,7 +1,7 @@
 # Gestão de Gabinete Parlamentar
 
-Sistema web para o trabalho diário de um gabinete parlamentar, dividido em quatro áreas:
-**Chefia de gabinete**, **Administrativo**, **Legislativo** e **Comunicação**.
+Sistema web para o trabalho diário de um gabinete parlamentar, dividido em cinco áreas:
+**Chefia de gabinete**, **Administrativo**, **Legislativo**, **Comunicação** e **Orçamento**.
 
 Entra-se com conta Google, mas só passa quem estiver na lista de pessoas autorizadas.
 Todos os integrantes enxergam todas as áreas; cada setor edita a sua. A agenda do
@@ -23,7 +23,8 @@ falam direto com o Firebase pelo navegador — publicar é copiar a pasta.
 | `js/config.js` | Chaves do Firebase, áreas, papéis e regra de permissão |
 | `js/modulos.js` | **Catálogo dos módulos.** Descreve os campos de cada tela |
 | `js/crud.js` | Gera listagem e formulário a partir do catálogo |
-| `js/paineis.js` | Painéis consolidados (gabinete, cota parlamentar) |
+| `js/paineis.js` | Painéis consolidados (gabinete, cota, emendas por município) |
+| `js/destinacoes.js` | Leitura das duas planilhas de emenda e a conciliação entre elas |
 | `js/sessao.js` | Login, lista de autorizados e vínculo com o gabinete |
 | `js/admin.js` | Tela de liberação de acessos |
 | `js/camara.js` | Integração com os dados abertos da Câmara |
@@ -125,7 +126,7 @@ papel não edita conteúdo, mas cria novos gabinetes e administra os acessos de 
 | `deputado` | Edita tudo, inclusive a agenda |
 | `chefe` | Edita tudo, inclusive a agenda, e libera acessos do seu gabinete |
 | `assessor` | Edita apenas as áreas listadas em `areas`; lê o resto |
-| `escritorio` | Edita o Administrativo; lê o resto |
+| `escritorio` | Edita o Administrativo e o Orçamento; lê o resto |
 | `leitor` | Lê tudo, não altera nada |
 | `admin` | Não edita conteúdo; cria gabinetes e administra acessos de todos |
 
@@ -135,6 +136,54 @@ Duas exceções deliberadas à regra geral, ambas registradas em `firestore.rule
   área de Chefia.
 - **Tarefas** — qualquer integrante do gabinete pode gravar, porque delegação atravessa
   áreas: quem recebe a tarefa precisa conseguir respondê-la.
+
+---
+
+## Orçamento: as destinações de emenda
+
+A unidade de trabalho não é a emenda — é a **destinação**: *esta emenda, para esta
+cidade, para este beneficiário, para este objeto*. Uma emenda se reparte entre dezenas
+de cidades, e é cada pedaço que o assessor acompanha. O Mapa de emendas do gabinete
+sempre funcionou assim: 758 destinações para 67 emendas, de 2019 a 2026.
+
+### Duas planilhas, um botão
+
+Em *Orçamento › Por município*, **Importar planilha**. O formato é reconhecido pelo
+cabeçalho — não há botão separado para cada uma.
+
+| Planilha | Papel | O que ela traz |
+|---|---|---|
+| **Mapa de emendas** (do gabinete) | **A fonte.** Importe esta primeiro | Cidade, região, endereço, beneficiário, objeto, área, valor destinado e o que já se sabe do andamento |
+| **Exportação do painel** (`dd-publico.serpro.gov.br`) | A confirmação | Empenhado e pago oficiais, nº do instrumento e o link do convênio |
+
+A planilha do gabinete é a fonte primária, e os números explicam por quê: ela tem 758
+destinações, 298 municípios e 67 emendas; a exportação do painel tem 198, 117 e 25.
+Todos os municípios do painel já estão nela. O painel só enxerga o que virou convênio
+celebrado — não vê a Segurança Pública, não vê o fundo a fundo da Saúde, não vê 2019.
+
+### Quando as duas divergem
+
+Elas se encontram por **ano + nº da emenda + município**: 153 destinações, em 127
+convênios. Quando o painel registra mais que o destinado, a linha é **marcada como
+divergente** — e alguém do gabinete escolhe qual fonte vale, com o motivo registrado.
+Nada é conciliado automaticamente: foi isso que produziu, nas versões anteriores desta
+área, número que ninguém sabia defender numa reunião.
+
+**O valor do painel é do convênio, não da linha.** Cinco compras de equipamento sob a
+mesma emenda casam com um convênio só; somar por linha contaria o mesmo repasse cinco
+vezes — R$ 95 milhões onde há R$ 60. A tela conta uma vez por convênio.
+
+### Três campos que não existem em planilha nenhuma
+
+- **Responsável na cidade** — a pessoa de lá, com cargo e telefone. É quem se liga antes
+  de viajar.
+- **Andamento** — o histórico datado. Na planilha ele estava espremido na coluna
+  "Situação", que por isso tinha 54 valores distintos enquanto "Andamento" ficava
+  preenchida em 11% das linhas.
+- **Conciliação** — qual fonte vale, por quê, quem decidiu e quando.
+
+A **Ficha de apresentação** puxa daqui as destinações da cidade, e continua sendo o papel
+que vai para a visita.
 
 ---
 

@@ -3,6 +3,7 @@ import {
 } from './ui.js';
 import { listar } from './dados.js';
 import { porId } from './modulos.js';
+import { consolidarDestinacoes, situacaoDaCidade } from './destinacoes.js';
 
 /** Painéis consolidados. Diferente dos módulos, estes são desenhados à mão. */
 
@@ -451,3 +452,221 @@ function tabelaDeLancamentos(lista, campoCategoria) {
     ]),
   ]);
 }
+
+// ───────────────────────── orçamento: por município ─────────────────────────
+
+const ROTULO_SITUACAO = {
+  indicado: 'Indicado',
+  empenhado: 'Empenhado',
+  pagoParcial: 'Pago em parte',
+  pago: 'Recurso pago',
+  impedido: 'Impedido',
+  perdido: 'Recurso perdido',
+};
+
+/** As destinações de uma cidade, uma a uma — o nível em que se responde. */
+export function detalhesDaCidade(m) {
+  return el('div', { class: 'municipio-detalhe' }, m.destinacoes.map((d) => el('article', { class: 'municipio-emenda' }, [
+    el('header', {}, [
+      el('strong', { texto: d.beneficiario || d.instituicao || 'sem beneficiário' }),
+      el('span', { class: 'topo-sub', texto: [d.ano, d.numeroEmenda ? `emenda ${d.numeroEmenda}` : 'sem nº de emenda'].filter(Boolean).join(' · ') }),
+    ]),
+    d.objeto ? el('p', { class: 'municipio-objeto', texto: d.objeto }) : null,
+    el('p', { class: 'municipio-numeros' }, [
+      d.valorDestinado ? el('span', { texto: `Destinado ${fmtDinheiro(d.valorDestinado)}` }) : null,
+      d.valorEmpenhado ? el('span', { texto: `Empenhado ${fmtDinheiro(d.valorEmpenhado)}` }) : null,
+      d.valorPago ? el('span', { class: 'municipio-pago', texto: `Pago ${fmtDinheiro(d.valorPago)}` }) : null,
+      el('span', {}, [etiqueta(ROTULO_SITUACAO[d.situacao] || d.situacao, situacaoDaCidade({ pago: d.valorPago || 0, empenhado: d.valorEmpenhado || 0, destinado: d.valorDestinado || 0, divergentes: 0 }).cor)]),
+    ].filter(Boolean)),
+    // O que só a planilha do gabinete tem: o histórico escrito por gente.
+    d.situacaoOriginal && d.situacaoOriginal !== ROTULO_SITUACAO[d.situacao]
+      ? el('p', { class: 'campo-dica', texto: d.situacaoOriginal }) : null,
+    d.andamento ? el('p', { class: 'campo-dica', texto: d.andamento }) : null,
+    d.responsavelNome
+      ? el('p', { class: 'campo-dica', texto: `Na cidade: ${d.responsavelNome}${d.responsavelCargo ? `, ${d.responsavelCargo}` : ''}${d.responsavelTelefone ? ` · ${d.responsavelTelefone}` : ''}` })
+      : null,
+    // A divergência não se resolve sozinha: ela chama alguém.
+    d.divergente
+      ? el('p', { class: 'municipio-trava', texto: `O painel do governo registra mais que o destinado nesta linha. Abra a destinação e escolha qual fonte vale.` })
+      : null,
+    d.linkInstrumento
+      ? el('p', {}, [el('a', { href: d.linkInstrumento, target: '_blank', rel: 'noopener', class: 'campo-dica', texto: `Convênio ${d.numeroInstrumento || ''} no Transferegov` })])
+      : null,
+  ].filter(Boolean))));
+}
+
+/**
+ * O botão que traz as duas planilhas.
+ *
+ * Um só, e o formato é reconhecido pelo cabeçalho: obrigar quem usa a saber de
+ * antemão em qual botão o arquivo dele cabe é transferir para a pessoa um
+ * problema que é do sistema.
+ */
+function importadorDeDestinacoes(recarregar) {
+  const escolher = el('input', { type: 'file', accept: '.xlsx,.xls,.csv,.txt', class: 'oculto-visual' });
+  const btn = el('button', {
+    class: 'btn btn--primario',
+    type: 'button',
+    texto: 'Importar planilha',
+    title: 'O Mapa de emendas do gabinete, ou a exportação do painel de transferências',
+    onclick: () => escolher.click(),
+  });
+
+  escolher.addEventListener('change', async () => {
+    const arquivo = escolher.files?.[0];
+    if (!arquivo) return;
+    btn.disabled = true;
+    btn.textContent = 'Lendo…';
+    try {
+      const { importarPlanilha } = await import('./destinacoes.js');
+      const r = await importarPlanilha(arquivo);
+      if (r.origem === 'gabinete') {
+        aviso([
+          `${r.destinacoes} destinações (${r.novas} novas, ${r.atualizadas} atualizadas)`,
+          `${r.municipios} municípios · ${r.emendas} emendas`,
+          `destinado ${fmtDinheiroCurto(r.destinado)}`,
+          r.semEmenda ? `${r.semEmenda} ainda sem nº de emenda` : null,
+        ].filter(Boolean).join(' · '), 'ok');
+      } else {
+        aviso([
+          `${r.casaram} destinações confirmadas pelo painel, em ${r.encontrosUsados} convênios`,
+          `empenhado ${fmtDinheiroCurto(r.empenhado)}, pago ${fmtDinheiroCurto(r.pago)}`,
+          r.divergentes ? `${r.divergentes} divergem do que está na planilha do gabinete` : null,
+          r.semParNoGabinete ? `${r.semParNoGabinete} convênios do painel sem par no gabinete` : null,
+        ].filter(Boolean).join(' · '), r.casaram ? 'ok' : 'erro');
+      }
+      recarregar();
+    } catch (erro) {
+      console.error(erro);
+      aviso(erro.message || 'Não foi possível importar.', 'erro');
+    } finally {
+      escolher.value = '';
+      btn.disabled = false;
+      btn.textContent = 'Importar planilha';
+    }
+  });
+
+  return el('div', { class: 'modulo-acoes' }, [
+    btn,
+    escolher,
+    el('p', {
+      class: 'campo-dica',
+      texto: 'Duas planilhas, um botão. O Mapa de emendas do gabinete é a fonte: ele diz o que existe. A exportação do painel confirma empenhado e pago no que já está aqui — importe o Mapa primeiro.',
+    }),
+  ]);
+}
+
+/**
+ * Por município: a pergunta que o assessor faz antes de viajar.
+ *
+ * "Quanto foi para esta cidade, e já foi pago?" — e, um clique abaixo,
+ * destinação por destinação: quem recebeu, para quê, em que pé está e com quem
+ * se fala lá.
+ */
+export async function painelDestinacoes(container) {
+  limpar(container).appendChild(carregando());
+  const destinacoes = await listar('destinacoes', { recarregar: true });
+
+  const cidades = consolidarDestinacoes(destinacoes);
+  const total = (k) => cidades.reduce((t, m) => t + m[k], 0);
+
+  limpar(container);
+  container.appendChild(el('header', { class: 'modulo-topo' }, [
+    el('div', { class: 'modulo-titulo' }, [
+      el('h1', { texto: 'Por município' }),
+      el('p', { texto: 'Quanto foi para cada cidade, em que pé está e com quem se fala lá. Clique numa linha para ver destinação por destinação.' }),
+    ]),
+  ]));
+
+  container.appendChild(importadorDeDestinacoes(() => painelDestinacoes(container)));
+
+  if (!destinacoes.length) {
+    container.appendChild(nada('Nada importado ainda. Comece pelo Mapa de emendas do gabinete — ele é a fonte do que existe.'));
+    return;
+  }
+
+  const divergentes = cidades.reduce((t, m) => t + m.divergentes, 0);
+  container.appendChild(el('div', { class: 'indicadores' }, [
+    indicador('Municípios', String(cidades.length), 'neutro'),
+    indicador('Destinações', String(destinacoes.length), 'neutro'),
+    indicador('Destinado', fmtDinheiroCurto(total('destinado')), 'info', fmtDinheiro(total('destinado'))),
+    indicador('Empenhado', fmtDinheiroCurto(total('empenhado')), 'atencao', fmtDinheiro(total('empenhado'))),
+    indicador('Pago', fmtDinheiroCurto(total('pago')), 'ok', fmtDinheiro(total('pago'))),
+    // A divergência é indicador de primeira linha porque é trabalho a fazer,
+    // não estatística: cada uma é uma decisão que alguém precisa tomar.
+    divergentes ? indicador('A conciliar', String(divergentes), 'critico', 'fontes divergem') : null,
+  ].filter(Boolean)));
+
+  const corpo = el('tbody');
+  const busca = el('input', {
+    type: 'search',
+    class: 'busca',
+    placeholder: 'Buscar município, região, beneficiário, objeto…',
+    'aria-label': 'Buscar',
+    oninput: () => desenhar(),
+  });
+  container.appendChild(el('div', { class: 'modulo-acoes' }, [busca]));
+  container.appendChild(el('div', { class: 'tabela-rolagem' }, [
+    el('table', { class: 'tabela tabela--municipios' }, [
+      el('thead', {}, [el('tr', {}, [
+        el('th', { texto: 'Município' }),
+        el('th', { texto: 'Destinações' }),
+        el('th', { class: 'num', texto: 'Destinado' }),
+        el('th', { class: 'num', texto: 'Empenhado' }),
+        el('th', { class: 'num', texto: 'Pago' }),
+        el('th', { texto: 'Situação' }),
+      ])]),
+      corpo,
+    ]),
+  ]));
+
+  function desenhar() {
+    const termos = semAcentoLocal(busca.value).split(/\s+/).filter(Boolean);
+    const visiveis = cidades.filter((m) => {
+      if (!termos.length) return true;
+      const texto = semAcentoLocal([
+        m.municipio, m.regiao,
+        ...m.destinacoes.map((d) => `${d.beneficiario || ''} ${d.instituicao || ''} ${d.objeto || ''} ${d.numeroEmenda || ''} ${d.ano || ''}`),
+      ].join(' '));
+      return termos.every((t) => texto.includes(t));
+    });
+
+    limpar(corpo);
+    if (!visiveis.length) {
+      corpo.appendChild(el('tr', {}, [el('td', { colspan: '6' }, [nada('Nenhum município encontrado.')])]));
+      return;
+    }
+
+    visiveis.forEach((m) => {
+      const situacao = situacaoDaCidade(m);
+      const detalhe = el('tr', { class: 'linha-detalhe', hidden: true }, [
+        el('td', { colspan: '6' }, [detalhesDaCidade(m)]),
+      ]);
+      const linha = el('tr', {
+        class: 'linha-municipio',
+        tabindex: '0',
+        role: 'button',
+        onclick: () => { detalhe.hidden = !detalhe.hidden; },
+        onkeydown: (e) => {
+          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); detalhe.hidden = !detalhe.hidden; }
+        },
+      }, [
+        el('td', {}, [
+          el('strong', { texto: m.municipio }),
+          m.regiao ? el('span', { class: 'topo-sub', texto: m.regiao }) : null,
+        ].filter(Boolean)),
+        el('td', { texto: String(m.destinacoes.length) }),
+        el('td', { class: 'num', texto: m.destinado ? fmtDinheiro(m.destinado) : '—' }),
+        el('td', { class: 'num', texto: m.empenhado ? fmtDinheiro(m.empenhado) : '—' }),
+        el('td', { class: 'num', texto: m.pago ? fmtDinheiro(m.pago) : '—' }),
+        el('td', {}, [etiqueta(situacao.texto, situacao.cor)]),
+      ]);
+      corpo.appendChild(linha);
+      corpo.appendChild(detalhe);
+    });
+  }
+
+  desenhar();
+}
+
+const semAcentoLocal = (t) => String(t ?? '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
