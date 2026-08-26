@@ -74,16 +74,14 @@ service cloud.firestore {
         'editorial': 'comunicacao',
         'clipping': 'comunicacao',
         'imprensa': 'comunicacao',
-        'midia': 'comunicacao',
-        'emendas': 'orcamento',
-        'transferencias': 'orcamento'
+        'midia': 'comunicacao'
       }.get(colecao, 'desconhecida');
     }
 
     function editaArea(g, area) {
       return ehChefia(g)
         || (ehMembro(g) && autorizacao().papel == 'assessor' && area in autorizacao().areas)
-        || (ehMembro(g) && autorizacao().papel == 'escritorio' && area in ['administrativo', 'orcamento']);
+        || (ehMembro(g) && autorizacao().papel == 'escritorio' && area == 'administrativo');
     }
 
     // ───────────────────────── trava de instalação ─────────────────────────

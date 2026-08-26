@@ -1,6 +1,5 @@
 import { el, limpar, carregando, fmtDinheiro, fmtDinheiroCurto, etiqueta, aviso, modal } from './ui.js';
 import { listar } from './dados.js';
-import { consolidarPorMunicipio, situacaoDoLugar, detalhesDeUmLugar } from './paineis.js';
 import { semAcento, CODIGO_UF, malhaDoEstado, desenharMinimapa } from './mapa.js';
 import { chaveDoMunicipio } from './tse.js';
 import { telefonePadrao, telefoneVisivel } from './crm.js';
@@ -9,17 +8,13 @@ import { telefonePadrao, telefoneVisivel } from './crm.js';
  * Ficha de apresentação de um município.
  *
  * Para que serve, concretamente: o deputado vai a Erechim na quinta. Alguém tem
- * de montar, na quarta, uma folha com o que o mandato fez ali, quem governa a
- * cidade, como foi a votação, o tamanho do lugar e o que está travado. Hoje isso
- * é feito à mão, abrindo quatro sistemas — e é sempre a mesma folha, com os
- * mesmos campos.
+ * de montar, na quarta, uma folha com quem governa a cidade, como foi a votação,
+ * o tamanho do lugar e o que move a economia. Hoje isso é feito à mão, abrindo
+ * quatro sistemas — e é sempre a mesma folha, com os mesmos campos.
  *
  * O que a ficha reúne, e de onde:
  *
- *   - Emendas e execução: do que o gabinete já importou. É a parte que
- *     interessa politicamente — quanto foi, para quê, e o que travou.
- *   - Retrato da cidade: população e região, do IBGE. Dá escala ao número da
- *     emenda: um milhão em Aceguá não é um milhão em Porto Alegre.
+ *   - Retrato da cidade: população e região, do IBGE.
  *   - Política local: prefeito, vice, presidente da Câmara e vereadores
  *     aliados, do cadastro de Municípios. Isso nenhuma API entrega.
  *   - Votação: do arquivo do TSE, importado em Municípios. Diz se aquele é um
@@ -28,8 +23,8 @@ import { telefonePadrao, telefoneVisivel } from './crm.js';
  *     liga antes de viajar.
  *
  * Para onde ela vai: tela, papel e mensagem de WhatsApp, todos da mesma fonte.
- * O envio é restrito ao parlamentar e à equipe — a ficha traz pendências e a
- * leitura interna do gabinete, e não é material de divulgação.
+ * O envio é restrito ao parlamentar e à equipe — a ficha traz a leitura interna
+ * do gabinete, e não é material de divulgação.
  *
  * O que ela deliberadamente NÃO faz: inventar leitura política. Nada aqui é
  * gerado por texto livre. Cada linha da ficha tem fonte, e o que não veio de
@@ -40,7 +35,7 @@ import { telefonePadrao, telefoneVisivel } from './crm.js';
 
 const IBGE = 'https://servicodados.ibge.gov.br/api/v1/localidades';
 
-/** O retrato do município no IBGE: escala para ler o valor da emenda. */
+/** O retrato do município no IBGE: o tamanho da cidade, em números. */
 export async function retratoDoMunicipio(nome, uf) {
   const codigo = CODIGO_UF[String(uf || '').toUpperCase()];
   if (!codigo || !nome) return null;
@@ -83,17 +78,13 @@ export async function retratoDoMunicipio(nome, uf) {
 }
 
 /** Os nomes de município que a base do gabinete conhece, para sugerir. */
-export function municipiosConhecidos(lugares, cadastros = []) {
+export function municipiosConhecidos(cadastros = []) {
   const nomes = new Map();
-  const juntar = (n) => {
-    if (!n || /^A detalhar/.test(n) || /^Sem munic/.test(n)) return;
-    const chave = semAcento(n);
-    if (!nomes.has(chave)) nomes.set(chave, n);
-  };
-  lugares.forEach((l) => juntar(l.municipio));
-  // Uma cidade sem emenda nenhuma continua sendo uma cidade que se visita: se
-  // ela está no cadastro, tem de aparecer na lista.
-  cadastros.forEach((c) => juntar(c.nome));
+  for (const c of cadastros) {
+    if (!c?.nome) continue;
+    const chave = semAcento(c.nome);
+    if (!nomes.has(chave)) nomes.set(chave, c.nome);
+  }
   return [...nomes.values()].sort((a, b) => a.localeCompare(b, 'pt-BR'));
 }
 
@@ -101,26 +92,6 @@ export function municipiosConhecidos(lugares, cadastros = []) {
 export function contatosDoMunicipio(contatos, nome) {
   const alvo = semAcento(nome);
   return contatos.filter((c) => semAcento(c.municipio || c.cidade || '') === alvo);
-}
-
-/**
- * O que está travado, em uma lista.
- *
- * É o primeiro assunto de qualquer visita: a prefeitura vai perguntar. Trazê-lo
- * no topo evita a cena de o parlamentar descobrir o impedimento na frente do
- * prefeito.
- */
-export function travas(lugar) {
-  const vistas = new Set();
-  const saida = [];
-  for (const d of lugar?.destinos || []) {
-    const texto = d.situacao;
-    if (!texto || !/impedi|indefer|cancelad|devolvid/i.test(texto)) continue;
-    if (vistas.has(texto)) continue;
-    vistas.add(texto);
-    saida.push({ emenda: d.codigoEmenda || null, texto });
-  }
-  return saida;
 }
 
 /** Acha o cadastro do município pela chave, e por nome quando a chave não bate. */
@@ -195,9 +166,8 @@ export function resumoEconomico(cadastro, retrato) {
  * de WhatsApp. Três saídas, uma fonte — do contrário a folha impressa e a
  * mensagem enviada divergem, e ninguém percebe qual das duas está velha.
  */
-export function dadosDaFicha({ nome, uf, lugar, retrato, cadastro, contatos }) {
+export function dadosDaFicha({ nome, uf, retrato, cadastro, contatos }) {
   const populacao = numero(retrato?.populacao) ?? numero(cadastro?.populacao);
-  const total = lugar ? (lugar.destinado || lugar.empenhado || lugar.pago || 0) : 0;
   return {
     nome: retrato?.nome || cadastro?.nome || nome,
     uf: retrato?.uf || cadastro?.uf || uf || null,
@@ -214,15 +184,6 @@ export function dadosDaFicha({ nome, uf, lugar, retrato, cadastro, contatos }) {
     governoConfirmado: !!cadastro?.governoConfirmado,
     votacao: votacaoDoMunicipio(cadastro),
     economia: resumoEconomico(cadastro, retrato),
-    emendas: lugar ? {
-      quantidade: lugar.emendas.length,
-      destinado: lugar.destinado || 0,
-      empenhado: lugar.empenhado || 0,
-      pago: lugar.pago || 0,
-      porHabitante: populacao ? total / populacao : null,
-      situacao: situacaoDoLugar(lugar),
-    } : null,
-    travas: travas(lugar),
     contatos,
   };
 }
@@ -250,18 +211,6 @@ export function textoDaFicha(f, { gabinete = null } = {}) {
     if (f.votacao.percentual != null) partes.push(`${f.votacao.percentual.toFixed(1)}%`);
     if (f.votacao.colocacao) partes.push(`${f.votacao.colocacao}º lugar`);
     l.push('', `*Votação${f.votacao.ano ? ` ${f.votacao.ano}` : ''}*: ${partes.join(' · ')}`);
-  }
-
-  if (f.emendas) {
-    l.push('', `*Emendas*: ${f.emendas.quantidade} · destinado ${fmtDinheiroCurto(f.emendas.destinado)} · pago ${fmtDinheiroCurto(f.emendas.pago)}`);
-    if (f.emendas.porHabitante) l.push(`${fmtDinheiro(f.emendas.porHabitante)} por habitante`);
-  } else {
-    l.push('', '*Emendas*: nenhuma registrada no sistema para esta cidade.');
-  }
-
-  if (f.travas.length) {
-    l.push('', '*Pendências a explicar*');
-    f.travas.slice(0, 5).forEach((t) => l.push(`• ${t.emenda ? `${t.emenda}: ` : ''}${t.texto}`));
   }
 
   if (f.economia.linhas.length || f.economia.doGabinete) {
@@ -414,17 +363,14 @@ export async function painelFicha(container) {
   limpar(container).appendChild(carregando());
 
   const { sessao } = await import('./sessao.js');
-  const [emendas, transferencias, contatos, cadastros, equipe] = await Promise.all([
-    listar('emendas', { recarregar: true }),
-    listar('transferencias', { recarregar: true }).catch(() => []),
+  const [contatos, cadastros, equipe] = await Promise.all([
     listar('contatos', { recarregar: true }).catch(() => []),
     listar('municipios', { recarregar: true }).catch(() => []),
     // Só para o envio: é a equipe, e não o CRM, que pode receber a ficha.
     listar('equipe', { recarregar: true }).catch(() => []),
   ]);
 
-  const lugares = consolidarPorMunicipio(emendas, transferencias);
-  const conhecidos = municipiosConhecidos(lugares, cadastros);
+  const conhecidos = municipiosConhecidos(cadastros);
   const uf = sessao.gabinete?.uf || null;
 
   limpar(container);
@@ -453,12 +399,11 @@ export async function painelFicha(container) {
     atual = null;
     limpar(folha).appendChild(carregando());
 
-    const lugar = lugares.find((l) => semAcento(l.municipio) === semAcento(nome)) || null;
     const cadastro = cadastroDoMunicipio(cadastros, nome, uf);
     const retrato = await retratoDoMunicipio(nome, cadastro?.uf || uf);
     const daCidade = contatosDoMunicipio(contatos, nome);
 
-    const f = dadosDaFicha({ nome, uf, lugar, retrato, cadastro, contatos: daCidade });
+    const f = dadosDaFicha({ nome, uf, retrato, cadastro, contatos: daCidade });
     atual = f;
 
     limpar(folha);
@@ -470,7 +415,6 @@ export async function painelFicha(container) {
       el('div', { class: 'ficha-topo' }, [
         el('h2', { texto: f.nome }),
         f.uf ? etiqueta(f.uf, 'neutro') : null,
-        f.emendas ? etiqueta(f.emendas.situacao.texto, f.emendas.situacao.cor) : null,
       ].filter(Boolean)),
       el('p', { class: 'ficha-origem', texto: [sessao.gabinete?.nome, sessao.gabinete?.deputado].filter(Boolean).join(' · ') }),
     ]);
@@ -575,40 +519,6 @@ export async function painelFicha(container) {
         ].filter(Boolean)),
     ]));
 
-    // ── o que o mandato fez ──
-    if (lugar) {
-      folha.appendChild(el('div', { class: 'ficha-secao' }, [
-        el('h3', { texto: 'Emendas do mandato' }),
-        el('div', { class: 'indicadores indicadores--compactos' }, [
-          indicadorSimples('Emendas', String(f.emendas.quantidade)),
-          indicadorSimples('Destinado', fmtDinheiroCurto(f.emendas.destinado)),
-          indicadorSimples('Empenhado', fmtDinheiroCurto(f.emendas.empenhado)),
-          indicadorSimples('Pago', fmtDinheiroCurto(f.emendas.pago)),
-          // O valor por habitante é o que torna comparável o incomparável: um
-          // milhão em Aceguá e um milhão em Porto Alegre não são a mesma coisa.
-          f.emendas.porHabitante ? indicadorSimples('Por habitante', fmtDinheiro(f.emendas.porHabitante)) : null,
-        ].filter(Boolean)),
-        detalhesDeUmLugar(lugar),
-      ]));
-    } else {
-      folha.appendChild(el('div', { class: 'ficha-secao' }, [
-        el('h3', { texto: 'Emendas do mandato' }),
-        el('p', { class: 'campo-dica', texto: 'Nenhuma emenda registrada para este município no que já foi importado. Se houver, rode "Consultar Portal" e "Detalhar emendas" na aba Emendas.' }),
-      ]));
-    }
-
-    // ── o que está travado ──
-    if (f.travas.length) {
-      folha.appendChild(el('div', { class: 'ficha-secao ficha-secao--alerta' }, [
-        el('h3', { texto: 'Pendências a explicar' }),
-        el('p', { class: 'campo-dica', texto: 'A prefeitura vai perguntar sobre isto.' }),
-        el('ul', {}, f.travas.map((t) => el('li', {}, [
-          t.emenda ? el('strong', { texto: `${t.emenda}: ` }) : null,
-          el('span', { texto: t.texto }),
-        ].filter(Boolean)))),
-      ]));
-    }
-
     // ── interlocutores ──
     folha.appendChild(el('div', { class: 'ficha-secao' }, [
       el('h3', { texto: 'Interlocutores no município' }),
@@ -622,7 +532,7 @@ export async function painelFicha(container) {
         : el('p', { class: 'campo-dica', texto: 'Nenhum contato deste município cadastrado em Contatos (CRM).' }),
     ]));
 
-    folha.appendChild(el('p', { class: 'ficha-rodape', texto: `Ficha gerada em ${new Date().toLocaleDateString('pt-BR')} a partir do que está importado no sistema, do cadastro de Municípios, do TSE e do IBGE. Nada aqui é estimado.` }));
+    folha.appendChild(el('p', { class: 'ficha-rodape', texto: `Ficha gerada em ${new Date().toLocaleDateString('pt-BR')} a partir do cadastro de Municípios, do TSE e do IBGE. Nada aqui é estimado.` }));
   };
 
   const botao = el('button', {
@@ -666,7 +576,7 @@ export async function painelFicha(container) {
     entrada.value = conhecidos[0];
     await montar(conhecidos[0]);
   } else {
-    folha.appendChild(el('p', { class: 'bloco-vazio', texto: 'Nenhum município conhecido ainda. Importe as emendas, ou cadastre a cidade em Municípios.' }));
+    folha.appendChild(el('p', { class: 'bloco-vazio', texto: 'Nenhum município cadastrado ainda. Em Municípios, importe as candidaturas do TSE — elas criam as cidades do estado de uma vez.' }));
   }
 }
 

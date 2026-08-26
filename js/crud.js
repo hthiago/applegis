@@ -54,7 +54,7 @@ function paraBusca(texto) {
  *
  * Um módulo pode declarar `buscaEmFilhos`: a emenda não guarda o município nem
  * o objeto de cada destino — quem os guarda é a transferência pendurada nela.
- * Procurar "Acegua" ou "videomonitoramento" na lista de emendas só encontra
+ * Procurar "Acegua" ou "videomonitoramento" numa lista longa só encontra
  * alguma coisa se a busca descer até ali.
  */
 function textoBuscavel(item, modulo, refs, porPai) {

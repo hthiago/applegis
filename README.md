@@ -1,7 +1,7 @@
 # Gestão de Gabinete Parlamentar
 
-Sistema web para o trabalho diário de um gabinete parlamentar, dividido em cinco áreas:
-**Chefia de gabinete**, **Administrativo**, **Legislativo**, **Comunicação** e **Orçamento**.
+Sistema web para o trabalho diário de um gabinete parlamentar, dividido em quatro áreas:
+**Chefia de gabinete**, **Administrativo**, **Legislativo** e **Comunicação**.
 
 Entra-se com conta Google, mas só passa quem estiver na lista de pessoas autorizadas.
 Todos os integrantes enxergam todas as áreas; cada setor edita a sua. A agenda do
@@ -23,8 +23,7 @@ falam direto com o Firebase pelo navegador — publicar é copiar a pasta.
 | `js/config.js` | Chaves do Firebase, áreas, papéis e regra de permissão |
 | `js/modulos.js` | **Catálogo dos módulos.** Descreve os campos de cada tela |
 | `js/crud.js` | Gera listagem e formulário a partir do catálogo |
-| `js/paineis.js` | Painéis consolidados (gabinete, emendas por município, cota) |
-| `js/painel.js` | Leitura da planilha do painel de transferências — a fonte das emendas |
+| `js/paineis.js` | Painéis consolidados (gabinete, cota parlamentar) |
 | `js/sessao.js` | Login, lista de autorizados e vínculo com o gabinete |
 | `js/admin.js` | Tela de liberação de acessos |
 | `js/camara.js` | Integração com os dados abertos da Câmara |
@@ -126,7 +125,7 @@ papel não edita conteúdo, mas cria novos gabinetes e administra os acessos de 
 | `deputado` | Edita tudo, inclusive a agenda |
 | `chefe` | Edita tudo, inclusive a agenda, e libera acessos do seu gabinete |
 | `assessor` | Edita apenas as áreas listadas em `areas`; lê o resto |
-| `escritorio` | Edita Administrativo e Orçamento; lê o resto |
+| `escritorio` | Edita o Administrativo; lê o resto |
 | `leitor` | Lê tudo, não altera nada |
 | `admin` | Não edita conteúdo; cria gabinetes e administra acessos de todos |
 
@@ -139,64 +138,7 @@ Duas exceções deliberadas à regra geral, ambas registradas em `firestore.rule
 
 ---
 
-## Orçamento: uma tela, uma fonte
-
-A área do Orçamento tem **uma tela** — *Por município* — e **um botão**: importar a
-planilha do painel de transferências.
-
-Havia mais: consulta ao Portal da Transparência, varredura do Transferegov, sondagem de
-fontes, leitura ao vivo do painel do SERPRO por WebSocket. Tudo isso saiu. Aquelas
-integrações foram escritas contra bases que não dava para exercitar de verdade durante o
-desenvolvimento, e o resultado eram telas que **pareciam** funcionar: banco aparecendo
-como maior destino, filtros com milhares de linhas vazias, totais que ninguém sabia
-defender numa reunião. Uma fonte conferível vale mais que seis fontes que ninguém
-confere.
-
-### Como importar
-
-1. Abra o painel público de transferências do governo (`dd-publico.serpro.gov.br`).
-2. Selecione o parlamentar.
-3. Abra a tabela **"Lista de emendas com instrumentos celebrados"** e exporte.
-4. Em *Orçamento › Por município*, clique em **Importar planilha do painel** e escolha o
-   arquivo. `.xlsx` e `.csv` funcionam.
-
-O arquivo chega pronto: emenda, instrumento, município, proponente, objeto, empenhado e
-desembolsado numa linha só, já ligados por quem tem a base — mais o link da página do
-convênio no Transferegov. Preenche destinos e emendas ao mesmo tempo, e **reimportar
-atualiza em vez de duplicar**: a chave é o número do instrumento, o identificador que o
-próprio governo usa.
-
-### O que a leitura da planilha resolve sozinha
-
-- **`.xlsx` é lido nativamente**, pelo `DecompressionStream` do navegador. Nenhuma
-  biblioteca foi acrescentada — o projeto continua se publicando por cópia da pasta.
-- **"Desembolsado" é o nome que o painel dá ao pago.** Sem esse sinônimo toda linha
-  entraria com pago zerado, e a pergunta que justifica a tela — *já foi pago?* —
-  responderia errado em silêncio.
-- **Um convênio pode ser custeado por duas emendas**, e o painel repete a linha inteira
-  com os mesmos valores. Somar contaria o mesmo repasse duas vezes (no arquivo real eram
-  R$ 1.495.221,40 em dobro). O dinheiro é contado uma vez, no instrumento, e as emendas
-  que o custeiam ficam todas registradas. No total por emenda, instrumento compartilhado
-  não entra em nenhuma: a fonte não diz quanto cada uma pôs, e repartir seria inventar o
-  número — ele aparece à parte, declarado.
-- **Banco nunca nomeia um destino nem um município.** Ninguém destina emenda ao Banco do
-  Brasil; é ele quem opera o repasse. Onde o município é conhecido, a linha é daquela
-  cidade e o banco fica como caminho; onde não é, vira "Destino não identificado", com o
-  dinheiro somado e a incógnita declarada.
-
-### As listas de Emendas e Destinos
-
-Continuam existindo, fora da navegação, para consulta e anotação:
-
-- `#/orcamento/emendas` — uma linha por emenda
-- `#/orcamento/transferencias` — uma linha por destino
-
-Para trazê-las de volta à barra de abas, tire `oculto: true` do módulo correspondente em
-`js/modulos.js`.
-
----
-
-## Outras integrações
+## Integrações
 
 **Dados abertos da Câmara** (ativa, sem cadastro). Em *Legislativo › Proposições
 acompanhadas*, o botão **Buscar na Câmara** importa uma proposição pelo tipo, número e
@@ -232,8 +174,7 @@ mais naqueles nomes.
 **Ficha de apresentação** (ativa). Em *Administrativo › Ficha de apresentação*, o
 município em uma folha: população e região (IBGE), um minimapa mostrando onde a cidade
 fica no estado, quem governa e os vereadores aliados, a votação do parlamentar ali, renda
-e produção, as emendas com o valor por habitante, o que está travado e os contatos do
-gabinete na cidade. **Imprimir** gera a folha física em A4. **Enviar por WhatsApp** monta
+e produção, e os contatos do gabinete na cidade. **Imprimir** gera a folha física em A4. **Enviar por WhatsApp** monta
 a versão curta e abre a conversa com a mensagem pronta.
 
 O envio é restrito ao **parlamentar e à equipe do gabinete** — a ficha traz pendências,
@@ -279,8 +220,8 @@ fechada por lista de hosts e por lista de autorizados.
    ```
 4. Ligue `CONSULTA_AUTOMATICA` em `js/config.js` e publique o site.
 
-Se você já usou as importações automáticas de emenda, a chave do Portal ficou sem uso e
-pode ser removida:
+Se você já usou as importações automáticas de emenda, a chave do Portal ficou sem uso —
+a área de Orçamento foi removida — e pode ser destruída:
 
 ```
 firebase functions:secrets:destroy CHAVE_PORTAL_TRANSPARENCIA
@@ -316,7 +257,7 @@ node teste/rodar.mjs
 
 Abre o sistema num navegador de verdade e troca o SDK do Firebase por um duplo em
 memória (`teste/stub-firebase.js`), sem tocar em nenhum projeto real. São 25 verificações
-em duas frentes: o uso normal — login, as cinco áreas, cadastro, busca, painéis — e a
+em duas frentes: o uso normal — login, as quatro áreas, cadastro, busca, painéis — e a
 **matriz de permissão**, papel por papel.
 
 Vale rodar sempre que mexer em `js/config.js` ou em `firestore.rules`: a segunda suíte

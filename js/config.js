@@ -37,7 +37,7 @@ export const REGIAO_FUNCOES = 'southamerica-east1';
  * no servidor, porque a chave do Portal da Transparência não pode ficar em
  * código público e nenhuma dessas bases aceita chamada vinda do navegador.
  *
- * Com isto ligado, o botão "Consultar Portal" aparece em Orçamento › Emendas.
+ * Com isto ligado, o botão "Ler bilhete" aparece em Administrativo › Viagens.
  * Se a função ainda não estiver implantada, o clique devolve um recado dizendo
  * exatamente isso — que é informação útil, e melhor do que um botão ausente sem
  * explicação. A importação por planilha continua ao lado, funcionando.
@@ -51,20 +51,19 @@ export const AREAS = [
   { id: 'administrativo', sigla: 'ADM', nome: 'Administrativo', descricao: 'Equipe, viagens, ofícios, cota e atendimento' },
   { id: 'legislativo', sigla: 'LEG', nome: 'Legislativo', descricao: 'Proposições, produção, pauta e posicionamentos' },
   { id: 'comunicacao', sigla: 'COM', nome: 'Comunicação', descricao: 'Editorial, clipping, imprensa e mídia' },
-  { id: 'orcamento', sigla: 'ORC', nome: 'Orçamento', descricao: 'Emendas parlamentares e sua execução' },
 ];
 
 export const PAPEIS = {
   deputado: { nome: 'Deputado', descricao: 'Acesso total a todas as áreas' },
   chefe: { nome: 'Chefe de gabinete', descricao: 'Acesso total, incluindo a agenda do deputado' },
   assessor: { nome: 'Assessor', descricao: 'Edita apenas as áreas atribuídas', pedeAreas: true },
-  escritorio: { nome: 'Escritório no estado', descricao: 'Edita atendimento, CRM e emendas' },
+  escritorio: { nome: 'Escritório no estado', descricao: 'Edita o administrativo: atendimento, CRM e municípios' },
   leitor: { nome: 'Somente leitura', descricao: 'Visualiza tudo, não altera nada' },
   admin: { nome: 'Administrador do sistema', descricao: 'Gerencia acessos e gabinetes' },
 };
 
 // Áreas que o escritório no estado edita: é quem fala com prefeituras e com o cidadão.
-export const AREAS_ESCRITORIO = ['administrativo', 'orcamento'];
+export const AREAS_ESCRITORIO = ['administrativo'];
 
 /** A agenda do deputado é a única exceção à regra geral: só chefia e deputado escrevem. */
 export function podeEditarAgenda(membro) {

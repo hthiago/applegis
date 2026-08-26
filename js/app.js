@@ -197,16 +197,11 @@ function paineisDisponiveis() {
     { id: 'painel', area: 'chefia', nome: 'Painel', render: nucleo.paineis.painelChefia },
     { id: 'resumo-cota', area: 'administrativo', nome: 'Resumo da cota', render: nucleo.paineis.painelCota },
     { id: 'ficha', area: 'administrativo', nome: 'Ficha de apresentação', render: nucleo.ficha.painelFicha },
-    // "Dashboard" e "Por município" eram duas abas para o mesmo trabalho: a
-    // mesma consolidação, os mesmos números e o mesmo detalhamento, mudando só
-    // o desenho. Viraram uma, com o mapa em cima da tabela. O endereço antigo
-    // continua respondendo — ver `abaPorId`.
-    { id: 'painel-emendas', area: 'orcamento', nome: 'Por município', render: nucleo.paineis.painelEmendas },
   ];
 }
 
 /** Endereços que mudaram de nome mas não podem deixar de responder. */
-const APELIDOS = { dashboard: 'painel-emendas' };
+const APELIDOS = {};
 
 function abasDaArea(areaId) {
   return [

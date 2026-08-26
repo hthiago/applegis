@@ -56,14 +56,13 @@ function nomePor(lista, id) {
 export async function painelChefia(container) {
   limpar(container).appendChild(carregando());
 
-  const [tarefas, pedidos, imprensa, atendimentos, agenda, equipe, emendas, proposicoes] = await Promise.all([
+  const [tarefas, pedidos, imprensa, atendimentos, agenda, equipe, proposicoes] = await Promise.all([
     listar('tarefas', { recarregar: true }),
     listar('solicitacoesAgenda', { recarregar: true }),
     listar('imprensa', { recarregar: true }),
     listar('atendimentos', { recarregar: true }),
     listar('agenda', { recarregar: true }),
     listar('equipe'),
-    listar('emendas'),
     listar('proposicoes', { recarregar: true }),
   ]);
 
@@ -83,7 +82,6 @@ export async function painelChefia(container) {
     .filter((i) => ['pendente', 'producao'].includes(i.status))
     .sort((a, b) => String(a.prazo || '').localeCompare(String(b.prazo || '')));
   const atendimentosAbertos = atendimentos.filter((a) => ['aberto', 'andamento', 'aguardando'].includes(a.status));
-  const emendasParadas = emendas.filter((e) => ['liberada', 'execucao'].includes(e.fase));
 
   const agora = new Date().toISOString();
   const compromissos = agenda
@@ -95,7 +93,7 @@ export async function painelChefia(container) {
   container.appendChild(el('header', { class: 'modulo-topo' }, [
     el('div', { class: 'modulo-titulo' }, [
       el('h1', { texto: 'Painel do gabinete' }),
-      el('p', { texto: 'O que exige decisão hoje, reunido das cinco áreas.' }),
+      el('p', { texto: 'O que exige decisão hoje, reunido das quatro áreas.' }),
     ]),
   ]));
 
@@ -106,7 +104,6 @@ export async function painelChefia(container) {
     indicador('Imprensa em aberto', String(imprensaAberta.length), imprensaAberta.length ? 'atencao' : 'ok'),
     indicador('Atendimentos abertos', String(atendimentosAbertos.length), atendimentosAbertos.length ? 'info' : 'ok'),
     indicador('Proposições que andaram', String(mexeram.length), mexeram.length ? 'info' : 'neutro', 'últimos 7 dias'),
-    indicador('Emendas a cobrar', String(emendasParadas.length), emendasParadas.length ? 'atencao' : 'ok'),
   ]));
 
   const grade = el('div', { class: 'grade-paineis' });
@@ -160,16 +157,6 @@ export async function painelChefia(container) {
       : nada('Nada se moveu nos últimos sete dias.'),
   ]));
 
-  grade.appendChild(bloco('Emendas que pedem cobrança', emendasParadas.length ? `${emendasParadas.length}` : null, [
-    emendasParadas.length
-      ? el('ul', { class: 'lista' }, emendasParadas.slice(0, 8)
-        .map((e) => linha(
-          `${e.beneficiario || 'sem beneficiário'} · ${e.municipio || ''}`.trim(),
-          `${porId.emendas.campos.find((c) => c.k === 'fase').op.find((o) => o.v === e.fase)?.l || ''} · ${fmtDinheiro(e.valorIndicado)}`,
-        )))
-      : nada('Nenhuma emenda em fase de cobrança.'),
-  ]));
-
   container.appendChild(grade);
 }
 
@@ -198,418 +185,15 @@ const FASE_DA_COLUNA = {
 
 const IMPEDIDO = /impedi|indefer|cancelad|devolvid/i;
 
-/** Reúne emendas e destinos por município, sem contar o mesmo real duas vezes. */
-export function consolidarPorMunicipio(emendas, transferencias) {
-  const mapa = new Map();
-  const porEmenda = new Map(emendas.map((e) => [String(e.codigo || e.id), e]));
 
-  const lugar = (nome, uf) => {
-    const chave = (nome || 'Sem município identificado').trim();
-    if (!mapa.has(chave)) {
-      mapa.set(chave, {
-        municipio: chave,
-        uf: uf || null,
-        destinado: 0,
-        empenhado: 0,
-        liquidado: 0,
-        pago: 0,
-        impedido: 0,
-        emendas: new Set(),
-        destinos: [],
-      });
-    }
-    const m = mapa.get(chave);
-    if (!m.uf && uf) m.uf = uf;
-    return m;
-  };
 
-  const comDestino = new Set();
-
-  for (const t of transferencias) {
-    // Só o município nomeia um lugar. O `|| t.favorecido` que estava aqui
-    // transformava em "município" tudo que não tinha um: bancos, ministérios e
-    // associações viravam cidades do estado, e o banco — por onde passa todo
-    // repasse — virava a maior delas. Sem município conhecido, a linha vai para
-    // o balde que diz isso com todas as letras.
-    const m = lugar(t.municipio, t.uf);
-    if (t.codigoEmenda) {
-      m.emendas.add(String(t.codigoEmenda));
-      comDestino.add(String(t.codigoEmenda));
-    }
-    // Depois do pós-processamento cada destino já traz as fases em colunas
-    // próprias; antes dele, uma linha era uma fase. Ler os dois formatos evita
-    // que o painel zere enquanto o gabinete não reorganizou o que está guardado.
-    if (t.valorEmpenhado != null || t.valorPago != null || t.valorDestinado != null) {
-      m.destinado += Number(t.valorDestinado) || 0;
-      m.empenhado += Number(t.valorEmpenhado) || 0;
-      m.liquidado += Number(t.valorLiquidado) || 0;
-      m.pago += Number(t.valorPago) || 0;
-    } else {
-      m[FASE_DA_COLUNA[t.tipo] || 'destinado'] += Number(t.valor) || 0;
-    }
-    if (IMPEDIDO.test(t.situacao || '') || t.situacaoExecucao === 'impedido') {
-      m.impedido += Number(t.valor) || 0;
-    }
-    m.destinos.push(t);
-  }
-
-  // Emenda sem nenhum destino detalhado ainda existe e tem dinheiro. Deixá-la
-  // de fora faria o painel mostrar menos do que o gabinete indicou — e é
-  // justamente a emenda que falta detalhar que precisa aparecer.
-  for (const e of emendas) {
-    const codigo = String(e.codigo || e.id);
-    if (comDestino.has(codigo)) continue;
-    const nome = /m[úu]ltiplo/i.test(e.municipio || '') || !e.municipio
-      ? 'A detalhar (a fonte diz "múltiplo")'
-      : e.municipio;
-    const m = lugar(nome, e.uf);
-    m.emendas.add(codigo);
-    m.destinado += Number(e.valorIndicado) || 0;
-    m.empenhado += Number(e.valorEmpenhado) || 0;
-    m.pago += Number(e.valorPago) || 0;
-    m.semDetalhe = (m.semDetalhe || 0) + 1;
-  }
-
-  return [...mapa.values()]
-    .map((m) => ({ ...m, emendas: [...m.emendas], total: Math.max(m.destinado, m.empenhado, m.pago) }))
-    .sort((a, b) => b.total - a.total || a.municipio.localeCompare(b.municipio, 'pt-BR'));
-}
-
-/** Em que pé está o dinheiro daquele lugar, em uma frase. */
-export function situacaoDoLugar(m) {
-  if (m.impedido) return { texto: 'Com impedimento', cor: 'critico' };
-  if (m.pago && m.pago >= (m.empenhado || m.pago)) return { texto: 'Pago', cor: 'ok' };
-  if (m.pago) return { texto: 'Pago em parte', cor: 'atencao' };
-  if (m.empenhado) return { texto: 'Empenhado, sem pagamento', cor: 'atencao' };
-  if (m.destinado) return { texto: 'Destinado, sem empenho', cor: 'info' };
-  return { texto: 'Sem execução registrada', cor: 'neutro' };
-}
-
-/**
- * Emenda por emenda de um município.
- *
- * A mesma leitura serve às duas telas — a lista por município e o dashboard —, e
- * é a de quem vai atender uma ligação da prefeitura perguntando "e a minha
- * ambulância?": o que era, quanto foi, quanto saiu e o que travou.
- */
-export function detalhesDeUmLugar(m) {
-  if (!m.destinos.length) {
-    return el('p', { class: 'sanfona-recado', texto: `${m.emendas.length} emenda(s) sem detalhamento ainda. Use "Detalhar emendas" na aba Emendas.` });
-  }
-  // Por emenda, e dentro dela por fase: é a leitura de quem vai atender uma
-  // ligação da prefeitura perguntando "e a minha ambulância?".
-  const porCodigo = new Map();
-  m.destinos.forEach((t) => {
-    const c = t.codigoEmenda || 'sem código';
-    if (!porCodigo.has(c)) porCodigo.set(c, []);
-    porCodigo.get(c).push(t);
-  });
-
-  return el('div', { class: 'municipio-detalhe' }, [...porCodigo.entries()].map(([codigo, linhas]) => {
-    const objetos = [...new Set(linhas.map((t) => t.objeto).filter(Boolean))];
-    const metas = [...new Set(linhas.map((t) => t.metas).filter(Boolean))];
-    const fase = (coluna, tipo) => linhas.reduce((s, t) => {
-      if (t[coluna] != null) return s + (Number(t[coluna]) || 0);
-      return t.tipo === tipo ? s + (Number(t.valor) || 0) : s;
-    }, 0);
-    const pago = fase('valorPago', 'pagamento');
-    const empenhado = fase('valorEmpenhado', 'empenho');
-    const destinado = linhas.reduce((s, t) => {
-      if (t.valorDestinado != null) return s + (Number(t.valorDestinado) || 0);
-      return FASE_DA_COLUNA[t.tipo] ? s : s + (Number(t.valor) || 0);
-    }, 0);
-    const travas = [...new Set(linhas.map((t) => t.situacao).filter((x) => IMPEDIDO.test(x || '')))];
-    const ultima = linhas.map((t) => t.data).filter(Boolean).sort().pop();
-
-    return el('article', { class: 'municipio-emenda' }, [
-      el('header', {}, [
-        el('strong', { texto: codigo }),
-        ultima ? el('span', { class: 'topo-sub', texto: `último movimento em ${fmtData(ultima)}` }) : null,
-      ]),
-      objetos.length
-        ? el('p', { class: 'municipio-objeto', texto: objetos.join(' · ') })
-        : el('p', { class: 'municipio-objeto municipio-objeto--vazio', texto: 'Objeto não informado pela fonte' }),
-      metas.length ? el('p', { class: 'campo-dica', texto: metas.join(' · ') }) : null,
-      el('p', { class: 'municipio-numeros' }, [
-        destinado ? el('span', { texto: `Destinado ${fmtDinheiro(destinado)}` }) : null,
-        empenhado ? el('span', { texto: `Empenhado ${fmtDinheiro(empenhado)}` }) : null,
-        el('span', { class: pago ? 'municipio-pago' : null, texto: `Pago ${fmtDinheiro(pago)}` }),
-      ].filter(Boolean)),
-      ...travas.map((t) => el('p', { class: 'municipio-trava', texto: t })),
-    ]);
-  }));
-}
 
 const semAcento = (t) => String(t ?? '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 
-/**
- * O único caminho de entrada das emendas: a planilha do painel.
- *
- * As consultas automáticas saíram. Elas foram escritas contra bases que este
- * projeto nunca conseguiu exercitar de verdade, e o resultado eram telas que
- * pareciam funcionar e não funcionavam: banco como maior destino, filtros com
- * milhares de linhas vazias, totais que ninguém sabia defender numa reunião.
- *
- * A exportação do painel de transferências resolve tudo isso de uma vez porque
- * chega pronta — emenda, instrumento, município, proponente, objeto, empenhado
- * e desembolsado numa linha só, já ligados por quem tem a base. Três cliques no
- * painel valem mais que uma integração que ninguém consegue conferir.
- *
- * Um botão, uma fonte. Quando há uma fonte só, não há divergência para
- * conciliar nem dúvida sobre de onde veio o número.
- */
-function importadorDoPainel(recarregar) {
-  const escolher = el('input', {
-    type: 'file',
-    accept: '.xlsx,.csv,.txt',
-    class: 'oculto-visual',
-  });
-
-  const btn = el('button', {
-    class: 'btn btn--primario',
-    type: 'button',
-    texto: 'Importar planilha do painel',
-    title: 'A exportação da tabela "Lista de emendas com instrumentos celebrados" do painel de transferências',
-    onclick: () => escolher.click(),
-  });
-
-  escolher.addEventListener('change', async () => {
-    const arquivo = escolher.files?.[0];
-    if (!arquivo) return;
-    btn.disabled = true;
-    btn.textContent = 'Lendo a planilha…';
-    try {
-      const { importarDoPainel } = await import('./painel.js');
-      const r = await importarDoPainel(arquivo);
-      aviso([
-        `${r.destinos} destinos e ${r.emendas} emendas, em ${r.municipios} municípios`,
-        `empenhado ${fmtDinheiroCurto(r.empenhado)}, pago ${fmtDinheiroCurto(r.pago)}`,
-        r.repetidos ? `${r.repetidos} linha(s) eram o mesmo convênio custeado por duas emendas — contado uma vez` : null,
-        r.semMunicipio ? `${r.semMunicipio} sem município` : null,
-      ].filter(Boolean).join(' · '), 'ok');
-      recarregar();
-    } catch (erro) {
-      console.error(erro);
-      aviso(erro.message || 'Não foi possível importar a planilha.', 'erro');
-    } finally {
-      escolher.value = '';
-      btn.disabled = false;
-      btn.textContent = 'Importar planilha do painel';
-    }
-  });
-
-  return el('div', { class: 'modulo-acoes' }, [
-    btn,
-    escolher,
-    el('p', {
-      class: 'campo-dica',
-      // Dito na tela porque quem abre esta aba pela primeira vez não sabe de
-      // onde tirar o arquivo, e procurar isso num README é atrito desnecessário.
-      texto: 'No painel de transferências do governo, selecione o parlamentar, abra "Lista de emendas com instrumentos celebrados" e exporte. Reimportar atualiza, não duplica.',
-    }),
-  ]);
-}
-
-export async function painelEmendas(container) {
-  limpar(container).appendChild(carregando());
-  const { sessao } = await import('./sessao.js');
-  const [emendas, transferencias] = await Promise.all([
-    listar('emendas', { recarregar: true }),
-    listar('transferencias', { recarregar: true }).catch(() => []),
-  ]);
-
-  const lugares = consolidarPorMunicipio(emendas, transferencias);
-  const total = (k) => lugares.reduce((t, m) => t + m[k], 0);
-  const uf = sessao.gabinete?.uf || null;
-
-  limpar(container);
-  container.appendChild(el('header', { class: 'modulo-topo' }, [
-    el('div', { class: 'modulo-titulo' }, [
-      el('h1', { texto: 'Por município' }),
-      el('p', { texto: 'Onde o mandato chegou, quanto foi para cada lugar e o que travou. Clique no mapa ou numa linha para ver emenda por emenda.' }),
-    ]),
-  ]));
-
-  if (!emendas.length && !transferencias.length) {
-    container.appendChild(nada('Nada importado ainda. Comece pela aba Emendas: "Consultar Portal" e depois "Detalhar emendas".'));
-    return;
-  }
-
-  container.appendChild(el('div', { class: 'indicadores' }, [
-    indicador('Municípios', String(lugares.length), 'neutro'),
-    indicador('Destinado', fmtDinheiroCurto(total('destinado')), 'info', fmtDinheiro(total('destinado'))),
-    indicador('Empenhado', fmtDinheiroCurto(total('empenhado')), 'atencao', fmtDinheiro(total('empenhado'))),
-    indicador('Pago', fmtDinheiroCurto(total('pago')), 'ok', fmtDinheiro(total('pago'))),
-    total('impedido')
-      ? indicador('Impedido', fmtDinheiroCurto(total('impedido')), 'critico', fmtDinheiro(total('impedido')))
-      : null,
-  ].filter(Boolean)));
-
-  const corpo = el('tbody');
-  const busca = el('input', {
-    type: 'search',
-    class: 'busca',
-    placeholder: 'Buscar município, objeto, beneficiário…',
-    'aria-label': 'Buscar município',
-    oninput: () => desenhar(),
-  });
-
-  container.appendChild(importadorDoPainel(() => painelEmendas(container)));
-
-  // O mapa vem antes da tabela porque responde outra pergunta, e antes: onde o
-  // mandato chegou e onde não chegou. A tabela responde "quanto foi para
-  // Erechim", que só se pergunta depois de saber que é Erechim. Eram duas abas
-  // — a mesma consolidação, os mesmos números, o mesmo detalhamento, mudando só
-  // o desenho. Duas telas para um trabalho só é uma escolha a mais para quem
-  // usa, e nenhuma resposta a mais.
-  const caixaMapa = el('section', { class: 'bloco bloco--mapa' });
-  container.appendChild(caixaMapa);
-
-  container.appendChild(el('div', { class: 'modulo-acoes' }, [busca]));
-  container.appendChild(el('div', { class: 'tabela-rolagem' }, [
-    el('table', { class: 'tabela tabela--municipios' }, [
-      el('thead', {}, [el('tr', {}, [
-        el('th', { texto: 'Município' }),
-        el('th', { texto: 'Emendas' }),
-        el('th', { class: 'num', texto: 'Destinado' }),
-        el('th', { class: 'num', texto: 'Empenhado' }),
-        el('th', { class: 'num', texto: 'Pago' }),
-        el('th', { texto: 'Situação' }),
-      ])]),
-      corpo,
-    ]),
-  ]));
-
-  const detalhesDoLugar = detalhesDeUmLugar;
-  // Clicar no mapa não abre um segundo painel de detalhe: leva à linha daquele
-  // município, já aberta. Um mesmo dado com duas telas de detalhe diferentes é
-  // como as duas abas divergem sem ninguém perceber.
-  let abrir = null;
-
-  function desenhar() {
-    const termos = semAcento(busca.value).split(/\s+/).filter(Boolean);
-    const visiveis = lugares.filter((m) => {
-      if (!termos.length) return true;
-      const texto = semAcento([
-        m.municipio, m.uf, ...m.emendas,
-        ...m.destinos.map((t) => `${t.objeto || ''} ${t.favorecido || ''} ${t.metas || ''}`),
-      ].join(' '));
-      return termos.every((t) => texto.includes(t));
-    });
-
-    limpar(corpo);
-    if (!visiveis.length) {
-      corpo.appendChild(el('tr', {}, [el('td', { colspan: '6' }, [nada('Nenhum município encontrado.')])]));
-      return;
-    }
-
-    visiveis.forEach((m) => {
-      const situacao = situacaoDoLugar(m);
-      const detalhe = el('tr', { class: 'linha-detalhe', hidden: true }, [
-        el('td', { colspan: '6' }, [detalhesDoLugar(m)]),
-      ]);
-      const linha = el('tr', {
-        class: 'linha-municipio',
-        tabindex: '0',
-        role: 'button',
-        onclick: () => { detalhe.hidden = !detalhe.hidden; },
-        onkeydown: (e) => {
-          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); detalhe.hidden = !detalhe.hidden; }
-        },
-      }, [
-        el('td', {}, [
-          el('strong', { texto: m.municipio }),
-          m.uf ? el('span', { class: 'topo-sub', texto: m.uf }) : null,
-        ]),
-        el('td', { texto: String(m.emendas.length) }),
-        el('td', { class: 'num', texto: m.destinado ? fmtDinheiro(m.destinado) : '—' }),
-        el('td', { class: 'num', texto: m.empenhado ? fmtDinheiro(m.empenhado) : '—' }),
-        el('td', { class: 'num', texto: m.pago ? fmtDinheiro(m.pago) : '—' }),
-        el('td', {}, [etiqueta(situacao.texto, situacao.cor)]),
-      ]);
-      corpo.appendChild(linha);
-      corpo.appendChild(detalhe);
-      if (abrir && semAcento(m.municipio) === abrir) {
-        detalhe.hidden = false;
-        linha.classList.add('linha-municipio--alvo');
-      }
-    });
-  }
-
-  desenhar();
-
-  // ── o mapa, depois da tabela estar de pé ──
-  //
-  // Desenhado por último e sem bloquear: a resposta não pode depender de o IBGE
-  // estar no ar. Sem malha, a tabela acima já responde tudo — o mapa é o que
-  // torna a leitura instantânea, não o que a torna possível.
-  const atendidos = lugares.filter((m) => m.municipio && !/^A detalhar/.test(m.municipio));
-  let mapaMod = null;
-  try {
-    mapaMod = await import('./mapa.js');
-  } catch (erro) {
-    console.warn('mapa indisponível:', erro.message);
-  }
-
-  const irPara = (nome) => {
-    abrir = semAcento(nome);
-    busca.value = nome;
-    desenhar();
-    corpo.querySelector('.linha-municipio--alvo')?.scrollIntoView({ block: 'center', behavior: 'smooth' });
-  };
-
-  limpar(caixaMapa).appendChild(el('header', { class: 'bloco-topo' }, [
-    el('h2', { texto: uf ? `Distribuição em ${uf}` : 'Distribuição' }),
-    el('span', { class: 'bloco-contagem', texto: `${atendidos.length} municípios atendidos` }),
-  ]));
-
-  const valores = new Map();
-  if (mapaMod) {
-    for (const m of lugares) {
-      if (!m.municipio) continue;
-      const chave = mapaMod.semAcento(m.municipio);
-      valores.set(chave, (valores.get(chave) || 0) + (m.destinado || m.empenhado || m.pago));
-    }
-  }
-
-  const malha = mapaMod && uf ? await mapaMod.malhaDoEstado(uf) : null;
-  const desenho = malha ? mapaMod.desenharMalha(malha, { valores, aoClicar: irPara }) : null;
-
-  if (desenho) {
-    caixaMapa.appendChild(el('div', { class: 'mapa-caixa' }, [desenho.svg]));
-    caixaMapa.appendChild(legendaDoMapa(desenho.cortes, mapaMod.TONS));
-  } else {
-    // Um mapa que não carrega não pode levar embora a resposta.
-    caixaMapa.appendChild(el('p', { class: 'campo-dica', texto: uf
-      ? 'A malha municipal do IBGE não respondeu agora. A distribuição está na tabela abaixo.'
-      : 'Informe a UF do gabinete em Acessos → Dados do gabinete para desenhar o mapa. Por ora, a distribuição está na tabela abaixo.' }));
-    caixaMapa.appendChild(barrasValor(
-      atendidos.slice(0, 15).map((m) => ({ rotulo: m.municipio, valor: m.total })),
-      atendidos[0]?.total || 0,
-    ));
-  }
-}
-
-/**
- * O endereço antigo do dashboard, que virou a mesma tela.
- *
- * Eram duas abas para um trabalho só. Fundir sem manter este nome quebraria os
- * links que já circulam no gabinete — e um endereço que deixa de responder é
- * pior que uma aba a mais.
- */
-export const painelDashboard = painelEmendas;
 
 
-function legendaDoMapa(cortes, tons) {
-  return el('div', { class: 'mapa-legenda' }, [
-    el('span', { class: 'campo-dica', texto: 'menos' }),
-    ...tons.map((cor) => el('i', { class: 'mapa-tom', style: `background:${cor}` })),
-    el('span', { class: 'campo-dica', texto: 'mais' }),
-    cortes.length
-      ? el('span', { class: 'campo-dica', texto: `faixas em ${cortes.map(fmtDinheiroCurto).join(' · ')}` })
-      : null,
-  ].filter(Boolean));
-}
+
+
 
 function agrupar(itens, chave, campo) {
   const mapa = new Map();
@@ -630,7 +214,7 @@ function agrupar(itens, chave, campo) {
  * Soma por categoria, com o rótulo que a pessoa reconhece.
  *
  * O campo de valor é parâmetro porque cada módulo chama o dinheiro de outra
- * coisa — a emenda tem `valorIndicado`, a cota tem `valor` —, e um agrupador que
+ * coisa — cada base nomeia o valor do seu jeito —, e um agrupador que
  * conhecesse só um deles somaria zero no outro sem reclamar. `campo` traduz a
  * chave interna no rótulo oficial: "passagens" na tela é "Passagens aéreas".
  */
