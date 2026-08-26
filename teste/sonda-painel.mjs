@@ -100,73 +100,133 @@ try {
   fim('✗ A conexão não se estabelece. Firewall de saída, ou o host recusa esta origem.');
 }
 
-// ─────────────────────────── 3. o GET da página ───────────────────────────
+// ─────────────────── 3. o GET, seguindo redirecionamento à mão ───────────────────
+//
+// `redirect: 'follow'` só devolve os cabeçalhos da resposta final, e é no meio
+// do caminho que o Qlik troca o ticket por sessão. O cookie que interessa pode
+// nascer e morrer num salto que o fetch automático esconde. Aqui cada salto é
+// visto, e todos os cookies se acumulam.
 
-let cookie = '';
-let alcancou = false;
-for (const alvo of [`https://${HOST}/`, PAGINA]) {
-  try {
-    // eslint-disable-next-line no-await-in-loop
-    const r = await fetch(alvo, { headers: CABECALHOS, redirect: 'follow' });
-    alcancou = true;
-    anotar(3, `${alvo} → ${r.status} ${r.statusText}`);
-    if (r.url !== alvo) anotar(3, `  redirecionou para ${r.url}`);
-    const cs = r.headers.getSetCookie?.() || [];
-    if (cs.length) {
-      anotar(3, `  ${cs.length} cookie(s): ${cs.map((c) => c.split('=')[0]).join(', ')}`);
-      cookie = cs.map((c) => c.split(';')[0]).join('; ');
-    }
-    const t = await r.text();
-    anotar(3, `  corpo: ${t.length} caracteres`);
-    // Resposta curta em geral é recado de bloqueio, e o recado diz quem bloqueou
-    // — WAF, gateway de saída, proxy da rede. Imprimir poupa uma rodada inteira.
-    if (t.length <= 400) anotar(3, `  corpo: ${t.replace(/\s+/g, ' ').trim()}`);
-    const tk = /qlikTicket=([^"'&\s]+)/.exec(`${r.url}${t}`);
-    if (tk) anotar(3, `  ticket visto: ${tk[1].slice(0, 24)}…`);
-  } catch (erro) {
-    anotar(3, `${alvo} FALHOU: ${porQue(erro)}`);
+const potes = new Map();
+function guardar(resposta) {
+  for (const bruto of resposta.headers.getSetCookie?.() || []) {
+    const [par] = bruto.split(';');
+    const igual = par.indexOf('=');
+    if (igual > 0) potes.set(par.slice(0, igual).trim(), par.slice(igual + 1).trim());
   }
 }
-if (!alcancou) {
-  fim('✗ O TLS conecta mas o HTTP não completa. Costuma ser bloqueio por origem ou por agente.');
+const cookieAtual = () => [...potes].map(([k, v]) => `${k}=${v}`).join('; ');
+
+let alcancou = false;
+let alvo = PAGINA;
+for (let salto = 0; salto < 6; salto += 1) {
+  let r;
+  try {
+    // eslint-disable-next-line no-await-in-loop
+    r = await fetch(alvo, {
+      headers: { ...CABECALHOS, ...(potes.size ? { Cookie: cookieAtual() } : {}) },
+      redirect: 'manual',
+    });
+  } catch (erro) {
+    anotar(3, `${alvo} FALHOU: ${porQue(erro)}`);
+    break;
+  }
+  alcancou = true;
+  guardar(r);
+  const local = r.headers.get('location');
+  anotar(3, `salto ${salto}: ${r.status} ${r.statusText} ${alvo.replace(`https://${HOST}`, '')}`);
+  const novos = (r.headers.getSetCookie?.() || []).map((c) => c.split('=')[0]);
+  if (novos.length) anotar(3, `  cookies: ${novos.join(', ')}`);
+  if (!local) {
+    // eslint-disable-next-line no-await-in-loop
+    const t = await r.text();
+    anotar(3, `  corpo: ${t.length} caracteres`);
+    if (t.length <= 400) anotar(3, `  corpo: ${t.replace(/\s+/g, ' ').trim()}`);
+    break;
+  }
+  anotar(3, `  → ${local}`);
+  alvo = new URL(local, alvo).href;
+}
+if (!alcancou) fim('✗ O TLS conecta mas o HTTP não completa.');
+anotar(3, `cookie acumulado: ${cookieAtual() || 'NENHUM'}`);
+
+// ── 3b. o que o próprio cliente do painel chama antes de abrir o socket ──
+//
+// No HAR do gabinete apareceram `csrftoken?xrfkey=`, `user?xrfkey=` e
+// `features?xrfkey=`. O xrfkey é a defesa do Qlik contra requisição forjada:
+// dezesseis caracteres, iguais na URL e no cabeçalho. Se o socket exigir isso,
+// é aqui que se descobre.
+const XRF = 'abcdefghij123456';
+let csrf = null;
+for (const caminho of ['/api/v1/csrftoken', '/qps/user', '/api/v1/user']) {
+  try {
+    // eslint-disable-next-line no-await-in-loop
+    const r = await fetch(`https://${HOST}${caminho}?xrfkey=${XRF}`, {
+      headers: { ...CABECALHOS, Cookie: cookieAtual(), 'X-Qlik-Xrfkey': XRF },
+    });
+    guardar(r);
+    const t = await r.text();
+    anotar('3b', `${caminho} → ${r.status} · ${t.slice(0, 120).replace(/\s+/g, ' ')}`);
+    const achado = r.headers.get('qlik-csrf-token');
+    if (achado) { csrf = achado; anotar('3b', `  token de CSRF no cabeçalho: ${csrf.slice(0, 12)}…`); }
+  } catch (erro) {
+    anotar('3b', `${caminho} → ${porQue(erro)}`);
+  }
 }
 
-// ─────────────────────────── 4. o WebSocket ───────────────────────────
+// ─────────────────────── 4. o WebSocket, em variantes ───────────────────────
+//
+// O código 1006 da rodada anterior é "fechou sem dizer por quê", que não
+// distingue origem recusada de endereço errado. Em vez de adivinhar qual das
+// duas, tenta-se a matriz e relata-se qual passou.
 
 if (typeof WebSocket === 'undefined') {
   anotar(4, `Node ${process.version} não tem WebSocket global — precisa de v22+.`);
-  fim('✗ Atualize o Node no Cloud Shell e rode de novo: nvm install 22 && nvm use 22');
+  fim('✗ Atualize o Node: nvm install 22 && nvm use 22');
 }
 
-const url = `wss://${HOST}/app/${APP}`;
-anotar(4, `abrindo ${url} ${cookie ? 'com cookie' : 'SEM cookie'}`);
+const aleatorio = () => Math.random().toString(36).slice(2, 10);
+const variantes = [
+  { nome: 'app + Origin', url: `wss://${HOST}/app/${APP}`, origem: true },
+  { nome: 'app + Origin + Xrfkey', url: `wss://${HOST}/app/${APP}?Xrfkey=${XRF}`, origem: true, xrf: true },
+  { nome: 'app/identity + Origin', url: `wss://${HOST}/app/${APP}/identity/${aleatorio()}`, origem: true },
+  { nome: 'engineData + Origin', url: `wss://${HOST}/app/engineData`, origem: true },
+  { nome: 'app sem Origin (o que falhou antes)', url: `wss://${HOST}/app/${APP}`, origem: false },
+];
 
-let socket;
-try {
-  socket = new WebSocket(url, cookie ? { headers: { Cookie: cookie } } : undefined);
-} catch (erro) {
-  anotar(4, `não pôde criar: ${porQue(erro)}`);
-  fim('✗ O WebSocket nem foi criado.');
+async function tentarSocket(v) {
+  const headers = { Cookie: cookieAtual() };
+  if (v.origem) headers.Origin = `https://${HOST}`;
+  if (v.xrf) headers['X-Qlik-Xrfkey'] = XRF;
+  if (csrf) headers['qlik-csrf-token'] = csrf;
+
+  let s;
+  try {
+    s = new WebSocket(v.url, { headers });
+  } catch (erro) {
+    return { ok: false, motivo: porQue(erro) };
+  }
+  const desfecho = await new Promise((ok) => {
+    let motivo = null;
+    s.addEventListener('open', () => ok({ ok: true, socket: s }), { once: true });
+    s.addEventListener('error', (e) => { motivo = porQue(e.error || e); }, { once: true });
+    s.addEventListener('close', (e) => ok({ ok: false, motivo: motivo || `código ${e.code}${e.reason ? ` — ${e.reason}` : ''}` }), { once: true });
+    setTimeout(() => ok({ ok: false, motivo: 'sem resposta em 15s' }), 15000);
+  });
+  if (!desfecho.ok) { try { s.close(); } catch { /* já fechado */ } }
+  return desfecho;
 }
 
-let motivoDeFechar = null;
-socket.addEventListener('close', (e) => { motivoDeFechar = `código ${e.code}${e.reason ? ` — ${e.reason}` : ''}`; });
-socket.addEventListener('error', (e) => { motivoDeFechar = motivoDeFechar || porQue(e.error || e); });
-
-const abriu = await new Promise((ok) => {
-  socket.addEventListener('open', () => ok(true), { once: true });
-  socket.addEventListener('error', () => ok(false), { once: true });
-  socket.addEventListener('close', () => ok(false), { once: true });
-  setTimeout(() => ok(false), 20000);
-});
-
-if (!abriu) {
-  anotar(4, `NÃO ABRIU: ${motivoDeFechar || 'sem resposta em 20s'}`);
-  fim(cookie
-    ? '✗ Com cookie e mesmo assim recusado: o painel exige sessão de navegador de verdade.'
-    : '✗ Recusado sem cookie. O passo 3 não trouxe sessão — é aí que está o nó.');
+let socket = null;
+for (const v of variantes) {
+  // eslint-disable-next-line no-await-in-loop
+  const r = await tentarSocket(v);
+  anotar(4, `${r.ok ? 'ABRIU  ' : 'recusou'} · ${v.nome}${r.ok ? '' : ` · ${r.motivo}`}`);
+  if (r.ok) { socket = r.socket; anotar(4, `→ o endereço que funciona é ${v.url.replace(`wss://${HOST}`, '')}`); break; }
 }
-anotar(4, 'WebSocket aberto.');
+if (!socket) {
+  fim('✗ Nenhuma variante abriu. O painel exige sessão de navegador de verdade — a coleta terá de acontecer na própria aba dele.');
+}
 
 // ─────────────────────────── 5. o protocolo ───────────────────────────
 
