@@ -1,4 +1,40 @@
 /**
+ * CONCLUÍDA — 26/08/2026. Não repita esta investigação; leia o resultado.
+ *
+ * Pergunta: dá para puxar automaticamente os dados do painel de transferências
+ * do SERPRO, já que ele é público e não exige login?
+ *
+ * Resposta: NÃO, de fora de um navegador.
+ *
+ * O que ficou provado, em sete rodadas no Cloud Shell:
+ *
+ *   · O acesso é anônimo de verdade. A página redireciona para
+ *     /internal_anonymous_authentication/, volta com ?qlikTicket= e emite o
+ *     cookie X-Qlik-Session-Publico. /qps/user responde 200 reconhecendo a
+ *     sessão. Não há login em lugar nenhum.
+ *   · Os dados não vêm por endereço HTTP. Vêm por WebSocket, no protocolo do
+ *     motor Qlik, e o aperto de mão é recusado sempre:
+ *       /app/<id> e variantes  → 403 sem cabeçalho nenhum (proxy descarta)
+ *       /publico/app/<id> ...  → 400 "The http request header is incorrect"
+ *     Onze tentativas: dois prefixos, quatro conjuntos de cabeçalho, com e sem
+ *     cookie, com e sem Origin, com ALPN negociado. Todas recusadas.
+ *   · O prefixo `publico` (deduzido do nome do cookie) chega a um servidor de
+ *     verdade — por isso responde 400 com página de erro em vez de 403 mudo —,
+ *     mas ele recusa o upgrade em si, não os cabeçalhos.
+ *
+ * Ou seja: o painel foi feito para ser lido por gente numa aba. O SERPRO tratou
+ * qualquer outro uso como não-uso, o que é decisão legítima deles, e não há
+ * truque estável que a contorne.
+ *
+ * O caminho que funciona: exportar a tabela do painel em três cliques e
+ * importar o arquivo. É o que a área de Orçamento faz.
+ *
+ * Se um dia o SERPRO publicar uma API de verdade, ligar nela leva uma tarde —
+ * os identificadores de aplicativo e de objeto estão logo abaixo, lidos do
+ * config.js que o próprio painel publica.
+ *
+ * ───────────────────────────────────────────────────────────────────────────
+ *
  * Sonda o painel de transferências do SERPRO — diagnóstico, não integração.
  *
  * Por que existe: o ambiente onde este projeto é escrito não alcança gov.br, e
