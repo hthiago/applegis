@@ -736,6 +736,90 @@ console.log('\nDestinações de emenda\n');
     erechim ? `${erechim.municipio}: ${erechim.destinacoes.length} destinações` : 'sem Erechim');
 }
 
+// ── a planilha de conciliação do gabinete, com o arquivo de verdade ──
+//
+// O gabinete auditou o Mapa contra SIGA-Brasil, Transferegov e o painel de
+// transferências especiais, e mandou o resultado numa aba do mesmo arquivo. É o
+// trabalho que nenhuma base entrega pronta e que este sistema não tem como
+// fazer sozinho — o que ele precisa é não perdê-lo.
+{
+  const pl = await import('../js/planilha.js');
+  const de = await import('../js/destinacoes.js');
+  const ler = async (dica) => {
+    const b = fs.readFileSync(path.join(RAIZ, 'teste', 'amostras', 'conciliacao-gabinete.xlsx'));
+    return pl.lerXlsx(b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength), { dica });
+  };
+
+  // O mesmo documento, gravado por outro programa: `<x:row>` em vez de `<row>`.
+  // As duas formas são válidas e dizem a mesma coisa. Conhecendo só a primeira,
+  // o efeito não era erro de leitura — era "o .xlsx não tem nenhuma planilha
+  // dentro", num arquivo com nove abas cheias.
+  const mp = await ler('mapa de emendas');
+  conferir('o .xlsx com prefixo de espaço de nomes é lido como qualquer outro',
+    mp.abas.length === 9 && mp.linhas.length === 764,
+    `${mp.abas.length} abas · ${mp.linhas.length} linhas`);
+
+  // A Região saiu como erro de fórmula em 753 das 764 linhas deste arquivo.
+  const regioes = mp.linhas.map((l) => l[2]);
+  conferir('a célula que o Excel não soube calcular fica vazia, e não vira "#NAME?"',
+    !regioes.some((r) => String(r).includes('#')),
+    regioes.filter((r) => String(r).trim()).length + ' regiões preenchidas de 764');
+
+  // "Resumo conciliação" contém "conciliação" e vem antes na lista: procurar só
+  // por conteúdo entregava o resumo, que é texto corrido e nenhuma linha de dado.
+  const cc = await ler('conciliação');
+  conferir('o nome exato da aba ganha do nome que apenas a contém',
+    cc.aba === 'Conciliação', cc.aba);
+  conferir('e a aba de conciliação é reconhecida pelas colunas dela',
+    de.ehConciliacao(cc.cabecalho) && !de.ehConciliacao(mp.cabecalho));
+
+  conferir('a prioridade escrita por extenso vira ordem comparável',
+    de.prioridadeDaFrase('CRÍTICA') === 'critica' && de.prioridadeDaFrase('Alta') === 'alta'
+    && de.prioridadeDaFrase('Média') === 'media' && de.prioridadeDaFrase('') === null);
+
+  const colunas = de.mapearColunasDoGabinete(mp.cabecalho);
+  const cruas = mp.linhas.map((l, i) => {
+    const d = de.destinacaoDaLinha(l, colunas);
+    return d ? { ...d, linhaNoMapa: i + 2 } : null;
+  }).filter(Boolean);
+  const lidas = de.numerarDestinacoes(cruas);
+  const conc = cc.linhas.map((l) => de.conciliacaoDaLinha(l, de.mapearColunasDaConciliacao(cc.cabecalho))).filter(Boolean);
+  const j = de.juntarConciliacao(lidas, conc);
+
+  // As duas abas vieram do mesmo arquivo e foram escritas alinhadas: a coluna
+  // "Linha no novo mapa" é o número da linha, não uma chave derivada do
+  // conteúdo. Casar por conteúdo deixava 21 linhas de fora; por número, 6 — e
+  // as 6 são as que não têm município, que o sistema não importa.
+  conferir('a conciliação encontra a destinação dela pelo número da linha',
+    j.aplicadas === 758 && j.discordantes === 0 && j.semPar === 6,
+    `${j.aplicadas} aplicadas · ${j.discordantes} discordantes · ${j.semPar} sem par`);
+  conferir('e traz o que a auditoria pediu',
+    j.criticas === 1 && j.revisar === 71 && j.comCorrecao === 394,
+    `${j.criticas} crítica · ${j.revisar} a revisar · ${j.comCorrecao} com correção`);
+
+  // A linha de R$ 15,3 milhões, que era a maior da planilha inteira por quatro
+  // vezes e a única acima de R$ 5 mi. A auditoria do gabinete achou a mesma
+  // coisa por outro caminho, e ainda disse qual é o número provável.
+  const critica = j.destinacoes.find((d) => d.prioridadeConciliacao === 'critica');
+  conferir('a única crítica é a destinação de R$ 15,3 mi em Caxias do Sul',
+    critica.valorDestinado === 15299294 && /caxias do sul/i.test(critica.municipio),
+    `${critica.municipio} · ${critica.valorDestinado}`);
+  conferir('e ela chega com o número certo da emenda e o valor provável',
+    critica.emendaConciliada === '41160007-2021'
+    && /41160007/.test(critica.correcaoSugerida) && /152\.992,94/.test(critica.correcaoSugerida),
+    critica.correcaoSugerida);
+
+  // Alinhar pelo número da linha é exato quando as abas vêm do mesmo arquivo, e
+  // um desastre silencioso quando não vêm: escreveria a evidência de uma linha
+  // na destinação de outra, sem erro nenhum.
+  const forasteira = de.juntarConciliacao(lidas, [{
+    linhaNoMapa: 2, ano: 1999, municipio: 'Outra Cidade', valorNoMapa: 0,
+    resultadoConciliacao: 'CONFIRMADO', prioridadeConciliacao: 'alta',
+  }]);
+  conferir('conciliação de outro arquivo não é aplicada às cegas',
+    forasteira.discordantes === 1 && forasteira.aplicadas === 0);
+}
+
 /**
  * Malha e nomes do IBGE, de mentira.
  *
@@ -1041,6 +1125,89 @@ const nomesFalsos = [
   conferir('a lista de cidades mais atendidas leva ao mesmo lugar',
     (await pagina.locator('.linha-municipio--alvo td strong').innerText()) === cidadeDestaque,
     cidadeDestaque);
+
+  await pagina.close();
+}
+
+// ── a planilha de conciliação, importada de verdade ──
+//
+// O gabinete mandou uma versão nova do Mapa com a auditoria numa aba do mesmo
+// arquivo — e com a coluna Região quebrada em 753 das 764 linhas. As duas
+// coisas se testam juntas porque acontecem na mesma importação.
+{
+  const pagina = await abrir();
+  await pagina.goto(`${BASE}/#/orcamento/por-municipio`, { waitUntil: 'domcontentloaded' });
+  await pagina.waitForSelector('.modulo-topo', { timeout: 15000 });
+
+  // O aviso some sozinho em quatro segundos: esperar por tempo fixo mede o
+  // relógio, e o que interessa é o que ele disse.
+  const importar = async (arquivo) => {
+    // O aviso anterior ainda está na tela: sem limpar, o teste leria o recado da
+    // importação passada e diria que a nova não contou nada.
+    await pagina.evaluate(() => document.querySelectorAll('.aviso').forEach((n) => n.remove()));
+    await pagina.setInputFiles('.importador:has(button:text-is("Importar Mapa de emendas")) input[type=file]',
+      path.join(RAIZ, 'teste', 'amostras', arquivo));
+    await pagina.waitForSelector('.aviso', { timeout: 40000 });
+    const dito = (await pagina.locator('.aviso').first().innerText()).replace(/\s+/g, ' ');
+    await pagina.waitForSelector('.tabela--municipios', { timeout: 20000 });
+    await pagina.waitForTimeout(800);
+    return dito;
+  };
+
+  await importar('mapa-gabinete.xlsx');
+  const antes = (await pagina.locator('.tabela--municipios').innerText()).replace(/\s+/g, ' ');
+  conferir('o mapa antigo entra com a região preenchida',
+    /Encosta Superior do Nordeste/.test(antes), antes.slice(0, 120));
+
+  const recado = await importar('conciliacao-gabinete.xlsx');
+  conferir('a aba de conciliação entra junto com o mapa, sem botão próprio',
+    /Conciliação.*758 linhas auditadas/.test(recado) && /71 pedem revisão/.test(recado)
+    && /1 crítica/.test(recado), recado);
+  // Vazio é "não sei", não é "não tem". A coluna Região saiu quebrada nesta
+  // versão, e reimportar apagaria sem aviso um dado que estava certo.
+  conferir('e a célula vazia da versão nova não apaga o que já estava certo',
+    /campos vazios na planilha não apagaram/.test(recado), recado);
+  // Corrigir o nº de uma emenda muda a chave da destinação: a linha antiga fica
+  // para trás com o andamento escrito nela, e some da soma se ninguém vir.
+  conferir('e as destinações que não vieram na versão nova são contadas, não apagadas',
+    /10 destinações antigas não vieram nesta versão/.test(recado), recado);
+  const depois = (await pagina.locator('.tabela--municipios').innerText()).replace(/\s+/g, ' ');
+  conferir('a região continua na tela depois da reimportação',
+    /Encosta Superior do Nordeste/.test(depois), depois.slice(0, 120));
+
+  const indicadores = (await pagina.locator('.indicadores').innerText()).replace(/\s+/g, ' ');
+  conferir('o indicador "A revisar" aparece porque é trabalho a fazer',
+    /a revisar/i.test(indicadores) && /71/.test(indicadores), indicadores.slice(0, 300));
+
+  // A linha de R$ 15,3 mi: a auditoria diz o número provável, e a linha diz.
+  await pagina.locator('.busca').fill('Caxias do Sul');
+  await pagina.waitForTimeout(400);
+  await pagina.locator('.linha-municipio').first().click();
+  await pagina.waitForSelector('.sublinha--revisar', { timeout: 10000 });
+  const revisar = (await pagina.locator('.sublinha--revisar').first().innerText()).replace(/\s+/g, ' ');
+  conferir('a destinação que a auditoria contestou diz o que corrigir, na linha',
+    /Cr[íi]tica/i.test(revisar) && /41160007/.test(revisar) && /152\.992,94/.test(revisar),
+    revisar.slice(0, 260));
+
+  // Numa folha levada a uma reunião, o número que pode estar errado vem antes
+  // de tudo: número errado dito em voz alta não se desdiz.
+  await pagina.goto(`${BASE}/#/orcamento/folha/Caxias%20do%20Sul`, { waitUntil: 'domcontentloaded' });
+  await pagina.waitForSelector('.ficha-secao--alerta', { timeout: 15000 });
+  const alerta = (await pagina.locator('.ficha-secao--alerta').innerText()).replace(/\s+/g, ' ');
+  conferir('e a folha manda conferir antes de citar, no topo',
+    /Confira antes de citar · Cr[íi]tica/.test(alerta) && /152\.992,94/.test(alerta),
+    alerta.slice(0, 240));
+
+  await pagina.goto(`${BASE}/#/orcamento/dashboard`, { waitUntil: 'domcontentloaded' });
+  await pagina.waitForSelector('.grade-paineis', { timeout: 15000 });
+  const painelAuditoria = pagina.locator('.bloco', { hasText: 'A auditoria pediu revisão' });
+  conferir('o dashboard mostra o que a auditoria pediu, e leva à cidade',
+    (await painelAuditoria.count()) === 1
+    && /Caxias do Sul/.test(await painelAuditoria.first().innerText()));
+  await painelAuditoria.first().locator('.linha--clicavel').first().click();
+  await pagina.waitForSelector('.linha-municipio--alvo', { timeout: 15000 });
+  conferir('e o clique abre a cidade da destinação contestada',
+    /Caxias do Sul/.test(await pagina.locator('.linha-municipio--alvo td strong').innerText()));
 
   await pagina.close();
 }

@@ -257,6 +257,134 @@ export function destinacaoDaLinha(linha, mapa) {
   };
 }
 
+// ────────────────── a aba de conciliação, feita no gabinete ──────────────────
+
+/**
+ * A auditoria do mapa contra as fontes públicas, linha a linha.
+ *
+ * É a aba que o gabinete montou conferindo o Mapa contra SIGA-Brasil,
+ * Transferegov e o painel de transferências especiais — o trabalho que o painel
+ * do SERPRO não entrega e que este sistema não tem como fazer sozinho. Ela vem
+ * no mesmo arquivo do Mapa e alinhada linha a linha com ele, o que resolve de
+ * graça o problema mais difícil de casar duas planilhas: a coluna "Linha no
+ * novo mapa" é o número da linha, e não uma chave derivada do conteúdo.
+ */
+const COLUNAS_CONCILIACAO = {
+  linhaNoMapa: ['linha no novo mapa', 'linha no mapa', 'linha'],
+  ano: ['ano'],
+  municipio: ['municipio'],
+  beneficiario: ['beneficiario'],
+  numeroEmendaNoMapa: ['n emenda no mapa', 'no emenda no mapa', 'numero emenda no mapa'],
+  emendaConciliada: ['n emenda conciliado', 'no emenda conciliado', 'numero emenda conciliado'],
+  valorNoMapa: ['valor no mapa'],
+  sigaPagoFavorecido: ['siga pago ao favorecido municipio', 'siga pago ao favorecido'],
+  statusPix: ['status pix'],
+  cnpjPublico: ['cnpj publico candidato', 'cnpj publico'],
+  resultado: ['resultado da conciliacao'],
+  prioridade: ['prioridade'],
+  correcaoSugerida: ['correcao atualizacao sugerida', 'correcao sugerida'],
+  notaEvidencia: ['nota de evidencia'],
+  urlPublica: ['url publica'],
+};
+
+export function mapearColunasDaConciliacao(cabecalho) {
+  const chaves = cabecalho.map(chaveDoRotulo);
+  const mapa = {};
+  for (const [campo, nomes] of Object.entries(COLUNAS_CONCILIACAO)) {
+    const i = chaves.findIndex((c) => nomes.includes(c));
+    if (i !== -1) mapa[campo] = i;
+  }
+  return mapa;
+}
+
+export function ehConciliacao(cabecalho) {
+  const m = mapearColunasDaConciliacao(cabecalho);
+  return m.linhaNoMapa !== undefined && m.resultado !== undefined;
+}
+
+/**
+ * Quanto o resultado da conciliação pede atenção.
+ *
+ * A prioridade é escrita por extenso na planilha; aqui ela vira ordem, para que
+ * a tela possa mostrar o mais grave primeiro sem depender de acentuação nem de
+ * caixa. CRÍTICA é uma linha só nas 764 — e é justamente a de R$ 15,3 milhões.
+ */
+export const PESO_PRIORIDADE = { critica: 3, alta: 2, media: 1, baixa: 0 };
+
+export function prioridadeDaFrase(texto) {
+  const t = semAcento(texto).toLowerCase().trim();
+  if (!t) return null;
+  if (t.startsWith('crit')) return 'critica';
+  if (t.startsWith('alta')) return 'alta';
+  if (t.startsWith('med')) return 'media';
+  if (t.startsWith('baix')) return 'baixa';
+  return null;
+}
+
+/** Uma linha da aba de conciliação, do jeito que o sistema guarda. */
+export function conciliacaoDaLinha(linha, mapa) {
+  const campo = (nome) => (mapa[nome] === undefined ? '' : String(linha[mapa[nome]] ?? '').trim());
+  const numeroLinha = Math.round(numeroBr(campo('linhaNoMapa')));
+  if (!numeroLinha) return null;
+
+  return {
+    linhaNoMapa: numeroLinha,
+    // Guardados só para conferir se as duas abas falam da mesma linha. Alinhar
+    // pelo número da linha é exato quando as abas vêm do mesmo arquivo, e um
+    // desastre silencioso quando não vêm.
+    ano: Math.round(numeroBr(campo('ano'))) || null,
+    municipio: campo('municipio') || null,
+    valorNoMapa: numeroBr(campo('valorNoMapa')) || 0,
+
+    emendaConciliada: campo('emendaConciliada') || null,
+    resultadoConciliacao: campo('resultado') || null,
+    prioridadeConciliacao: prioridadeDaFrase(campo('prioridade')),
+    correcaoSugerida: campo('correcaoSugerida') || null,
+    notaEvidencia: campo('notaEvidencia') || null,
+    urlPublica: campo('urlPublica') || null,
+    cnpjPublico: campo('cnpjPublico') || null,
+    sigaPagoFavorecido: numeroBr(campo('sigaPagoFavorecido')) || 0,
+    statusPix: campo('statusPix') || null,
+    auditadoEm: new Date().toISOString().slice(0, 10),
+  };
+}
+
+/**
+ * A conciliação colada na destinação certa — ou em nenhuma.
+ *
+ * O número da linha alinha; o ano e o município conferem. Uma aba de
+ * conciliação de outro arquivo, ou de uma versão anterior do mapa, alinharia
+ * mesmo assim e escreveria a evidência de uma linha na destinação de outra —
+ * silenciosamente, que é o pior jeito de errar. Por isso o que não confere não
+ * é aplicado, e é contado para aparecer no aviso.
+ */
+export function juntarConciliacao(destinacoes, conciliacoes) {
+  const porLinha = new Map(conciliacoes.map((c) => [c.linhaNoMapa, c]));
+  let aplicadas = 0;
+  let discordantes = 0;
+
+  const saida = destinacoes.map((d) => {
+    const c = porLinha.get(d.linhaNoMapa);
+    if (!c) return d;
+    const mesmaLinha = (!c.ano || c.ano === d.ano)
+      && (!c.municipio || semAcento(c.municipio) === semAcento(d.municipio));
+    if (!mesmaLinha) { discordantes += 1; return d; }
+    aplicadas += 1;
+    const { linhaNoMapa, ano, municipio, valorNoMapa, ...evidencia } = c;
+    return { ...d, ...evidencia };
+  });
+
+  return {
+    destinacoes: saida,
+    aplicadas,
+    discordantes,
+    semPar: conciliacoes.length - aplicadas - discordantes,
+    criticas: saida.filter((d) => d.prioridadeConciliacao === 'critica').length,
+    revisar: saida.filter((d) => ['critica', 'alta'].includes(d.prioridadeConciliacao)).length,
+    comCorrecao: saida.filter((d) => d.correcaoSugerida).length,
+  };
+}
+
 // ─────────────────────────── a planilha do governo ───────────────────────────
 
 const COLUNAS_GOVERNO = {
@@ -404,6 +532,7 @@ export function conciliar(destinacao, doGoverno, doGrupo = null) {
 export async function importarMapaDoGabinete(arquivo) {
   const { cabecalho, linhas, aba, abas } = await lerPlanilha(arquivo, { dica: 'mapa de emendas' });
   const onde = aba ? ` (aba "${aba}")` : '';
+  let conciliacao = null;
 
   if (!cabecalho.length) {
     throw new Error(`A planilha${onde} está vazia.${abas?.length > 1 ? ` As abas do arquivo são: ${abas.join(', ')}.` : ''}`);
@@ -416,7 +545,25 @@ export async function importarMapaDoGabinete(arquivo) {
     // "não reconheci" sem isso não deixa ninguém sair do lugar.
     throw new Error(`Não reconheci o Mapa de emendas${onde}. Esperava as colunas Ano, município, Região e Beneficiário; achei "${cabecalho.slice(0, 6).filter(Boolean).join(', ')}".${abas?.length > 1 ? ` Abas do arquivo: ${abas.join(', ')}.` : ''}`);
   }
-  return importarMapa(cabecalho, linhas);
+
+  // A conciliação vem de carona quando existe, sem botão próprio.
+  //
+  // Ela está no mesmo arquivo e alinhada linha a linha com o Mapa — foi feita
+  // assim. Um segundo botão obrigaria a escolher entre importar o mapa e
+  // importar a auditoria dele, que é uma escolha que não existe: são o mesmo
+  // arquivo, e importar duas planilhas em botões separados já confundiu uma vez.
+  if ((abas || []).some((a) => chaveDoRotulo(a) === 'conciliacao')) {
+    try {
+      const outra = await lerPlanilha(arquivo, { dica: 'conciliação' });
+      if (ehConciliacao(outra.cabecalho)) conciliacao = outra;
+    } catch (erro) {
+      // A aba existir e não ser legível não pode derrubar o Mapa: ele é a fonte,
+      // e a conciliação é o acréscimo.
+      console.warn('aba de conciliação ilegível:', erro.message);
+    }
+  }
+
+  return importarMapa(cabecalho, linhas, conciliacao);
 }
 
 /**
@@ -440,18 +587,36 @@ export async function importarDoPainel(arquivo) {
   return importarGoverno(cabecalho, linhas);
 }
 
-async function importarMapa(cabecalho, linhas) {
+async function importarMapa(cabecalho, linhas, conciliacao = null) {
   const mapa = mapearColunasDoGabinete(cabecalho);
-  const cruas = linhas.map((l) => destinacaoDaLinha(l, mapa)).filter(Boolean);
+  // O número da linha na planilha viaja com a destinação: é por ele que a aba
+  // de conciliação encontra a sua. A primeira linha de dados é a 2, porque a 1
+  // é o cabeçalho — é assim que quem abre o arquivo enxerga, e é assim que a
+  // coluna "Linha no novo mapa" foi escrita.
+  const cruas = linhas
+    .map((l, i) => {
+      const d = destinacaoDaLinha(l, mapa);
+      return d ? { ...d, linhaNoMapa: i + 2 } : null;
+    })
+    .filter(Boolean);
   if (!cruas.length) throw new Error('Nenhuma linha tinha município. Confira se a aba é a "Mapa de emendas".');
-  const lidas = numerarDestinacoes(cruas);
+  let lidas = numerarDestinacoes(cruas);
+
+  let juncao = null;
+  if (conciliacao) {
+    const colunas = mapearColunasDaConciliacao(conciliacao.cabecalho);
+    const linhasConciliadas = conciliacao.linhas.map((l) => conciliacaoDaLinha(l, colunas)).filter(Boolean);
+    juncao = juntarConciliacao(lidas, linhasConciliadas);
+    lidas = juncao.destinacoes;
+  }
 
   const { salvarEmLote, listar } = await import('./dados.js');
   const guardadas = new Map((await listar('destinacoes', { recarregar: true })).map((d) => [d.id, d]));
 
   let novas = 0;
   let atualizadas = 0;
-  const registros = lidas.map(({ id, ...d }) => {
+  let preservados = 0;
+  const registros = lidas.map(({ id, linhaNoMapa, ...d }) => {
     const antiga = guardadas.get(id);
     if (antiga) atualizadas += 1; else novas += 1;
 
@@ -461,11 +626,41 @@ async function importarMapa(cabecalho, linhas) {
     const dados = { ...d };
     if (antiga?.andamento) dados.andamento = antiga.andamento;
     if (antiga?.fonteQueVale) dados.situacao = antiga.situacao;
+
+    // Célula vazia não apaga o que já estava preenchido.
+    //
+    // Uma versão nova do Mapa pode vir com uma coluna quebrada — a Região saiu
+    // como erro de fórmula em 753 das 764 linhas de uma delas — e reimportar
+    // apagaria, sem aviso, um dado que estava certo. Vazio é "não sei", não é
+    // "não tem".
+    //
+    // Zero não entra nesta regra: em dinheiro, zero é um valor que alguém
+    // escreveu — há destinações de R$ 0,00 na planilha —, e preservá-lo como se
+    // fosse ausência congelaria para sempre um número que mudou.
+    if (antiga) {
+      for (const [chave, valor] of Object.entries(dados)) {
+        const branco = valor === null || valor === '';
+        if (branco && antiga[chave] !== undefined && antiga[chave] !== null && antiga[chave] !== '') {
+          dados[chave] = antiga[chave];
+          preservados += 1;
+        }
+      }
+    }
     return { id, dados };
   });
 
   const gravacao = await salvarEmLote('destinacoes', registros);
   if (gravacao.falhas.length) throw gravacao.falhas[0];
+
+  // O que estava aqui e não veio nesta versão do Mapa.
+  //
+  // Corrigir o nº de uma emenda na planilha muda a chave da destinação, e a
+  // linha antiga fica para trás — com o andamento escrito nela. Apagar sozinho
+  // seria pior: uma planilha importada pela metade levaria junto o trabalho de
+  // todo mundo. Então elas ficam, e são contadas para alguém decidir.
+  const vieram = new Set(registros.map((r) => r.id));
+  const orfas = [...guardadas.values()]
+    .filter((d) => d.fonte === 'Mapa de emendas do gabinete' && !vieram.has(d.id)).length;
 
   return {
     origem: 'gabinete',
@@ -473,10 +668,21 @@ async function importarMapa(cabecalho, linhas) {
     destinacoes: registros.length,
     novas,
     atualizadas,
+    preservados,
+    orfas,
     municipios: new Set(lidas.map((d) => d.municipio)).size,
     emendas: new Set(lidas.map((d) => d.numeroEmenda).filter(Boolean)).size,
     semEmenda: lidas.filter((d) => !d.numeroEmenda).length,
     destinado: lidas.reduce((t, d) => t + (d.valorDestinado || 0), 0),
+    conciliacao: juncao && {
+      aba: conciliacao.aba,
+      aplicadas: juncao.aplicadas,
+      discordantes: juncao.discordantes,
+      semPar: juncao.semPar,
+      criticas: juncao.criticas,
+      revisar: juncao.revisar,
+      comCorrecao: juncao.comCorrecao,
+    },
   };
 }
 

@@ -915,6 +915,28 @@ export const MODULOS = [
       { k: 'conciliadoPor', l: 'Conciliado por', t: 'texto' },
       { k: 'conciliadoEm', l: 'Conciliado em', t: 'data' },
 
+      // ── a auditoria contra as fontes públicas ──
+      //
+      // Vem da aba "Conciliação" do arquivo do gabinete, que confere o Mapa
+      // contra SIGA-Brasil, Transferegov e o painel de transferências
+      // especiais. É o trabalho que nenhuma base entrega pronta e que o sistema
+      // não tem como fazer sozinho: aqui ele é guardado, não refeito.
+      { k: 'resultadoConciliacao', l: 'Resultado da conciliação', t: 'texto', lista: true },
+      { k: 'prioridadeConciliacao', l: 'Prioridade da revisão', t: 'select', lista: true, op: [
+        { v: 'critica', l: 'Crítica', cor: 'critico' },
+        { v: 'alta', l: 'Alta', cor: 'critico' },
+        { v: 'media', l: 'Média', cor: 'atencao' },
+        { v: 'baixa', l: 'Baixa', cor: 'neutro' },
+      ] },
+      { k: 'emendaConciliada', l: 'Emenda conciliada', t: 'texto' },
+      { k: 'correcaoSugerida', l: 'Correção sugerida pela auditoria', t: 'area' },
+      { k: 'notaEvidencia', l: 'Nota de evidência', t: 'area' },
+      { k: 'urlPublica', l: 'Fonte pública', t: 'url' },
+      { k: 'cnpjPublico', l: 'CNPJ na fonte pública', t: 'texto' },
+      { k: 'sigaPagoFavorecido', l: 'Pago ao favorecido (SIGA)', t: 'dinheiro' },
+      { k: 'statusPix', l: 'Status no painel de transferências especiais', t: 'texto' },
+      { k: 'auditadoEm', l: 'Auditado em', t: 'data' },
+
       { k: 'observacoes', l: 'Observações', t: 'area' },
       { k: 'fonte', l: 'Origem do registro', t: 'texto' },
       { k: 'importadoEm', l: 'Importado em', t: 'data' },

@@ -5,6 +5,7 @@ import { listar, salvar } from './dados.js';
 import { porId } from './modulos.js';
 import {
   consolidarDestinacoes, situacaoDaCidade, anotarAndamento, resolverDivergencia, leituraDaConciliacao,
+  PESO_PRIORIDADE,
 } from './destinacoes.js';
 
 /** Painéis consolidados. Diferente dos módulos, estes são desenhados à mão. */
@@ -475,6 +476,12 @@ const COR_SITUACAO = {
   perdido: 'critico',
 };
 
+// A auditoria do gabinete contra SIGA-Brasil, Transferegov e o painel de
+// transferências especiais. Crítica é uma linha em 764 — e é a de R$ 15,3 mi.
+const ROTULO_PRIORIDADE = { critica: 'Crítica', alta: 'Alta', media: 'Média', baixa: 'Baixa' };
+const COR_PRIORIDADE = { critica: 'critico', alta: 'critico', media: 'atencao', baixa: 'neutro' };
+const PEDE_REVISAO = (d) => d.prioridadeConciliacao === 'critica' || d.prioridadeConciliacao === 'alta';
+
 const ROTULO_AREA = {
   saude: 'Saúde',
   seguranca: 'Segurança',
@@ -534,7 +541,8 @@ export function detalhesDaCidade(m, ctx = {}) {
 function linhasDaDestinacao(d, ctx, colunas) {
   const conciliada = leituraDaConciliacao(d);
   const classe = ['sublinha'];
-  if (d.divergente) classe.push('sublinha--divergente');
+  if (PEDE_REVISAO(d)) classe.push('sublinha--revisar');
+  else if (d.divergente) classe.push('sublinha--divergente');
   else if (conciliada) classe.push('sublinha--conciliada');
 
   const editor = el('tr', { class: 'linha-anotar', hidden: true });
@@ -566,6 +574,17 @@ function linhasDaDestinacao(d, ctx, colunas) {
       // A decisão tomada fica à vista: sem ela, a linha volta a parecer um
       // número não conferido, e alguém conferiria de novo.
       conciliada ? el('span', { class: 'topo-sub sublinha-nota', texto: conciliada }) : null,
+      // O que a auditoria contra as fontes públicas achou. Só aparece onde ela
+      // pediu revisão: um recado em todas as 758 linhas não é recado.
+      PEDE_REVISAO(d) && d.correcaoSugerida
+        ? el('span', { class: 'topo-sub sublinha-auditoria' }, [
+          etiqueta(ROTULO_PRIORIDADE[d.prioridadeConciliacao], COR_PRIORIDADE[d.prioridadeConciliacao]),
+          el('span', { texto: ` ${d.correcaoSugerida}` }),
+          d.urlPublica
+            ? el('a', { href: d.urlPublica, target: '_blank', rel: 'noopener', texto: ' fonte' })
+            : null,
+        ].filter(Boolean))
+        : null,
     ].filter(Boolean)),
     el('td', { class: 'num', 'data-rotulo': 'Ano', texto: d.ano ? String(d.ano) : '—' }),
     el('td', { class: 'num', 'data-rotulo': 'Emenda' }, [
@@ -743,6 +762,20 @@ function importadoresDeDestinacoes(recarregar, jaTemDestinacoes) {
         `${r.municipios} municípios · ${r.emendas} emendas`,
         `destinado ${fmtDinheiroCurto(r.destinado)}`,
         r.semEmenda ? `${r.semEmenda} ainda sem nº de emenda` : null,
+        // A célula vazia que não apagou o que estava certo: dito, porque é uma
+        // decisão do sistema sobre os dados de alguém.
+        r.preservados ? `${r.preservados} campos vazios na planilha não apagaram o que já havia` : null,
+        // Nº de emenda corrigido na planilha muda a chave: a linha antiga fica
+        // para trás, com o andamento escrito nela. Some da soma se ninguém vir.
+        r.orfas ? `${r.orfas} destinações antigas não vieram nesta versão e continuam aqui — confira se viraram outra linha` : null,
+        // A aba de conciliação veio de carona. Dizer que ela entrou, e o que
+        // ela pediu, é o que transforma a auditoria em trabalho a fazer.
+        r.conciliacao
+          ? `aba "${r.conciliacao.aba}": ${r.conciliacao.aplicadas} linhas auditadas, ${r.conciliacao.revisar} pedem revisão${r.conciliacao.criticas ? ` (${r.conciliacao.criticas} crítica)` : ''}`
+          : null,
+        r.conciliacao?.discordantes
+          ? `${r.conciliacao.discordantes} linhas da conciliação não conferiram com o mapa e não foram aplicadas`
+          : null,
       ].filter(Boolean).join(' · '), 'ok');
     },
   });
@@ -831,6 +864,7 @@ export async function painelDestinacoes(container) {
   // conferiria de novo o que já foi decidido.
   function atualizarConciliar() {
     const divergentes = destinacoes.filter((d) => d.divergente).length;
+    const aRevisar = destinacoes.filter(PEDE_REVISAO).length;
     limpar(indicadores);
     [
       indicador('Municípios', String(cidades.length), 'neutro'),
@@ -841,6 +875,8 @@ export async function painelDestinacoes(container) {
       // A divergência é indicador de primeira linha porque é trabalho a fazer,
       // não estatística: cada uma é uma decisão que alguém precisa tomar.
       divergentes ? indicador('A conciliar', String(divergentes), 'critico', 'fontes divergem') : null,
+      // A auditoria já apontou onde olhar. O número existe para diminuir.
+      aRevisar ? indicador('A revisar', String(aRevisar), 'critico', 'a auditoria pediu') : null,
     ].filter(Boolean).forEach((n) => indicadores.appendChild(n));
   }
   atualizarConciliar();
@@ -1029,6 +1065,12 @@ export function destaquesDasDestinacoes(destinacoes, cidades) {
     travadas: travadas.slice(0, 8),
     valorTravado: somar(travadas, 'valorDestinado'),
     aConciliar: destinacoes.filter((d) => d.divergente).length,
+    // A auditoria contra as fontes públicas já disse onde olhar; o dashboard
+    // só precisa não esconder. A crítica vem antes da alta, e dentro de cada
+    // uma o valor manda — é onde o erro custa mais caro.
+    aRevisar: destinacoes.filter(PEDE_REVISAO)
+      .sort((a, b) => (PESO_PRIORIDADE[b.prioridadeConciliacao] - PESO_PRIORIDADE[a.prioridadeConciliacao])
+        || ((b.valorDestinado || 0) - (a.valorDestinado || 0))),
   };
 }
 
@@ -1074,6 +1116,13 @@ export async function painelDashboardOrcamento(container) {
 
   const d = destaquesDasDestinacoes(destinacoes, cidades);
 
+  // A destinação guarda o nome como estava escrito na linha; a lista de cidades
+  // já escolheu a grafia que vale. Sem passar por aqui, o dashboard mostraria
+  // "Caxias do sul" no destaque e "Caxias do Sul" na tabela, como se fossem
+  // dois lugares — que foi exatamente o defeito que a consolidação corrigiu.
+  const canonico = new Map(cidades.map((c) => [semAcentoLocal(c.municipio), c.municipio]));
+  const oficial = (nome) => canonico.get(semAcentoLocal(nome)) || nome;
+
   container.appendChild(el('div', { class: 'indicadores' }, [
     indicador('Municípios', String(cidades.length), 'neutro'),
     indicador('Destinações', String(destinacoes.length), 'neutro'),
@@ -1082,6 +1131,7 @@ export async function painelDashboardOrcamento(container) {
       ? indicador('Travado', fmtDinheiroCurto(d.valorTravado), 'critico', `${d.travadas.length} impedidas ou perdidas`)
       : null,
     d.aConciliar ? indicador('A conciliar', String(d.aConciliar), 'atencao', 'fontes divergem') : null,
+    d.aRevisar.length ? indicador('A revisar', String(d.aRevisar.length), 'critico', 'a auditoria pediu') : null,
   ].filter(Boolean)));
 
   // ── o mapa ──
@@ -1099,7 +1149,7 @@ export async function painelDashboardOrcamento(container) {
 
   grade.appendChild(bloco('Maiores destinações', null, [
     el('ul', { class: 'lista' }, d.maiores.map((x) => linha(
-      `${x.beneficiario || x.instituicao || 'sem beneficiário'} · ${x.municipio}`,
+      `${x.beneficiario || x.instituicao || 'sem beneficiário'} · ${oficial(x.municipio)}`,
       [x.ano, x.objeto].filter(Boolean).join(' · ').slice(0, 110),
       etiqueta(fmtDinheiroCurto(x.valorDestinado), 'info'),
     ))),
@@ -1133,11 +1183,32 @@ export async function painelDashboardOrcamento(container) {
     barrasDestaque(d.porSituacao, d.destinado, (k) => ROTULO_SITUACAO[k] || 'Sem situação'),
   ]));
 
+  if (d.aRevisar.length) {
+    // O que a auditoria contra as fontes públicas achou. Vem antes do travado
+    // porque é o único bloco em que o próprio número pode estar errado — e
+    // número errado dito numa reunião não se desdiz.
+    grade.appendChild(bloco('A auditoria pediu revisão', `${d.aRevisar.length}`, [
+      el('ul', { class: 'lista' }, d.aRevisar.slice(0, 8).map((x) => el('li', {
+        class: 'linha linha--clicavel',
+        tabindex: '0',
+        role: 'button',
+        onclick: () => irParaCidade(oficial(x.municipio)),
+        onkeydown: (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); irParaCidade(oficial(x.municipio)); } },
+      }, [
+        el('div', { class: 'linha-texto' }, [
+          el('span', { class: 'linha-principal', texto: `${oficial(x.municipio)} · ${x.beneficiario || x.instituicao || ''}`.trim() }),
+          el('span', { class: 'linha-secundaria', texto: (x.correcaoSugerida || x.resultadoConciliacao || '').slice(0, 140) }),
+        ]),
+        etiqueta(ROTULO_PRIORIDADE[x.prioridadeConciliacao], COR_PRIORIDADE[x.prioridadeConciliacao]),
+      ]))),
+    ]));
+  }
+
   if (d.travadas.length) {
     // Primeiro assunto de qualquer visita: a prefeitura vai perguntar.
     grade.appendChild(bloco('Travado — impedido ou perdido', `${d.travadas.length}`, [
       el('ul', { class: 'lista' }, d.travadas.map((x) => linha(
-        `${x.municipio} · ${x.beneficiario || x.instituicao || ''}`.trim(),
+        `${oficial(x.municipio)} · ${x.beneficiario || x.instituicao || ''}`.trim(),
         (x.situacaoOriginal || x.objeto || '').slice(0, 120),
         etiqueta(fmtDinheiroCurto(x.valorDestinado), 'critico'),
       ))),
@@ -1284,9 +1355,19 @@ export async function painelFolhaMunicipio(container, cidadePedida) {
   // lista por ano é descobrir isso na frente de quem perguntou.
   const travadas = m.destinacoes.filter((d) => d.situacao === 'impedido' || d.situacao === 'perdido');
   const aConciliar = m.destinacoes.filter((d) => d.divergente);
-  if (travadas.length || aConciliar.length) {
+  const aRevisar = m.destinacoes.filter(PEDE_REVISAO);
+  if (travadas.length || aConciliar.length || aRevisar.length) {
     folha.appendChild(el('section', { class: 'ficha-secao ficha-secao--alerta' }, [
       el('h3', { texto: 'O que vão perguntar primeiro' }),
+      // A auditoria vem antes de tudo: nos outros casos o número está certo e o
+      // repasse é que travou; aqui o próprio número pode estar errado, e número
+      // errado dito numa reunião não se desdiz.
+      ...aRevisar.map((d) => el('p', { class: 'folha-alerta' }, [
+        el('strong', { texto: `Confira antes de citar · ${ROTULO_PRIORIDADE[d.prioridadeConciliacao]}` }),
+        el('span', { texto: ` — ${d.beneficiario || d.instituicao || 'sem beneficiário'}, ${fmtDinheiro(d.valorDestinado || 0)} no mapa.` }),
+        d.correcaoSugerida ? el('span', { class: 'topo-sub', texto: d.correcaoSugerida }) : null,
+        d.urlPublica ? el('span', { class: 'topo-sub', texto: d.urlPublica }) : null,
+      ].filter(Boolean))),
       ...travadas.map((d) => el('p', { class: 'folha-alerta' }, [
         el('strong', { texto: `${ROTULO_SITUACAO[d.situacao]} · ${fmtDinheiro(d.valorDestinado || 0)}` }),
         el('span', { texto: ` — ${d.beneficiario || d.instituicao || 'sem beneficiário'}: ${d.objeto || 'objeto não informado'}` }),
@@ -1356,6 +1437,9 @@ function paragrafoDaDestinacao(d) {
     // "desde quando?", e a resposta é o histórico.
     d.andamento ? el('p', { class: 'folha-andamento', texto: d.andamento }) : null,
     leituraDaConciliacao(d) ? el('p', { class: 'topo-sub', texto: leituraDaConciliacao(d) }) : null,
+    // A evidência pública que a auditoria achou. Numa reunião, é o que
+    // sustenta o número que se acabou de dizer.
+    d.notaEvidencia ? el('p', { class: 'topo-sub', texto: `Conferência: ${d.notaEvidencia}` }) : null,
     d.endereco ? el('p', { class: 'topo-sub', texto: d.endereco }) : null,
   ].filter(Boolean));
 }

@@ -1383,3 +1383,10 @@ input:focus, select:focus, textarea:focus { border-color: var(--verde); outline:
   .folha-andamento { border-left: 1pt solid #999; }
   .folha { max-width: none; }
 }
+
+/* A auditoria contra as fontes públicas. Marca própria porque diz outra coisa:
+   na divergência o número está certo e as fontes é que contam diferente; aqui
+   o próprio número pode estar errado. */
+.sublinha--revisar > td:first-child { border-left: 3px solid #a4262c; padding-left: 11px; }
+.sublinha-auditoria { display: block; margin-top: .2rem; }
+.sublinha-auditoria .etiqueta { margin-right: .35rem; }

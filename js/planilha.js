@@ -286,6 +286,22 @@ async function extrair(zip, nome) {
   return new Response(fluxo).text();
 }
 
+/**
+ * As marcas do XML, com ou sem prefixo de espaço de nomes.
+ *
+ * O Excel grava `<row>`, `<c>`, `<v>`; outros geradores gravam exatamente o
+ * mesmo documento como `<x:row>`, `<x:c>`, `<x:v>` — as duas formas são
+ * válidas e dizem a mesma coisa. A primeira versão só conhecia a primeira, e o
+ * efeito não era um erro de leitura: era "o .xlsx não tem nenhuma planilha
+ * dentro", num arquivo com nove abas cheias.
+ */
+const RE = {
+  sheet: /<(?:\w+:)?sheet\b([^>]*)\/>/g,
+  c: /<(?:\w+:)?c\b([^>]*?)\/>|<(?:\w+:)?c\b([^>]*?)>([\s\S]*?)<\/(?:\w+:)?c>/g,
+  t: /<(?:\w+:)?t[^>]*>([\s\S]*?)<\/(?:\w+:)?t>/g,
+  v: /<(?:\w+:)?v>([\s\S]*?)<\/(?:\w+:)?v>/,
+};
+
 /** Desfaz as entidades do XML. São poucas e fixas — não vale um analisador. */
 function semEntidades(t) {
   return String(t)
@@ -312,9 +328,9 @@ export async function lerXlsx(buffer, { dica = null } = {}) {
   const textos = [];
   const compartilhados = await extrair(zip, 'xl/sharedStrings.xml');
   if (compartilhados) {
-    for (const si of compartilhados.split('<si>').slice(1)) {
+    for (const si of compartilhados.split(/<(?:\w+:)?si>/).slice(1)) {
       // Texto com formatação vem partido em vários <t>; juntar é o certo.
-      const pedacos = [...si.matchAll(/<t[^>]*>([\s\S]*?)<\/t>/g)].map((m) => semEntidades(m[1]));
+      const pedacos = [...si.matchAll(RE.t)].map((m) => semEntidades(m[1]));
       textos.push(pedacos.join(''));
     }
   }
@@ -327,12 +343,18 @@ export async function lerXlsx(buffer, { dica = null } = {}) {
   // ordem de aba. Num arquivo com uma aba só, dá certo por sorte; no Mapa de
   // emendas do gabinete, que tem dezesseis, podia cair em "backup" ou "Regiões"
   // e o arquivo "não era reconhecido" sem que nada explicasse por quê.
-  const escolhida = (dica && abas.find((a) => chaveDoRotulo(a.nome).includes(chaveDoRotulo(dica))))
-    || abas[0];
+  // O nome exato ganha do nome que apenas contém. Num arquivo com "Conciliação"
+  // e "Resumo conciliação", procurar só por conteúdo entregava o resumo — que
+  // tem seis colunas de texto corrido e nenhuma linha de dado.
+  const chaveDica = dica ? chaveDoRotulo(dica) : null;
+  const escolhida = (chaveDica && (
+    abas.find((a) => chaveDoRotulo(a.nome) === chaveDica)
+    || abas.find((a) => chaveDoRotulo(a.nome).includes(chaveDica))
+  )) || abas[0];
   const folha = await extrair(zip, escolhida.arquivo);
 
   const linhas = [];
-  for (const bruto of folha.split(/<row[\s>]/).slice(1)) {
+  for (const bruto of folha.split(/<(?:\w+:)?row[\s>]/).slice(1)) {
     const celulas = [];
     // A célula vazia vem autofechada — `<c r="B1" s="4"/>` — e a forma com
     // conteúdo precisa ser testada DEPOIS dela. Na ordem inversa, `[^>]*`
@@ -340,16 +362,21 @@ export async function lerXlsx(buffer, { dica = null } = {}) {
     // célula seguinte como conteúdo. O efeito era uma coluna sumir e o valor
     // dela aparecer na anterior — deslocamento silencioso, sem erro nenhum, em
     // qualquer planilha com buraco no meio.
-    for (const m of bruto.matchAll(/<c\b([^>]*?)\/>|<c\b([^>]*?)>([\s\S]*?)<\/c>/g)) {
+    for (const m of bruto.matchAll(RE.c)) {
       const atributos = m[1] ?? m[2] ?? '';
       const corpo = m[3] ?? '';
       const onde = indiceDaColuna(/r="([A-Z]+\d+)"/.exec(atributos)?.[1]);
       const tipo = /t="([^"]+)"/.exec(atributos)?.[1];
       let valor = '';
       if (tipo === 'inlineStr') {
-        valor = [...corpo.matchAll(/<t[^>]*>([\s\S]*?)<\/t>/g)].map((x) => semEntidades(x[1])).join('');
+        valor = [...corpo.matchAll(RE.t)].map((x) => semEntidades(x[1])).join('');
+      } else if (tipo === 'e') {
+        // Erro de fórmula. A célula que o Excel não soube calcular não vale o
+        // texto "#NAME?": ela está vazia, e tratá-la como conteúdo faria a
+        // Região de 753 linhas virar a palavra "#NAME?" dentro do sistema.
+        valor = '';
       } else {
-        const v = /<v>([\s\S]*?)<\/v>/.exec(corpo)?.[1];
+        const v = RE.v.exec(corpo)?.[1];
         if (v != null) valor = tipo === 's' ? (textos[Number(v)] ?? '') : semEntidades(v);
       }
       const i = onde == null ? celulas.length : onde;
@@ -393,7 +420,7 @@ async function abasDoLivro(zip) {
   }
 
   const abas = [];
-  for (const m of livro.matchAll(/<sheet\b([^>]*)\/>/g)) {
+  for (const m of livro.matchAll(RE.sheet)) {
     const nome = semEntidades(/name="([^"]*)"/.exec(m[1])?.[1] || '');
     const rid = /r:id="([^"]+)"/.exec(m[1])?.[1];
     const alvo = rid && alvos.get(rid);

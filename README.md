@@ -177,11 +177,49 @@ foi lida.
 |---|---|---|
 | **Mapa de emendas** (do gabinete) | **A fonte.** Importe esta primeiro | Cidade, região, endereço, beneficiário, objeto, área, valor destinado e o que já se sabe do andamento |
 | **Exportação do painel** (`dd-publico.serpro.gov.br`) | A confirmação | Empenhado e pago oficiais, nº do instrumento e o link do convênio |
+| Aba **Conciliação** (no mesmo arquivo do Mapa) | A auditoria | Resultado por linha contra SIGA-Brasil, Transferegov e transferências especiais: prioridade, correção sugerida, evidência e URL pública |
 
 A planilha do gabinete é a fonte primária, e os números explicam por quê: ela tem 758
 destinações, 298 municípios e 67 emendas; a exportação do painel tem 198, 117 e 25.
 Todos os municípios do painel já estão nela. O painel só enxerga o que virou convênio
 celebrado — não vê a Segurança Pública, não vê o fundo a fundo da Saúde, não vê 2019.
+
+### A aba "Conciliação" entra de carona
+
+Se o arquivo do Mapa tiver uma aba chamada **Conciliação**, ela é importada junto, sem
+botão próprio — são o mesmo arquivo, e escolher entre importar o mapa e importar a
+auditoria dele seria uma escolha que não existe.
+
+Ela é a auditoria que o gabinete faz do Mapa contra **SIGA-Brasil**, **Transferegov** e o
+**painel de transferências especiais** — o trabalho que nenhuma base entrega pronta e que
+o sistema não tem como fazer sozinho. O que ele faz é não perdê-lo: para cada linha,
+guarda o resultado da conciliação, a prioridade da revisão, o nº de emenda conciliado, a
+**correção sugerida**, a nota de evidência, o CNPJ na fonte pública e a URL.
+
+As duas abas se encontram pela coluna **"Linha no novo mapa"** — o número da linha, não
+uma chave derivada do conteúdo. É exato quando as abas vêm do mesmo arquivo, e um desastre
+silencioso quando não vêm: por isso o ano e o município são conferidos antes de aplicar, e
+o que não confere não é aplicado e é contado no aviso.
+
+O que a auditoria marcou como **Crítica** ou **Alta** vira o indicador *A revisar*, um
+bloco próprio no Dashboard, uma faixa vermelha na linha da destinação com a correção
+sugerida, e a primeira coisa na folha da cidade — *"Confira antes de citar"*. Nos outros
+casos o número está certo e o repasse é que travou; aqui o próprio número pode estar
+errado, e número errado dito numa reunião não se desdiz.
+
+### Três coisas que a reimportação não faz
+
+- **Não apaga com vazio.** Uma versão nova do Mapa pode vir com uma coluna quebrada — a
+  Região saiu como erro de fórmula em 753 das 764 linhas de uma delas. Célula vazia é
+  "não sei", não é "não tem": o que já estava preenchido fica, e o aviso diz quantos
+  campos foram preservados. Zero não entra nessa regra — em dinheiro, zero é um valor que
+  alguém escreveu.
+- **Não engole erro de fórmula.** `#NAME?`, `#REF!`, `#N/A` e companhia entram como célula
+  vazia, e não como o texto `#NAME?` dentro do sistema.
+- **Não apaga o que não veio.** Corrigir o nº de uma emenda na planilha muda a chave da
+  destinação, e a linha antiga fica para trás — com o andamento escrito nela. Apagar
+  sozinho seria pior: uma planilha importada pela metade levaria junto o trabalho de todo
+  mundo. Elas ficam, e o aviso conta quantas são.
 
 ### Quando as duas divergem
 
