@@ -818,6 +818,40 @@ console.log('\nDestinações de emenda\n');
   }]);
   conferir('conciliação de outro arquivo não é aplicada às cegas',
     forasteira.discordantes === 1 && forasteira.aplicadas === 0);
+
+  // ── corrigir o número que a planilha traz errado ──
+  //
+  // A reimportação sobrescrever é o que faz da planilha a fonte. Quando a
+  // auditoria mostra que a própria planilha está errada, devolver o valor
+  // errado a cada importação transformaria a correção em trabalho de Sísifo.
+  const errada = { ...critica, andamento: null };
+  const remendo = de.aplicarCorrecao(errada,
+    { valorDestinado: '152992.94', numeroEmenda: '41160007' },
+    { motivo: 'auditoria: fecha R$ 364.993,00 do SIGA com a linha de Passo Fundo', por: 'Ana', em: '2026-08-31' });
+  conferir('a correção guarda o valor novo e marca o campo como corrigido',
+    remendo.valorDestinado === 152992.94 && remendo.numeroEmenda === '41160007'
+    && remendo.camposCorrigidos.join(',') === 'valorDestinado,numeroEmenda',
+    JSON.stringify(remendo.camposCorrigidos));
+  // Um número que muda sozinho é a pior coisa que este sistema poderia fazer.
+  conferir('e escreve no andamento o que era, o que passou a ser e por quê',
+    /Destinado: R\$\s?15\.299\.294,00 → R\$\s?152\.992,94/.test(remendo.andamento)
+    && /Nº da emenda: 411660007 → 41160007/.test(remendo.andamento)
+    && /Motivo: auditoria/.test(remendo.andamento),
+    remendo.andamento);
+  // Um alerta que não sai depois de atendido ensina a ignorar alertas.
+  conferir('e a linha para de pedir revisão sem apagar o que a auditoria viu',
+    remendo.revisaoResolvidaEm === '2026-08-31' && !('prioridadeConciliacao' in remendo));
+  conferir('mudar valor sem dizer por quê não vira correção',
+    de.aplicarCorrecao(errada, { valorDestinado: '10' }, { motivo: '  ', por: 'Ana' }) === null);
+  conferir('e repetir o valor que já estava lá também não',
+    de.aplicarCorrecao(errada, { valorDestinado: String(critica.valorDestinado), numeroEmenda: critica.numeroEmenda },
+      { motivo: 'qualquer', por: 'Ana' }) === null);
+  conferir('a correção se lê na linha, com quem fez e quando',
+    /Destinado e Nº da emenda corrigido no sistema: auditoria.*\(Ana, 31\/08\/2026\)/
+      .test(de.leituraDaCorrecao({ ...errada, ...remendo })),
+    de.leituraDaCorrecao({ ...errada, ...remendo }));
+  conferir('e destinação sem correção não inventa leitura',
+    de.leituraDaCorrecao(critica) === null);
 }
 
 /**
@@ -1198,16 +1232,79 @@ const nomesFalsos = [
     /Confira antes de citar · Cr[íi]tica/.test(alerta) && /152\.992,94/.test(alerta),
     alerta.slice(0, 240));
 
+  // ── corrigir o número, e provar que a correção resiste à reimportação ──
+  //
+  // É a pergunta que o gabinete fez ao ver a linha de R$ 15,3 mi: "como faço
+  // pra alterar?". Alterar era fácil; o difícil era o valor não voltar sozinho
+  // no próximo arquivo.
+  await pagina.goto(`${BASE}/#/orcamento/por-municipio`, { waitUntil: 'domcontentloaded' });
+  await pagina.waitForSelector('.linha-municipio', { timeout: 15000 });
+  await pagina.locator('.busca').fill('Caxias do Sul');
+  await pagina.waitForTimeout(400);
+  await pagina.locator('.linha-municipio').first().click();
+  await pagina.waitForSelector('.sublinha--revisar', { timeout: 10000 });
+  await pagina.locator('.sublinha--revisar').first().locator('button:text-is("Anotar")').click();
+  const editorCorrecao = pagina.locator('.linha-anotar:not([hidden])').first();
+  await editorCorrecao.waitFor({ timeout: 5000 });
+  // Onde a auditoria pediu revisão, o bloco de correção já vem aberto: é ali
+  // que ele vai ser usado, e a sugestão dela fica à vista de quem vai digitar.
+  conferir('onde a auditoria pediu revisão, a correção já vem aberta e com a sugestão à mão',
+    (await editorCorrecao.locator('.anotar-correcao[open]').count()) === 1
+    && /152\.992,94/.test(await editorCorrecao.locator('.anotar-correcao .campo-dica').first().innerText()));
+
+  await editorCorrecao.locator('.anotar-correcao input[type=number]').fill('152992.94');
+  await editorCorrecao.locator('.anotar-correcao input[type=text]').first().fill('41160007');
+  await editorCorrecao.locator('button:text-is("Salvar")').click();
+  await pagina.waitForTimeout(700);
+  // Mudar um valor sem dizer por quê é o começo de um número que ninguém sabe
+  // defender — que foi o problema desta área desde o início.
+  conferir('corrigir sem dizer por quê é recusado, e a tela explica',
+    /Diga por que o número da planilha está errado/.test(await editorCorrecao.locator('.anotar-acoes').innerText()));
+
+  await editorCorrecao.locator('.anotar-correcao input[type=text]').last().fill('auditoria: fecha R$ 364.993,00 do SIGA');
+  await editorCorrecao.locator('button:text-is("Salvar")').click();
+  const daPrf = pagina.locator('.linha-detalhe:not([hidden]) .sublinha', { hasText: 'Polícia Rodoviária Federal' }).first();
+  await daPrf.locator('td[data-rotulo="Destinado"]:text-is("R$ 152.992,94")').waitFor({ timeout: 10000 });
+  const corrigida = (await daPrf.innerText()).replace(/\s+/g, ' ');
+  conferir('o valor corrigido aparece na linha, com o histórico do que mudou',
+    /R\$\s?152\.992,94/.test(corrigida) && /41160007/.test(corrigida)
+    && /Destinado: R\$\s?15\.299\.294,00 → R\$\s?152\.992,94/.test(corrigida),
+    corrigida.slice(0, 320));
+  // Um alerta que não sai depois de atendido ensina a ignorar alertas. A outra
+  // destinação de Caxias que a auditoria marcou continua marcada — essa não foi
+  // atendida, e não é para sumir.
+  conferir('e a linha atendida para de pedir revisão, sem calar as outras',
+    !(await daPrf.getAttribute('class')).includes('sublinha--revisar')
+    && (await pagina.locator('.linha-detalhe:not([hidden]) .sublinha--revisar').count()) === 1);
+
+  // O teste que importa: a planilha continua dizendo R$ 15,3 mi.
+  const recadoDepois = await importar('conciliacao-gabinete.xlsx');
+  conferir('reimportar o Mapa não desfaz a correção',
+    /2 campos corrigidos aqui dentro foram mantidos/.test(recadoDepois), recadoDepois);
+  await pagina.locator('.busca').fill('Caxias do Sul');
+  await pagina.waitForTimeout(400);
+  await pagina.locator('.linha-municipio').first().click();
+  await pagina.waitForSelector('.linha-detalhe:not([hidden])', { timeout: 10000 });
+  const depoisDeReimportar = (await pagina.locator('.linha-detalhe:not([hidden])').first().innerText()).replace(/\s+/g, ' ');
+  conferir('e o valor errado da planilha não volta',
+    /R\$\s?152\.992,94/.test(depoisDeReimportar) && !/R\$\s?15\.299\.294,00 2021/.test(depoisDeReimportar),
+    depoisDeReimportar.slice(0, 200));
+
   await pagina.goto(`${BASE}/#/orcamento/dashboard`, { waitUntil: 'domcontentloaded' });
   await pagina.waitForSelector('.grade-paineis', { timeout: 15000 });
   const painelAuditoria = pagina.locator('.bloco', { hasText: 'A auditoria pediu revisão' });
-  conferir('o dashboard mostra o que a auditoria pediu, e leva à cidade',
-    (await painelAuditoria.count()) === 1
-    && /Caxias do Sul/.test(await painelAuditoria.first().innerText()));
+  const indicadoresPainel = (await pagina.locator('.indicadores').innerText()).replace(/\s+/g, ' ');
+  // 71 pediam revisão; a crítica foi atendida e saiu da conta sozinha.
+  conferir('o dashboard mostra o que a auditoria pediu, e o atendido sai da conta',
+    (await painelAuditoria.count()) === 1 && /A REVISAR 70/i.test(indicadoresPainel),
+    indicadoresPainel.slice(0, 320));
+  const primeiraContestada = (await painelAuditoria.first().locator('.linha-principal').first().innerText())
+    .split(' · ')[0];
   await painelAuditoria.first().locator('.linha--clicavel').first().click();
   await pagina.waitForSelector('.linha-municipio--alvo', { timeout: 15000 });
   conferir('e o clique abre a cidade da destinação contestada',
-    /Caxias do Sul/.test(await pagina.locator('.linha-municipio--alvo td strong').innerText()));
+    (await pagina.locator('.linha-municipio--alvo td strong').innerText()) === primeiraContestada,
+    primeiraContestada);
 
   await pagina.close();
 }

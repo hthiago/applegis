@@ -616,6 +616,7 @@ async function importarMapa(cabecalho, linhas, conciliacao = null) {
   let novas = 0;
   let atualizadas = 0;
   let preservados = 0;
+  let corrigidosMantidos = 0;
   const registros = lidas.map(({ id, linhaNoMapa, ...d }) => {
     const antiga = guardadas.get(id);
     if (antiga) atualizadas += 1; else novas += 1;
@@ -626,6 +627,18 @@ async function importarMapa(cabecalho, linhas, conciliacao = null) {
     const dados = { ...d };
     if (antiga?.andamento) dados.andamento = antiga.andamento;
     if (antiga?.fonteQueVale) dados.situacao = antiga.situacao;
+
+    // O número corrigido aqui dentro não volta ao que a planilha diz.
+    //
+    // A reimportação sobrescrever é o que faz da planilha a fonte. Mas quando
+    // a auditoria mostra que a própria planilha está errada, devolver o valor
+    // errado a cada importação transformaria a correção em trabalho de Sísifo.
+    // Só os campos explicitamente corrigidos escapam — o resto continua vindo
+    // do arquivo.
+    for (const campo of antiga?.camposCorrigidos || []) {
+      if (antiga[campo] !== undefined) dados[campo] = antiga[campo];
+      corrigidosMantidos += 1;
+    }
 
     // Célula vazia não apaga o que já estava preenchido.
     //
@@ -669,6 +682,7 @@ async function importarMapa(cabecalho, linhas, conciliacao = null) {
     novas,
     atualizadas,
     preservados,
+    corrigidosMantidos,
     orfas,
     municipios: new Set(lidas.map((d) => d.municipio)).size,
     emendas: new Set(lidas.map((d) => d.numeroEmenda).filter(Boolean)).size,
@@ -887,6 +901,83 @@ export function resolverDivergencia({ fonte, motivo, por = '', em = '' } = {}) {
     // bater: eles continuam diferentes, e o registro diz qual vale.
     divergente: false,
   };
+}
+
+/** Os campos que a correção manual pode tocar, e como cada um se lê. */
+export const CAMPOS_CORRIGIVEIS = {
+  valorDestinado: { rotulo: 'Destinado', dinheiro: true },
+  numeroEmenda: { rotulo: 'Nº da emenda' },
+};
+
+/**
+ * O número corrigido aqui dentro, que a reimportação não desfaz.
+ *
+ * A planilha é a fonte, e por isso a reimportação sobrescreve — é o que faz
+ * dela a fonte. Mas quando a auditoria mostra que a própria planilha está
+ * errada, corrigir só na tela seria trabalho perdido no próximo arquivo, e
+ * corrigir só na planilha adiaria a correção até alguém abrir o Excel. Então o
+ * campo corrigido fica marcado, e a importação passa por cima de tudo menos
+ * dele.
+ *
+ * A correção não é silenciosa: o que era, o que passou a ser e por quê entram
+ * no andamento, datados e assinados, porque é lá que se lê a história da
+ * destinação — e um número que muda sozinho é a pior coisa que este sistema
+ * poderia fazer.
+ *
+ * Devolve o remendo a gravar, ou `null` se nada mudou ou falta o motivo.
+ */
+export function aplicarCorrecao(destinacao, valores, { motivo, por = '', em = '' } = {}) {
+  const dia = String(em || new Date().toISOString().slice(0, 10)).slice(0, 10);
+  const razao = String(motivo || '').trim();
+
+  const mudancas = [];
+  const remendo = {};
+  for (const [campo, def] of Object.entries(CAMPOS_CORRIGIVEIS)) {
+    if (!(campo in valores)) continue;
+    const antes = destinacao[campo] ?? null;
+    const depois = def.dinheiro
+      ? (valores[campo] === '' || valores[campo] === null ? null : Number(valores[campo]))
+      : (String(valores[campo] ?? '').trim() || null);
+    if (depois === null || depois === antes) continue;
+    if (def.dinheiro && !Number.isFinite(depois)) continue;
+    remendo[campo] = depois;
+    mudancas.push(`${def.rotulo}: ${formatar(antes, def)} → ${formatar(depois, def)}`);
+  }
+
+  if (!mudancas.length) return null;
+  if (!razao) return null;
+
+  const corrigidos = new Set([...(destinacao.camposCorrigidos || []), ...Object.keys(remendo)]);
+  return {
+    ...remendo,
+    camposCorrigidos: [...corrigidos],
+    motivoCorrecao: razao,
+    corrigidoPor: por,
+    corrigidoEm: dia,
+    // A auditoria apontou e alguém agiu: a linha para de pedir revisão sem que
+    // o resultado da auditoria seja apagado — ele continua sendo o que ela viu.
+    revisaoResolvidaEm: dia,
+    andamento: anotarAndamento(
+      destinacao.andamento,
+      `Corrigido no sistema — ${mudancas.join('; ')}. Motivo: ${razao}`,
+      { autor: por, data: dia },
+    ),
+  };
+}
+
+function formatar(valor, def) {
+  if (valor === null || valor === undefined || valor === '') return '—';
+  if (!def.dinheiro) return String(valor);
+  return Number(valor).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+}
+
+/** Como a correção feita aqui dentro se lê na linha. */
+export function leituraDaCorrecao(d) {
+  if (!d || !d.camposCorrigidos?.length) return null;
+  const quais = d.camposCorrigidos.map((c) => CAMPOS_CORRIGIVEIS[c]?.rotulo || c).join(' e ');
+  const quem = [d.corrigidoPor, d.corrigidoEm ? d.corrigidoEm.slice(0, 10).split('-').reverse().join('/') : null]
+    .filter(Boolean).join(', ');
+  return `${quais} corrigido no sistema${d.motivoCorrecao ? `: ${d.motivoCorrecao}` : ''}${quem ? ` (${quem})` : ''}`;
 }
 
 /** Como a decisão se lê na linha, depois de tomada. */

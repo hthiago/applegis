@@ -5,7 +5,7 @@ import { listar, salvar } from './dados.js';
 import { porId } from './modulos.js';
 import {
   consolidarDestinacoes, situacaoDaCidade, anotarAndamento, resolverDivergencia, leituraDaConciliacao,
-  PESO_PRIORIDADE,
+  PESO_PRIORIDADE, aplicarCorrecao, leituraDaCorrecao,
 } from './destinacoes.js';
 
 /** Painéis consolidados. Diferente dos módulos, estes são desenhados à mão. */
@@ -480,7 +480,11 @@ const COR_SITUACAO = {
 // transferências especiais. Crítica é uma linha em 764 — e é a de R$ 15,3 mi.
 const ROTULO_PRIORIDADE = { critica: 'Crítica', alta: 'Alta', media: 'Média', baixa: 'Baixa' };
 const COR_PRIORIDADE = { critica: 'critico', alta: 'critico', media: 'atencao', baixa: 'neutro' };
-const PEDE_REVISAO = (d) => d.prioridadeConciliacao === 'critica' || d.prioridadeConciliacao === 'alta';
+// Pede revisão até alguém agir. Depois de corrigido, o resultado da auditoria
+// continua registrado — ele é o que ela viu —, mas a linha para de gritar: um
+// alerta que não sai depois de atendido ensina a ignorar alertas.
+const PEDE_REVISAO = (d) => !d.revisaoResolvidaEm
+  && (d.prioridadeConciliacao === 'critica' || d.prioridadeConciliacao === 'alta');
 
 const ROTULO_AREA = {
   saude: 'Saúde',
@@ -540,6 +544,7 @@ export function detalhesDaCidade(m, ctx = {}) {
 /** A linha da destinação e, logo abaixo dela, o lugar de escrever. */
 function linhasDaDestinacao(d, ctx, colunas) {
   const conciliada = leituraDaConciliacao(d);
+  const corrigida = leituraDaCorrecao(d);
   const classe = ['sublinha'];
   if (PEDE_REVISAO(d)) classe.push('sublinha--revisar');
   else if (d.divergente) classe.push('sublinha--divergente');
@@ -574,6 +579,9 @@ function linhasDaDestinacao(d, ctx, colunas) {
       // A decisão tomada fica à vista: sem ela, a linha volta a parecer um
       // número não conferido, e alguém conferiria de novo.
       conciliada ? el('span', { class: 'topo-sub sublinha-nota', texto: conciliada }) : null,
+      // O número que não é mais o da planilha. Sem esta linha, quem abrir a
+      // tela depois vai comparar com o Excel e achar que o sistema errou.
+      corrigida ? el('span', { class: 'topo-sub sublinha-nota', texto: corrigida }) : null,
       // O que a auditoria contra as fontes públicas achou. Só aparece onde ela
       // pediu revisão: um recado em todas as 758 linhas não é recado.
       PEDE_REVISAO(d) && d.correcaoSugerida
@@ -581,7 +589,7 @@ function linhasDaDestinacao(d, ctx, colunas) {
           etiqueta(ROTULO_PRIORIDADE[d.prioridadeConciliacao], COR_PRIORIDADE[d.prioridadeConciliacao]),
           el('span', { texto: ` ${d.correcaoSugerida}` }),
           d.urlPublica
-            ? el('a', { href: d.urlPublica, target: '_blank', rel: 'noopener', texto: ' fonte' })
+            ? el('a', { href: d.urlPublica, target: '_blank', rel: 'noopener', texto: ' ver na fonte' })
             : null,
         ].filter(Boolean))
         : null,
@@ -639,11 +647,35 @@ function formularioDeAnotacao(d, ctx, refazer) {
     el('span', { class: 'campo-rotulo', texto: rotulo }), entrada,
   ]);
 
+  // ── corrigir o que a planilha traz ──
+  //
+  // A planilha é a fonte, e a reimportação sobrescreve — é o que faz dela a
+  // fonte. Mas quando a auditoria mostra que a própria planilha está errada,
+  // corrigir só aqui seria trabalho perdido no próximo arquivo, e corrigir só
+  // no Excel adiaria a correção até alguém abrir o Excel. O campo corrigido
+  // aqui fica marcado, e a importação passa por cima de tudo menos dele.
+  const valor = el('input', { type: 'number', step: '0.01', min: '0', inputmode: 'decimal' });
+  const emenda = el('input', { type: 'text', placeholder: 'sem número' });
+  const porQue = el('input', { type: 'text', placeholder: 'Por que o número da planilha está errado' });
+  valor.value = d.valorDestinado ?? '';
+  emenda.value = d.numeroEmenda || '';
+
   const blocos = [
     campo('Andamento — entra datado, com o seu nome, no topo do histórico', anotacao),
     el('div', { class: 'anotar-responsavel' }, [
       campo('Responsável na cidade', nome), campo('Cargo', cargo), campo('Telefone', telefone),
     ]),
+    el('details', { class: 'anotar-correcao', open: PEDE_REVISAO(d) || null }, [
+      el('summary', { texto: 'Corrigir o que a planilha traz' }),
+      // O que a auditoria achou fica à vista de quem vai digitar o número novo:
+      // é dela que sai o valor, e ir buscá-lo noutra tela convida a errar.
+      d.correcaoSugerida ? el('p', { class: 'campo-dica', texto: `A auditoria sugere: ${d.correcaoSugerida}` }) : null,
+      el('div', { class: 'anotar-responsavel' }, [
+        campo('Destinado', valor), campo('Nº da emenda', emenda),
+      ]),
+      campo('Por quê — obrigatório, e entra no andamento', porQue),
+      el('p', { class: 'campo-dica', texto: 'O campo corrigido aqui não volta atrás quando o Mapa for reimportado. Os outros continuam vindo da planilha.' }),
+    ].filter(Boolean)),
   ];
 
   // A escolha da fonte só aparece onde há briga. Um seletor "qual fonte vale"
@@ -678,9 +710,28 @@ function formularioDeAnotacao(d, ctx, refazer) {
 
     const contato = { responsavelNome: nome, responsavelCargo: cargo, responsavelTelefone: telefone };
     for (const [chave, entrada] of Object.entries(contato)) {
-      const valor = entrada.value.trim();
-      if (valor !== (d[chave] || '')) remendo[chave] = valor;
+      const texto = entrada.value.trim();
+      if (texto !== (d[chave] || '')) remendo[chave] = texto;
     }
+
+    // A correção escreve no andamento também, dizendo o que era e o que passou
+    // a ser. Ela recebe o histórico já com a anotação livre em cima, para que
+    // as duas entrem na ordem em que foram escritas.
+    const correcao = aplicarCorrecao(
+      { ...d, andamento: novoAndamento || d.andamento },
+      { valorDestinado: valor.value, numeroEmenda: emenda.value },
+      { motivo: porQue.value, por: ctx.autor, em: hoje() },
+    );
+    const mudouNumero = String(valor.value) !== String(d.valorDestinado ?? '')
+      || emenda.value.trim() !== (d.numeroEmenda || '');
+    if (mudouNumero && !correcao) {
+      // Mudar um valor sem dizer por quê é o começo de um número que ninguém
+      // sabe defender — que foi o problema desta área desde o início.
+      recado.textContent = 'Diga por que o número da planilha está errado. A correção fica registrada, com o seu nome, no andamento.';
+      porQue.focus();
+      return;
+    }
+    if (correcao) Object.assign(remendo, correcao);
 
     if (fonte && fonte.value) {
       const decisao = resolverDivergencia({
@@ -768,6 +819,13 @@ function importadoresDeDestinacoes(recarregar, jaTemDestinacoes) {
         // Nº de emenda corrigido na planilha muda a chave: a linha antiga fica
         // para trás, com o andamento escrito nela. Some da soma se ninguém vir.
         r.orfas ? `${r.orfas} destinações antigas não vieram nesta versão e continuam aqui — confira se viraram outra linha` : null,
+        // A correção feita aqui dentro resistiu ao arquivo. Dizer isso é o que
+        // dá confiança para corrigir da próxima vez.
+        r.corrigidosMantidos
+          ? (r.corrigidosMantidos > 1
+            ? `${r.corrigidosMantidos} campos corrigidos aqui dentro foram mantidos`
+            : '1 campo corrigido aqui dentro foi mantido')
+          : null,
         // A aba de conciliação veio de carona. Dizer que ela entrou, e o que
         // ela pediu, é o que transforma a auditoria em trabalho a fazer.
         r.conciliacao
@@ -1440,6 +1498,7 @@ function paragrafoDaDestinacao(d) {
     // A evidência pública que a auditoria achou. Numa reunião, é o que
     // sustenta o número que se acabou de dizer.
     d.notaEvidencia ? el('p', { class: 'topo-sub', texto: `Conferência: ${d.notaEvidencia}` }) : null,
+    leituraDaCorrecao(d) ? el('p', { class: 'topo-sub', texto: leituraDaCorrecao(d) }) : null,
     d.endereco ? el('p', { class: 'topo-sub', texto: d.endereco }) : null,
   ].filter(Boolean));
 }

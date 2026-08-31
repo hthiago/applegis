@@ -1390,3 +1390,14 @@ input:focus, select:focus, textarea:focus { border-color: var(--verde); outline:
 .sublinha--revisar > td:first-child { border-left: 3px solid #a4262c; padding-left: 11px; }
 .sublinha-auditoria { display: block; margin-top: .2rem; }
 .sublinha-auditoria .etiqueta { margin-right: .35rem; }
+
+/* Corrigir o número que a planilha traz errado. Fechado por padrão: é a coisa
+   mais séria que se faz nesta tela, e não é a mais frequente. Abre sozinho
+   onde a auditoria pediu revisão, que é onde ele vai ser usado. */
+.anotar-correcao { border-left: 3px solid var(--rule-forte); padding-left: .8rem; }
+.anotar-correcao > summary {
+  cursor: pointer; font-family: var(--mono); font-size: 10.5px;
+  letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3);
+}
+.anotar-correcao[open] > summary { margin-bottom: 7px; }
+.anotar-correcao > * + * { margin-top: 7px; }

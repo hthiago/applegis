@@ -207,6 +207,27 @@ sugerida, e a primeira coisa na folha da cidade — *"Confira antes de citar"*. 
 casos o número está certo e o repasse é que travou; aqui o próprio número pode estar
 errado, e número errado dito numa reunião não se desdiz.
 
+### Corrigir um número que a planilha traz errado
+
+No botão **Anotar** de cada destinação há o bloco **Corrigir o que a planilha traz** —
+aberto por padrão onde a auditoria pediu revisão, com a sugestão dela à vista de quem vai
+digitar. Dá para corrigir o **Destinado** e o **Nº da emenda**.
+
+O **motivo é obrigatório**, e a correção **entra no andamento**, datada e assinada, com o
+que era e o que passou a ser: *"Destinado: R$ 15.299.294,00 → R$ 152.992,94; Nº da emenda:
+411660007 → 41160007. Motivo: …"*. Um número que muda sozinho é a pior coisa que este
+sistema poderia fazer.
+
+**O campo corrigido não volta atrás na reimportação.** A planilha é a fonte e a
+reimportação sobrescrever é o que faz dela a fonte — mas quando a auditoria mostra que a
+própria planilha está errada, devolver o valor errado a cada arquivo novo transformaria a
+correção em trabalho de Sísifo. Só os campos explicitamente corrigidos escapam; o resto
+continua vindo do arquivo, e o aviso da importação diz quantos foram mantidos.
+
+Atendida, a linha para de pedir revisão e sai do contador *A revisar* — sem apagar o que a
+auditoria viu, que continua registrado. Um alerta que não sai depois de atendido ensina a
+ignorar alertas.
+
 ### Três coisas que a reimportação não faz
 
 - **Não apaga com vazio.** Uma versão nova do Mapa pode vir com uma coluna quebrada — a

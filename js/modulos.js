@@ -937,6 +937,17 @@ export const MODULOS = [
       { k: 'statusPix', l: 'Status no painel de transferências especiais', t: 'texto' },
       { k: 'auditadoEm', l: 'Auditado em', t: 'data' },
 
+      // ── o que foi corrigido aqui dentro ──
+      //
+      // A planilha é a fonte, e a reimportação sobrescreve — é o que faz dela a
+      // fonte. Estes campos são a exceção: quando a auditoria mostra que a
+      // própria planilha está errada, o valor corrigido aqui não volta atrás.
+      { k: 'camposCorrigidos', l: 'Campos corrigidos no sistema', t: 'tags' },
+      { k: 'motivoCorrecao', l: 'Por que foi corrigido', t: 'area' },
+      { k: 'corrigidoPor', l: 'Corrigido por', t: 'texto' },
+      { k: 'corrigidoEm', l: 'Corrigido em', t: 'data' },
+      { k: 'revisaoResolvidaEm', l: 'Revisão resolvida em', t: 'data' },
+
       { k: 'observacoes', l: 'Observações', t: 'area' },
       { k: 'fonte', l: 'Origem do registro', t: 'texto' },
       { k: 'importadoEm', l: 'Importado em', t: 'data' },
