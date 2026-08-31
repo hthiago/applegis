@@ -1305,3 +1305,37 @@ input:focus, select:focus, textarea:focus { border-color: var(--verde); outline:
   .barra-rotulo { flex: 0 0 6rem; }
   .sublinha td:first-child { max-width: none; }
 }
+
+/* ── anotar sem abrir o registro ─────────────────────────────────────────
+   Abrir a destinação inteira para escrever uma frase é pedir que alguém
+   atravesse 36 campos para mexer em um. O que muda depois da importação é
+   sempre o mesmo punhado de coisas, e é ele que cabe aqui. */
+.btn--mini { padding: 4px 9px; font-size: 12px; }
+.tabela--destinacoes td.col-acoes { width: 5rem; text-align: right; white-space: nowrap; }
+
+.linha-anotar > td { background: var(--surface-2); padding: 12px 14px; }
+.form--anotar { gap: 9px; font-size: 13px; }
+.form--anotar .campo { gap: 3px; }
+.campo-rotulo {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.anotar-responsavel { display: flex; gap: .6rem; flex-wrap: wrap; }
+.anotar-responsavel .campo { flex: 1 1 9rem; }
+
+/* A escolha da fonte só aparece onde há briga, e aparece cercada: é a única
+   coisa nesta tela que ninguém pode desfazer sem deixar rastro. */
+.anotar-divergencia {
+  border-left: 3px solid #c98a00;
+  padding-left: .8rem;
+  display: flex; flex-direction: column; gap: 7px;
+}
+.anotar-acoes { display: flex; align-items: center; gap: .7rem; flex-wrap: wrap; }
+.anotar-acoes .campo-dica { margin: 0; }
+
+/* Decidida, a linha para de pedir atenção — mas continua dizendo o que foi
+   decidido, para ninguém conferir de novo o que já foi conferido. */
+.sublinha--conciliada > td:first-child { border-left: 3px solid var(--verde); padding-left: 11px; }

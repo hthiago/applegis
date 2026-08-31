@@ -634,6 +634,64 @@ export function consolidarDestinacoes(destinacoes) {
     .sort((a, b) => b.destinado - a.destinado);
 }
 
+// ────────────────────── o que se anota antes da visita ──────────────────────
+
+/**
+ * Uma anotação datada no topo do histórico.
+ *
+ * O andamento é o único campo que só existe porque alguém escreveu — nenhuma
+ * planilha o traz. E ele é escrito no meio do trabalho: ao desligar o telefone
+ * com a prefeitura, não ao abrir um formulário de 36 campos. Por isso a
+ * anotação entra pela própria linha da destinação, e por isso a mais recente
+ * fica em cima: quem lê antes de viajar quer o último capítulo, não o primeiro.
+ *
+ * Devolve o texto novo do campo, ou `null` quando não há o que anotar.
+ */
+export function anotarAndamento(anterior, texto, { autor = '', data = '' } = {}) {
+  const limpo = String(texto || '').trim();
+  if (!limpo) return null;
+  const dia = String(data || new Date().toISOString().slice(0, 10)).slice(0, 10);
+  const [a, m, d] = dia.split('-');
+  const carimbo = d ? `${d}/${m}/${a}` : dia;
+  const entrada = `${autor ? `${carimbo} · ${autor}` : carimbo} — ${limpo}`;
+  const antes = String(anterior || '').trim();
+  return antes ? `${entrada}\n${antes}` : entrada;
+}
+
+/**
+ * A divergência resolvida por gente, com o motivo junto.
+ *
+ * Conciliar sozinho foi o que produziu, nas versões anteriores desta área,
+ * número que ninguém sabia defender numa reunião. Aqui alguém escolhe a fonte,
+ * e o motivo é obrigatório porque a decisão vai ser dita em voz alta na frente
+ * de um prefeito — e, se não estiver escrito, ninguém vai lembrar por quê.
+ *
+ * Devolve o remendo a gravar, ou `null` se falta fonte ou motivo.
+ */
+export function resolverDivergencia({ fonte, motivo, por = '', em = '' } = {}) {
+  if (fonte !== 'gabinete' && fonte !== 'governo') return null;
+  const razao = String(motivo || '').trim();
+  if (!razao) return null;
+  return {
+    fonteQueVale: fonte,
+    motivoConciliacao: razao,
+    conciliadoPor: por,
+    conciliadoEm: String(em || new Date().toISOString().slice(0, 10)).slice(0, 10),
+    // A marca sai porque o trabalho foi feito, não porque os números passaram a
+    // bater: eles continuam diferentes, e o registro diz qual vale.
+    divergente: false,
+  };
+}
+
+/** Como a decisão se lê na linha, depois de tomada. */
+export function leituraDaConciliacao(d) {
+  if (!d || !d.fonteQueVale) return null;
+  const fonte = d.fonteQueVale === 'governo' ? 'Vale o painel do governo' : 'Vale a planilha do gabinete';
+  const quem = [d.conciliadoPor, d.conciliadoEm ? d.conciliadoEm.slice(0, 10).split('-').reverse().join('/') : null]
+    .filter(Boolean).join(', ');
+  return `${fonte}${d.motivoConciliacao ? `: ${d.motivoConciliacao}` : ''}${quem ? ` (${quem})` : ''}`;
+}
+
 /** A leitura de "já foi pago?" numa etiqueta. */
 export function situacaoDaCidade(m) {
   if (m.divergentes) return { texto: 'Fontes divergem', cor: 'critico' };

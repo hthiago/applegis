@@ -203,6 +203,22 @@ do arquivo são **292 municípios**. A grafia que aparece na tela é escolhida e
 foram escritas, nunca inventada: caixa automática produziria "Caxias Do Sul", que está
 errado em português.
 
+### Anotar sem abrir o registro
+
+Abrir a destinação inteira para escrever uma frase é atravessar 36 campos para mexer em
+um. Na linha de cada destinação há o botão **Anotar**, que abre ali mesmo:
+
+- **Andamento** — o que aconteceu. Entra **datado e assinado**, no **topo** do histórico:
+  quem lê antes de viajar quer o último capítulo, não o primeiro.
+- **Responsável na cidade** — nome, cargo e telefone, que é o que se procura na véspera.
+- **Qual fonte vale** — só aparece na linha em que as duas fontes divergem. O **motivo é
+  obrigatório**: a decisão vai ser dita em voz alta na frente de um prefeito, e o que não
+  está escrito ninguém lembra. Fica registrada com quem decidiu e quando, a linha passa a
+  mostrar a decisão, e o contador *A conciliar* desce.
+
+Quem não edita o Orçamento lê a mesma tabela sem a coluna de anotar e sem os botões de
+importar — e não descobre que não pode pelo erro de gravação.
+
 ### Três campos que não existem em planilha nenhuma
 
 - **Responsável na cidade** — a pessoa de lá, com cargo e telefone. É quem se liga antes

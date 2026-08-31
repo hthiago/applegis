@@ -1,9 +1,11 @@
 import {
-  el, limpar, fmtData, fmtDataHora, fmtDinheiro, fmtDinheiroCurto, diasAte, carregando, etiqueta, aviso,
+  el, limpar, fmtData, fmtDataHora, fmtDinheiro, fmtDinheiroCurto, diasAte, carregando, etiqueta, aviso, hoje,
 } from './ui.js';
-import { listar } from './dados.js';
+import { listar, salvar } from './dados.js';
 import { porId } from './modulos.js';
-import { consolidarDestinacoes, situacaoDaCidade } from './destinacoes.js';
+import {
+  consolidarDestinacoes, situacaoDaCidade, anotarAndamento, resolverDivergencia, leituraDaConciliacao,
+} from './destinacoes.js';
 
 /** Painéis consolidados. Diferente dos módulos, estes são desenhados à mão. */
 
@@ -489,33 +491,15 @@ const ROTULO_AREA = {
  * Eram cartões empilhados, e cartão não se compara: para saber qual destinação
  * é a maior, ou qual está parada, os olhos tinham de percorrer parágrafos. Em
  * linha, com as colunas alinhadas, a comparação é o próprio desenho.
+ *
+ * `ctx` traz o que a linha precisa para ser também um lugar de escrever:
+ * `{ editavel, autor, aoGravar, aoMudar }`. Sem ele, a tabela é só leitura —
+ * é assim que a ficha de apresentação a usa.
  */
-export function detalhesDaCidade(m) {
-  const linha = (d) => el('tr', { class: d.divergente ? 'sublinha sublinha--divergente' : 'sublinha' }, [
-    el('td', {}, [
-      el('strong', { texto: d.beneficiario || d.instituicao || 'sem beneficiário' }),
-      d.objeto ? el('span', { class: 'topo-sub', texto: d.objeto }) : null,
-      // O histórico que o gabinete escreveu — o que a planilha tem e o painel
-      // não. Fica sob o objeto porque é leitura, não coluna.
-      d.andamento || (d.situacaoOriginal && d.situacaoOriginal.length > 24)
-        ? el('span', { class: 'topo-sub sublinha-nota', texto: d.andamento || d.situacaoOriginal })
-        : null,
-      d.responsavelNome
-        ? el('span', { class: 'topo-sub', texto: `Na cidade: ${d.responsavelNome}${d.responsavelTelefone ? ` · ${d.responsavelTelefone}` : ''}` })
-        : null,
-    ].filter(Boolean)),
-    el('td', { class: 'num', 'data-rotulo': 'Ano', texto: d.ano ? String(d.ano) : '—' }),
-    el('td', { class: 'num', 'data-rotulo': 'Emenda' }, [
-      d.linkInstrumento
-        ? el('a', { href: d.linkInstrumento, target: '_blank', rel: 'noopener', texto: d.numeroEmenda || 'convênio' })
-        : el('span', { texto: d.numeroEmenda || '—' }),
-    ]),
-    el('td', { 'data-rotulo': 'Área', texto: ROTULO_AREA[d.area] || '—' }),
-    el('td', { class: 'num', 'data-rotulo': 'Destinado', texto: d.valorDestinado ? fmtDinheiro(d.valorDestinado) : '—' }),
-    el('td', { class: 'num', 'data-rotulo': 'Empenhado', texto: d.valorEmpenhado ? fmtDinheiro(d.valorEmpenhado) : '—' }),
-    el('td', { class: 'num', 'data-rotulo': 'Pago', texto: d.valorPago ? fmtDinheiro(d.valorPago) : '—' }),
-    el('td', { 'data-rotulo': 'Situação' }, [etiqueta(ROTULO_SITUACAO[d.situacao] || d.situacao || '—', COR_SITUACAO[d.situacao] || 'neutro')]),
-  ]);
+export function detalhesDaCidade(m, ctx = {}) {
+  const colunas = ctx.editavel ? 9 : 8;
+  const corpo = el('tbody');
+  m.destinacoes.forEach((d) => linhasDaDestinacao(d, ctx, colunas).forEach((n) => corpo.appendChild(n)));
 
   return el('div', { class: 'tabela-rolagem' }, [
     el('table', { class: 'tabela tabela--destinacoes' }, [
@@ -528,10 +512,173 @@ export function detalhesDaCidade(m) {
         el('th', { class: 'num', texto: 'Empenhado' }),
         el('th', { class: 'num', texto: 'Pago' }),
         el('th', { texto: 'Situação' }),
-      ])]),
-      el('tbody', {}, m.destinacoes.map(linha)),
+        ctx.editavel ? el('th', { class: 'col-acoes', texto: 'Anotar' }) : null,
+      ].filter(Boolean))]),
+      corpo,
     ]),
   ]);
+}
+
+/** A linha da destinação e, logo abaixo dela, o lugar de escrever. */
+function linhasDaDestinacao(d, ctx, colunas) {
+  const conciliada = leituraDaConciliacao(d);
+  const classe = ['sublinha'];
+  if (d.divergente) classe.push('sublinha--divergente');
+  else if (conciliada) classe.push('sublinha--conciliada');
+
+  const editor = el('tr', { class: 'linha-anotar', hidden: true });
+  const abrir = el('button', {
+    class: 'btn btn--fantasma btn--mini',
+    type: 'button',
+    texto: 'Anotar',
+    title: 'Registrar andamento, o responsável na cidade e, se for o caso, qual fonte vale',
+    'aria-expanded': 'false',
+    onclick: () => {
+      editor.hidden = !editor.hidden;
+      abrir.setAttribute('aria-expanded', String(!editor.hidden));
+      if (!editor.hidden) editor.querySelector('textarea')?.focus();
+    },
+  });
+
+  const linha = el('tr', { class: classe.join(' ') }, [
+    el('td', {}, [
+      el('strong', { texto: d.beneficiario || d.instituicao || 'sem beneficiário' }),
+      d.objeto ? el('span', { class: 'topo-sub', texto: d.objeto }) : null,
+      // O histórico que o gabinete escreveu — o que a planilha tem e o painel
+      // não. Fica sob o objeto porque é leitura, não coluna.
+      d.andamento || (d.situacaoOriginal && d.situacaoOriginal.length > 24)
+        ? el('span', { class: 'topo-sub sublinha-nota', texto: d.andamento || d.situacaoOriginal })
+        : null,
+      d.responsavelNome
+        ? el('span', { class: 'topo-sub', texto: `Na cidade: ${d.responsavelNome}${d.responsavelCargo ? ` (${d.responsavelCargo})` : ''}${d.responsavelTelefone ? ` · ${d.responsavelTelefone}` : ''}` })
+        : null,
+      // A decisão tomada fica à vista: sem ela, a linha volta a parecer um
+      // número não conferido, e alguém conferiria de novo.
+      conciliada ? el('span', { class: 'topo-sub sublinha-nota', texto: conciliada }) : null,
+    ].filter(Boolean)),
+    el('td', { class: 'num', 'data-rotulo': 'Ano', texto: d.ano ? String(d.ano) : '—' }),
+    el('td', { class: 'num', 'data-rotulo': 'Emenda' }, [
+      d.linkInstrumento
+        ? el('a', { href: d.linkInstrumento, target: '_blank', rel: 'noopener', texto: d.numeroEmenda || 'convênio' })
+        : el('span', { texto: d.numeroEmenda || '—' }),
+    ]),
+    el('td', { 'data-rotulo': 'Área', texto: ROTULO_AREA[d.area] || '—' }),
+    el('td', { class: 'num', 'data-rotulo': 'Destinado', texto: d.valorDestinado ? fmtDinheiro(d.valorDestinado) : '—' }),
+    el('td', { class: 'num', 'data-rotulo': 'Empenhado', texto: d.valorEmpenhado ? fmtDinheiro(d.valorEmpenhado) : '—' }),
+    el('td', { class: 'num', 'data-rotulo': 'Pago', texto: d.valorPago ? fmtDinheiro(d.valorPago) : '—' }),
+    el('td', { 'data-rotulo': 'Situação' }, [etiqueta(ROTULO_SITUACAO[d.situacao] || d.situacao || '—', COR_SITUACAO[d.situacao] || 'neutro')]),
+    ctx.editavel ? el('td', { class: 'col-acoes' }, [abrir]) : null,
+  ].filter(Boolean));
+
+  if (!ctx.editavel) return [linha];
+
+  // Redesenha só esta destinação. Redesenhar a tela inteira fecharia a cidade
+  // aberta e devolveria a rolagem ao topo — depois de cada anotação.
+  const refazer = () => {
+    const [nova, novoEditor] = linhasDaDestinacao(d, ctx, colunas);
+    editor.replaceWith(novoEditor);
+    linha.replaceWith(nova);
+    ctx.aoMudar?.();
+  };
+
+  editor.appendChild(el('td', { colspan: String(colunas) }, [formularioDeAnotacao(d, ctx, refazer)]));
+  return [linha, editor];
+}
+
+/**
+ * O que se escreve sem abrir o registro.
+ *
+ * Abrir a destinação inteira para anotar uma frase é pedir que alguém atravesse
+ * 36 campos para mexer em um. O que muda depois da importação é sempre o mesmo
+ * punhado de coisas: o que aconteceu, com quem se fala lá, e — quando as duas
+ * fontes brigam — qual delas vale. Estas, e só estas, cabem aqui.
+ */
+function formularioDeAnotacao(d, ctx, refazer) {
+  const anotacao = el('textarea', {
+    rows: '2',
+    placeholder: 'O que aconteceu? Ex.: prefeitura enviou o plano de trabalho.',
+  });
+  const nome = el('input', { type: 'text', placeholder: 'Nome' });
+  const cargo = el('input', { type: 'text', placeholder: 'Cargo' });
+  const telefone = el('input', { type: 'tel', placeholder: 'Telefone' });
+  nome.value = d.responsavelNome || '';
+  cargo.value = d.responsavelCargo || '';
+  telefone.value = d.responsavelTelefone || '';
+
+  const campo = (rotulo, entrada) => el('label', { class: 'campo' }, [
+    el('span', { class: 'campo-rotulo', texto: rotulo }), entrada,
+  ]);
+
+  const blocos = [
+    campo('Andamento — entra datado, com o seu nome, no topo do histórico', anotacao),
+    el('div', { class: 'anotar-responsavel' }, [
+      campo('Responsável na cidade', nome), campo('Cargo', cargo), campo('Telefone', telefone),
+    ]),
+  ];
+
+  // A escolha da fonte só aparece onde há briga. Um seletor "qual fonte vale"
+  // em toda linha convidaria a decidir onde não há o que decidir.
+  let fonte = null;
+  let motivo = null;
+  if (d.divergente) {
+    fonte = el('select', {}, [
+      el('option', { value: '', texto: 'Ainda não decidi' }),
+      el('option', { value: 'gabinete', texto: `A planilha do gabinete — ${fmtDinheiro(d.valorDestinado || 0)} destinados` }),
+      el('option', { value: 'governo', texto: `O painel do governo — ${fmtDinheiro(Math.max(d.valorEmpenhado || 0, d.valorPago || 0))} no convênio` }),
+    ]);
+    motivo = el('input', { type: 'text', placeholder: 'Por que esta fonte vale' });
+    blocos.push(el('div', { class: 'anotar-divergencia' }, [
+      el('p', { class: 'campo-dica', texto: d.destinacoesNoEncontro > 1
+        ? `As fontes divergem aqui. O valor do painel é do convênio inteiro, dividido entre ${d.destinacoesNoEncontro} destinações — por isso ninguém concilia isto sozinho.`
+        : 'As fontes divergem aqui. Escolha a que o gabinete vai defender, e diga por quê.' }),
+      campo('Qual fonte vale', fonte),
+      campo('Por quê — fica registrado com o seu nome', motivo),
+    ]));
+  }
+
+  const recado = el('p', { class: 'campo-dica' });
+  const gravar = el('button', { class: 'btn btn--primario btn--mini', type: 'submit', texto: 'Salvar' });
+
+  const form = el('form', { class: 'form form--anotar', onsubmit: async (e) => {
+    e.preventDefault();
+    const remendo = {};
+
+    const novoAndamento = anotarAndamento(d.andamento, anotacao.value, { autor: ctx.autor, data: hoje() });
+    if (novoAndamento) remendo.andamento = novoAndamento;
+
+    const contato = { responsavelNome: nome, responsavelCargo: cargo, responsavelTelefone: telefone };
+    for (const [chave, entrada] of Object.entries(contato)) {
+      const valor = entrada.value.trim();
+      if (valor !== (d[chave] || '')) remendo[chave] = valor;
+    }
+
+    if (fonte && fonte.value) {
+      const decisao = resolverDivergencia({
+        fonte: fonte.value, motivo: motivo.value, por: ctx.autor, em: hoje(),
+      });
+      // O motivo é obrigatório de propósito: a decisão vai ser dita em voz alta
+      // na frente de um prefeito, e o que não está escrito ninguém lembra.
+      if (!decisao) { recado.textContent = 'Diga por que esta fonte vale — a decisão fica registrada com o motivo.'; motivo.focus(); return; }
+      Object.assign(remendo, decisao);
+    }
+
+    if (!Object.keys(remendo).length) { recado.textContent = 'Nada mudou.'; return; }
+
+    gravar.disabled = true;
+    recado.textContent = 'Gravando…';
+    try {
+      await ctx.aoGravar(d, remendo);
+      Object.assign(d, remendo);
+      aviso('Anotado.', 'ok');
+      refazer();
+    } catch (erro) {
+      console.error(erro);
+      recado.textContent = erro.message || 'Não foi possível gravar.';
+      gravar.disabled = false;
+    }
+  } }, [...blocos, el('div', { class: 'anotar-acoes' }, [gravar, recado])]);
+
+  return form;
 }
 
 /**
@@ -629,6 +776,17 @@ function importadoresDeDestinacoes(recarregar, jaTemDestinacoes) {
 export async function painelDestinacoes(container) {
   limpar(container).appendChild(carregando());
   const destinacoes = await listar('destinacoes', { recarregar: true });
+  const { sessao } = await import('./sessao.js');
+  const { podeEditar } = await import('./config.js');
+
+  // Quem pode escrever no orçamento anota daqui mesmo; quem não pode lê a
+  // mesma tabela sem a coluna de ação, e não descobre pelo erro de gravação.
+  const ctx = {
+    editavel: podeEditar(sessao.membro, 'orcamento'),
+    autor: sessao.membro?.nome || '',
+    aoGravar: (d, remendo) => salvar('destinacoes', d.id, remendo),
+    aoMudar: () => atualizarConciliar(),
+  };
 
   const cidades = consolidarDestinacoes(destinacoes);
   const total = (k) => cidades.reduce((t, m) => t + m[k], 0);
@@ -641,24 +799,40 @@ export async function painelDestinacoes(container) {
     ]),
   ]));
 
-  container.appendChild(importadoresDeDestinacoes(() => painelDestinacoes(container), destinacoes.length > 0));
+  // Botão que lê o arquivo inteiro para depois recusar a gravação é pior que
+  // botão nenhum: quem não escreve no orçamento não o vê.
+  if (ctx.editavel) {
+    container.appendChild(importadoresDeDestinacoes(() => painelDestinacoes(container), destinacoes.length > 0));
+  }
 
   if (!destinacoes.length) {
-    container.appendChild(nada('Nada importado ainda. Comece pelo Mapa de emendas do gabinete — ele é a fonte do que existe.'));
+    container.appendChild(nada(ctx.editavel
+      ? 'Nada importado ainda. Comece pelo Mapa de emendas do gabinete — ele é a fonte do que existe.'
+      : 'Nada importado ainda. Quem cuida do orçamento no gabinete importa o Mapa de emendas.'));
     return;
   }
 
-  const divergentes = cidades.reduce((t, m) => t + m.divergentes, 0);
-  container.appendChild(el('div', { class: 'indicadores' }, [
-    indicador('Municípios', String(cidades.length), 'neutro'),
-    indicador('Destinações', String(destinacoes.length), 'neutro'),
-    indicador('Destinado', fmtDinheiroCurto(total('destinado')), 'info', fmtDinheiro(total('destinado'))),
-    indicador('Empenhado', fmtDinheiroCurto(total('empenhado')), 'atencao', fmtDinheiro(total('empenhado'))),
-    indicador('Pago', fmtDinheiroCurto(total('pago')), 'ok', fmtDinheiro(total('pago'))),
-    // A divergência é indicador de primeira linha porque é trabalho a fazer,
-    // não estatística: cada uma é uma decisão que alguém precisa tomar.
-    divergentes ? indicador('A conciliar', String(divergentes), 'critico', 'fontes divergem') : null,
-  ].filter(Boolean)));
+  const indicadores = el('div', { class: 'indicadores' });
+  container.appendChild(indicadores);
+
+  // O contador de divergências desce a cada uma resolvida. Deixá-lo parado
+  // faria o trabalho feito parecer trabalho pendente, e a próxima pessoa
+  // conferiria de novo o que já foi decidido.
+  function atualizarConciliar() {
+    const divergentes = destinacoes.filter((d) => d.divergente).length;
+    limpar(indicadores);
+    [
+      indicador('Municípios', String(cidades.length), 'neutro'),
+      indicador('Destinações', String(destinacoes.length), 'neutro'),
+      indicador('Destinado', fmtDinheiroCurto(total('destinado')), 'info', fmtDinheiro(total('destinado'))),
+      indicador('Empenhado', fmtDinheiroCurto(total('empenhado')), 'atencao', fmtDinheiro(total('empenhado'))),
+      indicador('Pago', fmtDinheiroCurto(total('pago')), 'ok', fmtDinheiro(total('pago'))),
+      // A divergência é indicador de primeira linha porque é trabalho a fazer,
+      // não estatística: cada uma é uma decisão que alguém precisa tomar.
+      divergentes ? indicador('A conciliar', String(divergentes), 'critico', 'fontes divergem') : null,
+    ].filter(Boolean).forEach((n) => indicadores.appendChild(n));
+  }
+  atualizarConciliar();
 
   const corpo = el('tbody');
   const busca = el('input', {
@@ -765,7 +939,7 @@ export async function painelDestinacoes(container) {
     visiveis.forEach((m) => {
       const situacao = situacaoDaCidade(m);
       const detalhe = el('tr', { class: 'linha-detalhe', hidden: true }, [
-        el('td', { colspan: '6' }, [detalhesDaCidade(m)]),
+        el('td', { colspan: '6' }, [detalhesDaCidade(m, ctx)]),
       ]);
       const linhaCidade = el('tr', {
         class: 'linha-municipio',

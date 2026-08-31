@@ -694,6 +694,40 @@ console.log('\nDestinações de emenda\n');
   // Sul", que está errado em português e ninguém escreveu.
   conferir('entre grafias, vence a que segue a norma — não a mais frequente',
     de.nomeCanonico(new Map([['Caxias Do Sul', 9], ['Caxias do Sul', 1]])) === 'Caxias do Sul');
+
+  // ── o que se anota depois da importação ──
+  //
+  // O andamento é o único campo que nenhuma planilha traz: ele existe porque
+  // alguém escreveu, ao desligar o telefone com a prefeitura.
+  const primeiraNota = de.anotarAndamento('', 'prefeitura enviou o plano de trabalho',
+    { autor: 'Ana', data: '2026-08-31' });
+  conferir('a anotação entra datada e assinada',
+    primeiraNota === '31/08/2026 · Ana — prefeitura enviou o plano de trabalho', primeiraNota);
+  const segundaNota = de.anotarAndamento(primeiraNota, 'ofício protocolado', { autor: 'Ana', data: '2026-09-02' });
+  // Quem lê antes de viajar quer o último capítulo, não o primeiro.
+  conferir('e a mais recente fica em cima do histórico',
+    segundaNota.startsWith('02/09/2026 · Ana — ofício protocolado\n31/08/2026'), segundaNota);
+  conferir('anotação vazia não vira linha em branco no histórico',
+    de.anotarAndamento(primeiraNota, '   ') === null);
+
+  // Conciliar sozinho foi o que produziu número que ninguém sabia defender.
+  const decisao = de.resolverDivergencia({
+    fonte: 'governo', motivo: 'convênio celebrado por valor maior', por: 'Ana', em: '2026-08-31',
+  });
+  conferir('resolver a divergência registra a fonte, o motivo, quem e quando',
+    decisao.fonteQueVale === 'governo' && decisao.conciliadoPor === 'Ana'
+    && decisao.conciliadoEm === '2026-08-31' && decisao.divergente === false);
+  // A decisão vai ser dita em voz alta na frente de um prefeito.
+  conferir('sem motivo escrito, não há decisão registrada',
+    de.resolverDivergencia({ fonte: 'governo', motivo: '  ', por: 'Ana' }) === null);
+  conferir('e nenhuma fonte é escolhida por omissão',
+    de.resolverDivergencia({ motivo: 'porque sim' }) === null);
+  conferir('a decisão tomada se lê na linha, inteira',
+    de.leituraDaConciliacao({ ...decisao })
+      === 'Vale o painel do governo: convênio celebrado por valor maior (Ana, 31/08/2026)',
+    de.leituraDaConciliacao({ ...decisao }));
+  conferir('e destinação sem decisão não inventa leitura',
+    de.leituraDaConciliacao({ divergente: true }) === null);
   conferir('e sem nenhuma candidata boa, devolve a que mais aparece',
     de.nomeCanonico(new Map([['SANTA MARIA', 2], ['santa maria', 5]])) === 'santa maria');
   const erechim = cidades.find((c) => /Erechim/i.test(c.municipio));
@@ -825,6 +859,80 @@ const nomesFalsos = [
   conferir('e o empenhado da tela é o contado uma vez por convênio',
     /59\.965\.627,57/.test(indicadores), indicadores.slice(0, 260));
 
+  // ── anotar sem abrir o registro ──
+  //
+  // Abrir a destinação inteira para escrever uma frase é pedir que alguém
+  // atravesse 36 campos para mexer em um. O que muda depois da importação é
+  // sempre o mesmo punhado de coisas.
+  await pagina.locator('.linha-municipio').first().click();
+  await pagina.waitForSelector('.linha-detalhe:not([hidden])', { timeout: 10000 });
+  const primeira = pagina.locator('.linha-detalhe:not([hidden]) .sublinha').first();
+  await primeira.locator('button:text-is("Anotar")').click();
+  const editor = pagina.locator('.linha-anotar:not([hidden])').first();
+  await editor.waitFor({ timeout: 5000 });
+  conferir('a linha da destinação abre onde se escreve, sem sair da tela',
+    (await editor.locator('textarea').count()) === 1
+    && (await editor.locator('input[type=tel]').count()) === 1);
+
+  await editor.locator('textarea').fill('prefeitura enviou o plano de trabalho');
+  await editor.locator('input[type=text]').first().fill('Joana Prefeita');
+  await editor.locator('input[type=tel]').fill('54999998888');
+  await editor.locator('button:text-is("Salvar")').click();
+  await pagina.waitForSelector('.linha-detalhe:not([hidden]) .sublinha .sublinha-nota', { timeout: 10000 });
+
+  const anotada = (await pagina.locator('.linha-detalhe:not([hidden]) .sublinha').first().innerText()).replace(/\s+/g, ' ');
+  conferir('o andamento entra datado e assinado, no topo do histórico',
+    /Chefe Teste — prefeitura enviou o plano de trabalho/.test(anotada), anotada.slice(0, 220));
+  conferir('e o responsável na cidade fica na linha, que é onde se procura',
+    /Na cidade: Joana Prefeita/.test(anotada) && /54999998888/.test(anotada), anotada.slice(0, 260));
+
+  // Ler de volta do banco prova que gravou: sem isso o teste mediria só o
+  // desenho da tela, que é justamente o que já se sabe.
+  const gravado = await pagina.evaluate(async () => {
+    const { listar, obter } = await import('/js/dados.js');
+    const lista = await listar('destinacoes');
+    const alvo = lista.find((d) => d.andamento && d.responsavelNome === 'Joana Prefeita');
+    return alvo ? await obter('destinacoes', alvo.id) : null;
+  });
+  conferir('a anotação vai para o banco, não só para a tela',
+    !!gravado && /prefeitura enviou o plano de trabalho/.test(gravado.andamento)
+    && gravado.responsavelTelefone === '54999998888',
+    gravado ? gravado.andamento : 'nada gravado');
+
+  // A divergência é a única coisa nesta tela que ninguém pode desfazer sem
+  // deixar rastro — e é por isso que o motivo é obrigatório. A cidade aberta é
+  // a que mais recebeu, e é uma das que divergem.
+  const aberta = pagina.locator('.linha-detalhe:not([hidden])').first();
+  conferir('a cidade que mais recebeu tem divergência para resolver',
+    (await aberta.locator('.sublinha--divergente').count()) > 0);
+  const divergente = aberta.locator('.sublinha--divergente').first();
+  await divergente.locator('button:text-is("Anotar")').click();
+  const editorDiv = aberta.locator('.linha-anotar:not([hidden])').first();
+  await editorDiv.waitFor({ timeout: 5000 });
+  conferir('a escolha da fonte só aparece na linha em que as fontes brigam',
+    (await editorDiv.locator('.anotar-divergencia').count()) === 1
+    && (await pagina.locator('.sublinha:not(.sublinha--divergente) + .linha-anotar .anotar-divergencia').count()) === 0);
+
+  await editorDiv.locator('.anotar-divergencia select').selectOption('governo');
+  await editorDiv.locator('button:text-is("Salvar")').click();
+  await pagina.waitForTimeout(600);
+  conferir('sem motivo escrito, a decisão não é gravada — e a tela diz por quê',
+    /Diga por que esta fonte vale/.test(await editorDiv.locator('.anotar-acoes').innerText())
+    && (await aberta.locator('.sublinha--divergente').count()) > 0);
+
+  const aConciliarAntes = Number((await pagina.locator('.indicador--critico .indicador-valor').innerText()));
+  await editorDiv.locator('.anotar-divergencia input[type=text]').fill('convênio celebrado por valor maior');
+  await editorDiv.locator('button:text-is("Salvar")').click();
+  await aberta.locator('.sublinha--conciliada').first().waitFor({ timeout: 10000 });
+  const conciliada = (await aberta.locator('.sublinha--conciliada').first().innerText()).replace(/\s+/g, ' ');
+  conferir('decidida, a linha diz qual fonte vale, por quê e quem decidiu',
+    /Vale o painel do governo: convênio celebrado por valor maior \(Chefe Teste/.test(conciliada),
+    conciliada.slice(0, 260));
+  // Deixar o contador parado faria o trabalho feito parecer trabalho pendente.
+  const aConciliarDepois = Number((await pagina.locator('.indicador--critico .indicador-valor').innerText()));
+  conferir('e o contador "A conciliar" desce junto',
+    aConciliarDepois === aConciliarAntes - 1, `${aConciliarAntes} → ${aConciliarDepois}`);
+
   // ── o dashboard ──
   //
   // A tela por município responde "quanto foi para Erechim" a quem já sabe que
@@ -875,6 +983,36 @@ const nomesFalsos = [
     (await pagina.locator('.linha-municipio--alvo td strong').innerText()) === cidadeDestaque,
     cidadeDestaque);
 
+  await pagina.close();
+}
+
+// Quem não edita o orçamento lê a mesma tabela — e não descobre que não pode
+// pelo erro de gravação, nem por um botão que recusa o arquivo depois de lê-lo.
+{
+  const pagina = await abrir({ papel: 'leitor' });
+  await pagina.goto(`${BASE}/#/orcamento/por-municipio`, { waitUntil: 'domcontentloaded' });
+  await pagina.waitForSelector('.modulo-topo', { timeout: 15000 });
+  conferir('somente leitura não vê os botões de importar',
+    (await pagina.getByRole('button', { name: /Importar Mapa de emendas/ }).count()) === 0);
+
+  // O duplo do Firestore não aplica as regras — o que se mede aqui é a tela,
+  // e as regras têm suíte própria.
+  await pagina.evaluate(async () => {
+    const { salvarEmLote } = await import('/js/dados.js');
+    await salvarEmLote('destinacoes', [{
+      id: 'd1', municipio: 'Erechim', ano: 2025, beneficiario: 'APAE', valorDestinado: 100000, situacao: 'indicado',
+    }]);
+  });
+  // Sair da aba e voltar redesenha a tela; recarregar a página zeraria o duplo
+  // do Firestore, que vive na memória da aba.
+  await pagina.goto(`${BASE}/#/orcamento/dashboard`, { waitUntil: 'domcontentloaded' });
+  await pagina.goto(`${BASE}/#/orcamento/por-municipio`, { waitUntil: 'domcontentloaded' });
+  await pagina.waitForSelector('.linha-municipio', { timeout: 15000 });
+  await pagina.locator('.linha-municipio').first().click();
+  await pagina.waitForTimeout(400);
+  conferir('e vê as destinações sem a coluna de anotar',
+    (await pagina.locator('.tabela--destinacoes').count()) === 1
+    && (await pagina.locator('button:text-is("Anotar")').count()) === 0);
   await pagina.close();
 }
 
