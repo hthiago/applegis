@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8"><title>B — Produto, branco e alto contraste</title>
+<style>
+/* ══ PROPOSTA B — PRODUTO, BRANCO E ALTO CONTRASTE ════════════════════════
+   Sem cinza atrás de nada: a área de trabalho é branca de ponta a ponta, e o
+   que separa é filete e espaço. O caráter vem do peso tipográfico — títulos
+   pesados e apertados, rótulos minúsculos — e de uma cor só usada com
+   decisão. É o desenho de ferramenta bem-feita, não de relatório. */
+:root{
+  --branco:#fff; --sutil:#F7F8F9;
+  --tinta:#0B0D10; --tinta2:#565D66; --tinta3:#8E959D;
+  --filete:#E8EAEC; --filete-forte:#D2D6DA;
+  --laranja:#F25C05; --laranja-fraco:#FFF1E7;
+  --azul:#1F4E79;
+  --verde:#0E7A50; --ambar:#996A00; --vermelho:#C0341A;
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--branco);color:var(--tinta);font:15px/1.5 var(--sans);-webkit-font-smoothing:antialiased}
+.topo{display:flex;justify-content:space-between;align-items:center;height:56px;padding:0 22px;border-bottom:1px solid var(--filete)}
+.marca{display:flex;align-items:center;gap:11px}
+.risco{width:4px;height:26px;background:var(--laranja);border-radius:2px}
+.marca strong{font-size:15px;font-weight:700;letter-spacing:-.02em;display:block;line-height:1.2}
+.marca span{font-size:11.5px;color:var(--tinta3)}
+.eu{display:flex;align-items:center;gap:10px;font-size:13px;color:var(--tinta2)}
+.eu b{color:var(--tinta)}
+.corpo{display:grid;grid-template-columns:186px minmax(0,1fr)}
+.nav{padding:14px 10px;border-right:1px solid var(--filete);min-height:calc(100vh - 56px)}
+.nav a{display:block;padding:8px 12px;border-radius:6px;color:var(--tinta2);text-decoration:none;font-size:13.5px;font-weight:500}
+.nav a:hover{background:var(--sutil);color:var(--tinta)}
+.nav a.on{background:var(--laranja-fraco);color:#8A3400;font-weight:700}
+
+.painel{padding:0 30px 60px}
+.abas{display:flex;gap:24px;border-bottom:1px solid var(--filete);position:sticky;top:0;background:var(--branco)}
+.abas a{padding:15px 0 13px;font-size:13.5px;font-weight:500;color:var(--tinta3);text-decoration:none;border-bottom:2px solid transparent;margin-bottom:-1px}
+.abas a.on{color:var(--tinta);border-bottom-color:var(--laranja);font-weight:700}
+
+.cabeca{display:flex;align-items:flex-start;justify-content:space-between;gap:20px;padding:32px 0 24px}
+h1{font-size:32px;font-weight:800;letter-spacing:-.033em;line-height:1.08;margin:0}
+.linhafina{color:var(--tinta2);max-width:60ch;margin:8px 0 0;font-size:14px}
+.acoes{display:flex;gap:8px;flex-shrink:0}
+.b1{font:700 13px var(--sans);background:var(--tinta);color:#fff;border:0;border-radius:7px;padding:10px 16px;cursor:pointer}
+.b2{font:600 13px var(--sans);background:var(--branco);color:var(--tinta2);border:1px solid var(--filete-forte);border-radius:7px;padding:10px 16px;cursor:pointer}
+
+/* Números grandes, sem caixa e sem régua vertical: o espaço separa. */
+.numeros{display:flex;flex-wrap:wrap;gap:44px;padding:0 0 26px;border-bottom:1px solid var(--filete)}
+.n dt{font-size:11px;font-weight:600;color:var(--tinta3);letter-spacing:.01em}
+.n dd{margin:2px 0 0;font-size:27px;font-weight:700;letter-spacing:-.035em;font-variant-numeric:tabular-nums;line-height:1.15}
+.n small{display:block;font-size:11.5px;color:var(--tinta3);font-variant-numeric:tabular-nums}
+.n.rev dd{color:var(--vermelho)}
+
+.ferramentas{display:flex;align-items:center;gap:10px;padding:18px 0 12px}
+.busca{position:relative;flex:0 1 320px}
+.busca input{width:100%;font:inherit;font-size:13.5px;border:1px solid var(--filete-forte);border-radius:8px;padding:9px 12px 9px 33px;background:var(--branco)}
+.busca input::placeholder{color:var(--tinta3)}
+.busca svg{position:absolute;left:11px;top:11px;color:var(--tinta3)}
+.pilula{font-size:12px;font-weight:600;color:var(--tinta2);border:1px solid var(--filete-forte);border-radius:999px;padding:6px 13px;background:var(--branco);cursor:pointer}
+.pilula.on{background:var(--tinta);color:#fff;border-color:var(--tinta)}
+.conta{margin-left:auto;font-size:12.5px;color:var(--tinta3);font-variant-numeric:tabular-nums}
+
+table{width:100%;border-collapse:collapse;font-size:13.5px}
+th{text-align:left;font-size:11px;font-weight:600;color:var(--tinta3);padding:0 16px 10px;border-bottom:1px solid var(--filete-forte);white-space:nowrap}
+th:first-child,td:first-child{padding-left:0}th:last-child,td:last-child{padding-right:0}
+td{padding:12px 16px;border-bottom:1px solid var(--filete);vertical-align:middle}
+tr:hover td{background:var(--sutil)}
+.cidade{font-weight:650;font-size:14px;letter-spacing:-.01em}
+.reg{display:block;font-size:12px;color:var(--tinta3)}
+.num{text-align:right;font-variant-numeric:tabular-nums}
+.forte{font-weight:600}
+
+/* Barra proporcional na própria linha: substitui a pílula de status por uma
+   informação que a pílula não dava — o tamanho relativo do repasse. */
+.medida{display:flex;align-items:center;gap:10px;justify-content:flex-end}
+.trilho{width:64px;height:5px;border-radius:3px;background:var(--filete);overflow:hidden}
+.cheio{height:100%;background:var(--azul);border-radius:3px;display:block}
+
+.sit{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;white-space:nowrap;color:var(--tinta2)}
+.sit i{width:7px;height:7px;border-radius:2px;background:var(--tinta3);display:inline-block}
+.sit.ok{color:var(--verde)}.sit.ok i{background:var(--verde)}
+.sit.emp{color:var(--ambar)}.sit.emp i{background:var(--ambar)}
+.sit.div{color:var(--vermelho)}.sit.div i{background:var(--vermelho)}
+.dica{font-size:12px;color:var(--tinta3);margin:14px 0 0}
+</style></head><body>
+
+<header class="topo">
+  <div class="marca"><span class="risco"></span><div><strong>Gabinete Marcel van Hattem</strong><span>NOVO · Rio Grande do Sul</span></div></div>
+  <div class="eu"><b>Ana Assessora</b> · Chefe de gabinete</div>
+</header>
+
+<div class="corpo">
+  <nav class="nav">
+    <a href="#">Chefia de gabinete</a><a href="#">Administrativo</a><a href="#">Legislativo</a>
+    <a href="#" class="on">Orçamento</a><a href="#">Comunicação</a><a href="#">Acessos</a>
+  </nav>
+
+  <main class="painel">
+    <div class="abas"><a href="#">Dashboard</a><a href="#" class="on">Por município</a><a href="#">Destinações</a></div>
+
+    <div class="cabeca">
+      <div>
+        <h1>Emendas por município</h1>
+        <p class="linhafina">Quanto foi para cada cidade, em que pé está e com quem se fala lá.</p>
+      </div>
+      <div class="acoes"><button class="b2">Confirmar pelo painel</button><button class="b1">Importar Mapa de emendas</button></div>
+    </div>
+
+    <dl class="numeros">
+      <div class="n"><dt>Municípios</dt><dd>292</dd></div>
+      <div class="n"><dt>Destinações</dt><dd>758</dd></div>
+      <div class="n"><dt>Destinado</dt><dd>R$ 227,9 mi</dd><small>R$ 227.874.597,91</small></div>
+      <div class="n"><dt>Empenhado</dt><dd>R$ 60 mi</dd><small>26% do destinado</small></div>
+      <div class="n"><dt>Pago</dt><dd>R$ 37,3 mi</dd><small>16% do destinado</small></div>
+      <div class="n rev"><dt>A revisar</dt><dd>71</dd><small>a auditoria pediu</small></div>
+    </dl>
+
+    <div class="ferramentas">
+      <div class="busca">
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="7" cy="7" r="5"/><path d="M11 11l4 4"/></svg>
+        <input placeholder="Buscar município, beneficiário, objeto…">
+      </div>
+      <button class="pilula on">Todos</button><button class="pilula">A revisar</button><button class="pilula">Travados</button>
+      <span class="conta">292 municípios</span>
+    </div>
+
+    <table>
+      <thead><tr><th>Município</th><th class="num">Dest.</th><th class="num">Destinado</th><th class="num">Execução</th><th>Em que pé está</th></tr></thead>
+      <tbody>
+        <tr><td><span class="cidade">Caxias do Sul</span><span class="reg">Encosta Superior do Nordeste · 15 destinações</span></td><td class="num">15</td><td class="num forte">R$ 20.656.043,34</td><td><div class="medida"><span class="trilho"><i class="cheio" style="width:14%"></i></span><span>14%</span></div></td><td><span class="sit div"><i></i>Fontes divergem</span></td></tr>
+        <tr><td><span class="cidade">Porto Alegre</span><span class="reg">Metropolitana · 42 destinações</span></td><td class="num">42</td><td class="num forte">R$ 14.911.090,67</td><td><div class="medida"><span class="trilho"><i class="cheio" style="width:42%"></i></span><span>42%</span></div></td><td><span class="sit emp"><i></i>Empenhado</span></td></tr>
+        <tr><td><span class="cidade">Dois Irmãos</span><span class="reg">Vale dos Sinos · 15 destinações</span></td><td class="num">15</td><td class="num forte">R$ 12.139.896,42</td><td><div class="medida"><span class="trilho"><i class="cheio" style="width:78%"></i></span><span>78%</span></div></td><td><span class="sit ok"><i></i>Pago</span></td></tr>
+        <tr><td><span class="cidade">Bento Gonçalves</span><span class="reg">Encosta Superior do Nordeste · 11 destinações</span></td><td class="num">11</td><td class="num forte">R$ 4.877.671,00</td><td><div class="medida"><span class="trilho"><i class="cheio" style="width:21%"></i></span><span>21%</span></div></td><td><span class="sit emp"><i></i>Empenhado</span></td></tr>
+        <tr><td><span class="cidade">Novo Hamburgo</span><span class="reg">Vale dos Sinos · 13 destinações</span></td><td class="num">13</td><td class="num forte">R$ 4.220.996,54</td><td><div class="medida"><span class="trilho"><i class="cheio" style="width:0%"></i></span><span>—</span></div></td><td><span class="sit"><i></i>Indicado</span></td></tr>
+        <tr><td><span class="cidade">Santa Maria</span><span class="reg">Centro do Estado · 14 destinações</span></td><td class="num">14</td><td class="num forte">R$ 3.839.437,33</td><td><div class="medida"><span class="trilho"><i class="cheio" style="width:8%"></i></span><span>8%</span></div></td><td><span class="sit ok"><i></i>Pago</span></td></tr>
+        <tr><td><span class="cidade">Passo Fundo</span><span class="reg">Planalto · 10 destinações</span></td><td class="num">10</td><td class="num forte">R$ 3.504.142,91</td><td><div class="medida"><span class="trilho"><i class="cheio" style="width:6%"></i></span><span>6%</span></div></td><td><span class="sit ok"><i></i>Pago</span></td></tr>
+        <tr><td><span class="cidade">Ivoti</span><span class="reg">Vale dos Sinos · 9 destinações</span></td><td class="num">9</td><td class="num forte">R$ 3.333.412,02</td><td><div class="medida"><span class="trilho"><i class="cheio" style="width:34%"></i></span><span>34%</span></div></td><td><span class="sit emp"><i></i>Empenhado</span></td></tr>
+        <tr><td><span class="cidade">Sapiranga</span><span class="reg">Vale dos Sinos · 9 destinações</span></td><td class="num">9</td><td class="num forte">R$ 3.191.686,17</td><td><div class="medida"><span class="trilho"><i class="cheio" style="width:0%"></i></span><span>—</span></div></td><td><span class="sit"><i></i>Indicado</span></td></tr>
+      </tbody>
+    </table>
+    <p class="dica">O Mapa de emendas é a fonte; o painel confirma empenhado e pago no que já está aqui.</p>
+  </main>
+</div>
+</body></html>

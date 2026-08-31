@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8"><title>C — Cabeçalho institucional</title>
+<style>
+/* ══ PROPOSTA C — CABEÇALHO INSTITUCIONAL ═════════════════════════════════
+   O azul da estrutura sai do detalhe e vira presença: uma faixa escura no
+   topo, com a identificação do mandato, do jeito que se identifica um órgão.
+   Abaixo dela, papel branco e tipografia de relatório. É a proposta com mais
+   personalidade — e a que mais parece "sistema oficial de alguém", em vez de
+   painel genérico. */
+:root{
+  --branco:#fff; --creme:#FBFAF7;
+  --azul:#153E63; --azul2:#0E2C48; --azul-claro:#4E7EA5;
+  --tinta:#14171B; --tinta2:#4C525A; --tinta3:#888E96;
+  --filete:#E5E4DE; --filete-forte:#C7C6BE;
+  --laranja:#F26B1D;
+  --verde:#136B4A; --ambar:#8A6712; --vermelho:#A03320;
+  --serifa:Georgia,"Iowan Old Style","Times New Roman",serif;
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--branco);color:var(--tinta);font:15px/1.55 var(--sans);-webkit-font-smoothing:antialiased}
+
+/* A faixa: escura, alta, com a identificação e a navegação de áreas dentro.
+   Ela devolve a coluna lateral inteira ao conteúdo e dá ao sistema um rosto. */
+.faixa{background:var(--azul);color:#fff}
+.faixa-alto{display:flex;justify-content:space-between;align-items:center;padding:15px 32px 13px}
+.brasao{display:flex;align-items:center;gap:13px}
+.selo{width:34px;height:34px;border:1.5px solid rgba(255,255,255,.5);border-radius:50%;display:grid;place-items:center;font:700 12px var(--serifa);letter-spacing:.02em}
+.brasao strong{display:block;font:600 16px/1.2 var(--serifa);letter-spacing:.01em}
+.brasao span{font-size:10.5px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:rgba(255,255,255,.62)}
+.eu{text-align:right;font-size:12.5px;color:rgba(255,255,255,.72);line-height:1.35}
+.eu b{display:block;color:#fff;font-size:13px}
+.areas{display:flex;gap:2px;padding:0 24px}
+.areas a{padding:11px 14px;font-size:13px;color:rgba(255,255,255,.72);text-decoration:none;border-bottom:3px solid transparent}
+.areas a:hover{color:#fff}
+.areas a.on{color:#fff;font-weight:600;border-bottom-color:var(--laranja);background:rgba(255,255,255,.06)}
+
+.painel{max-width:1180px;margin:0 auto;padding:0 32px 70px}
+.abas{display:flex;gap:26px;border-bottom:1px solid var(--filete);margin-top:2px}
+.abas a{padding:16px 0 12px;font-size:13px;color:var(--tinta3);text-decoration:none;border-bottom:2px solid transparent;margin-bottom:-1px}
+.abas a.on{color:var(--azul);border-bottom-color:var(--azul);font-weight:700}
+
+.cabeca{padding:34px 0 22px;border-bottom:2px solid var(--azul)}
+h1{font:400 35px/1.12 var(--serifa);letter-spacing:-.015em;margin:0;color:var(--azul2)}
+.linhafina{color:var(--tinta2);max-width:64ch;margin:10px 0 0;font-size:14.5px}
+
+/* Faixa de números sobre creme: distingue o resumo do detalhe sem virar caixa. */
+.numeros{display:flex;flex-wrap:wrap;background:var(--creme);border-bottom:1px solid var(--filete);padding:20px 0}
+.n{flex:1 1 auto;min-width:132px;padding:0 28px;border-left:1px solid var(--filete)}
+.n:first-child{border-left:0}
+.n dt{font-size:10px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--tinta3)}
+.n dd{margin:3px 0 0;font:400 28px/1.1 var(--serifa);font-variant-numeric:tabular-nums;letter-spacing:-.02em;color:var(--azul2)}
+.n small{display:block;font-size:11.5px;color:var(--tinta3);font-variant-numeric:tabular-nums;margin-top:2px}
+.n.rev dd{color:var(--vermelho)}
+
+.ferramentas{display:flex;align-items:center;gap:12px;padding:22px 0 10px}
+.busca{position:relative;flex:0 1 330px}
+.busca input{width:100%;font:inherit;font-size:14px;border:0;border-bottom:1px solid var(--filete-forte);background:none;padding:8px 0 8px 23px}
+.busca input::placeholder{color:var(--tinta3)}
+.busca svg{position:absolute;left:0;top:11px;color:var(--tinta3)}
+.b1{font:600 13px var(--sans);background:var(--azul);color:#fff;border:0;padding:9px 17px;cursor:pointer;margin-left:auto}
+.b2{font:600 13px var(--sans);background:none;color:var(--azul);border:1px solid var(--azul-claro);padding:9px 17px;cursor:pointer}
+
+table{width:100%;border-collapse:collapse;font-size:14px;margin-top:10px}
+th{text-align:left;font-size:10px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:#fff;background:var(--azul);padding:9px 14px;white-space:nowrap}
+td{padding:11px 14px;border-bottom:1px solid var(--filete);vertical-align:baseline}
+tbody tr:nth-child(even) td{background:var(--creme)}
+tbody tr:hover td{background:#F1F5F8}
+.cidade{font-weight:600}
+.reg{display:block;font-size:12px;color:var(--tinta3);margin-top:1px}
+.num{text-align:right;font-variant-numeric:tabular-nums}
+.mi{font-family:var(--serifa);font-size:15px}
+.sit{display:inline-flex;align-items:baseline;gap:7px;font-size:13px;color:var(--tinta2);white-space:nowrap}
+.sit::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--tinta3);transform:translateY(-1px)}
+.sit.ok::before{background:var(--verde)}.sit.ok{color:var(--verde)}
+.sit.emp::before{background:var(--ambar)}.sit.emp{color:var(--ambar)}
+.sit.div::before{background:var(--vermelho)}.sit.div{color:var(--vermelho)}
+.dica{font-size:12px;color:var(--tinta3);margin:14px 0 0}
+</style></head><body>
+
+<div class="faixa">
+  <div class="faixa-alto">
+    <div class="brasao">
+      <span class="selo">MvH</span>
+      <div><strong>Gabinete Marcel van Hattem</strong><span>Câmara dos Deputados · NOVO · Rio Grande do Sul</span></div>
+    </div>
+    <div class="eu"><b>Ana Assessora</b>Chefe de gabinete</div>
+  </div>
+  <nav class="areas">
+    <a href="#">Chefia</a><a href="#">Administrativo</a><a href="#">Legislativo</a>
+    <a href="#" class="on">Orçamento</a><a href="#">Comunicação</a><a href="#">Acessos</a>
+  </nav>
+</div>
+
+<main class="painel">
+  <div class="abas"><a href="#">Dashboard</a><a href="#" class="on">Por município</a><a href="#">Destinações</a></div>
+
+  <div class="cabeca">
+    <h1>Emendas por município</h1>
+    <p class="linhafina">Quanto foi para cada cidade, em que pé está e com quem se fala lá. Clique numa linha para ver destinação por destinação.</p>
+  </div>
+
+  <dl class="numeros">
+    <div class="n"><dt>Municípios</dt><dd>292</dd></div>
+    <div class="n"><dt>Destinações</dt><dd>758</dd></div>
+    <div class="n"><dt>Destinado</dt><dd>R$ 227,9 mi</dd><small>R$ 227.874.597,91</small></div>
+    <div class="n"><dt>Empenhado</dt><dd>R$ 60 mi</dd><small>R$ 59.965.627,57</small></div>
+    <div class="n"><dt>Pago</dt><dd>R$ 37,3 mi</dd><small>R$ 37.307.451,97</small></div>
+    <div class="n rev"><dt>A revisar</dt><dd>71</dd><small>a auditoria pediu</small></div>
+  </dl>
+
+  <div class="ferramentas">
+    <div class="busca">
+      <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="7" cy="7" r="5"/><path d="M11 11l4 4"/></svg>
+      <input placeholder="Buscar município, região, beneficiário, objeto…">
+    </div>
+    <button class="b2">Confirmar pelo painel</button>
+    <button class="b1">Importar Mapa de emendas</button>
+  </div>
+
+  <table>
+    <thead><tr><th>Município</th><th class="num">Destinações</th><th class="num">Destinado</th><th class="num">Empenhado</th><th class="num">Pago</th><th>Em que pé está</th></tr></thead>
+    <tbody>
+      <tr><td><span class="cidade">Caxias do Sul</span><span class="reg">Encosta Superior do Nordeste</span></td><td class="num">15</td><td class="num mi">20.656.043,34</td><td class="num mi">2.839.055,00</td><td class="num mi">513.274,46</td><td><span class="sit div">Fontes divergem</span></td></tr>
+      <tr><td><span class="cidade">Porto Alegre</span><span class="reg">Metropolitana</span></td><td class="num">42</td><td class="num mi">14.911.090,67</td><td class="num mi">6.204.118,00</td><td class="num mi">4.118.900,12</td><td><span class="sit emp">Empenhado</span></td></tr>
+      <tr><td><span class="cidade">Dois Irmãos</span><span class="reg">Vale dos Sinos</span></td><td class="num">15</td><td class="num mi">12.139.896,42</td><td class="num mi">9.451.227,00</td><td class="num mi">9.451.227,00</td><td><span class="sit ok">Pago</span></td></tr>
+      <tr><td><span class="cidade">Bento Gonçalves</span><span class="reg">Encosta Superior do Nordeste</span></td><td class="num">11</td><td class="num mi">4.877.671,00</td><td class="num mi">1.000.000,00</td><td class="num mi">—</td><td><span class="sit emp">Empenhado</span></td></tr>
+      <tr><td><span class="cidade">Novo Hamburgo</span><span class="reg">Vale dos Sinos</span></td><td class="num">13</td><td class="num mi">4.220.996,54</td><td class="num mi">—</td><td class="num mi">—</td><td><span class="sit">Indicado</span></td></tr>
+      <tr><td><span class="cidade">Santa Maria</span><span class="reg">Centro do Estado</span></td><td class="num">14</td><td class="num mi">3.839.437,33</td><td class="num mi">290.000,00</td><td class="num mi">290.000,00</td><td><span class="sit ok">Pago</span></td></tr>
+      <tr><td><span class="cidade">Passo Fundo</span><span class="reg">Planalto</span></td><td class="num">10</td><td class="num mi">3.504.142,91</td><td class="num mi">212.000,06</td><td class="num mi">212.000,06</td><td><span class="sit ok">Pago</span></td></tr>
+      <tr><td><span class="cidade">Ivoti</span><span class="reg">Vale dos Sinos</span></td><td class="num">9</td><td class="num mi">3.333.412,02</td><td class="num mi">1.139.365,00</td><td class="num mi">—</td><td><span class="sit emp">Empenhado</span></td></tr>
+      <tr><td><span class="cidade">Sapiranga</span><span class="reg">Vale dos Sinos</span></td><td class="num">9</td><td class="num mi">3.191.686,17</td><td class="num mi">—</td><td class="num mi">—</td><td><span class="sit">Indicado</span></td></tr>
+    </tbody>
+  </table>
+  <p class="dica">O Mapa de emendas é a fonte; o painel confirma empenhado e pago no que já está aqui.</p>
+</main>
+</body></html>
