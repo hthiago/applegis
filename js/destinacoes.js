@@ -548,6 +548,42 @@ async function importarGoverno(cabecalho, linhas) {
 // ─────────────────────── consolidação por município ───────────────────────
 
 /**
+ * A cidade é a mesma quando o nome só muda de caixa.
+ *
+ * A planilha do gabinete foi digitada por muitas mãos ao longo de anos, e traz
+ * "Caxias do sul", "Caxias Do Sul" e "Caxias do Sul" como se fossem três
+ * lugares. Agrupar pelo texto cru partia o município em três linhas, cada uma
+ * com um pedaço do total — e a pergunta da tela é justamente quanto foi para
+ * aquela cidade.
+ */
+const CONECTIVOS = new Set(['do', 'da', 'de', 'dos', 'das', 'e']);
+
+/** Quanto do nome segue a grafia usual: nomes maiúsculos, conectivos não. */
+function conformidade(nome) {
+  const palavras = String(nome).split(/\s+/).filter(Boolean);
+  if (!palavras.length) return 0;
+  let certas = 0;
+  for (const p of palavras) {
+    const baixa = p.toLocaleLowerCase('pt-BR');
+    const esperada = CONECTIVOS.has(baixa)
+      ? baixa
+      : baixa.charAt(0).toLocaleUpperCase('pt-BR') + baixa.slice(1);
+    if (p === esperada) certas += 1;
+  }
+  return certas / palavras.length;
+}
+
+/**
+ * Entre as grafias vistas, a que se escreve. Escolhe-se a existente e não uma
+ * inventada: aplicar caixa automática produziria "Caxias Do Sul", que está
+ * errado em português e ninguém escreveu.
+ */
+export function nomeCanonico(variantes) {
+  return [...variantes.entries()]
+    .sort((a, b) => (conformidade(b[0]) - conformidade(a[0])) || (b[1] - a[1]) || a[0].localeCompare(b[0], 'pt-BR'))[0][0];
+}
+
+/**
  * Consolida as destinações por cidade.
  *
  * O valor do governo é do encontro (ano + emenda + município), não da linha:
@@ -561,9 +597,11 @@ export function consolidarDestinacoes(destinacoes) {
 
   for (const d of destinacoes) {
     const nome = (d.municipio || 'Sem município').trim();
-    if (!mapa.has(nome)) {
-      mapa.set(nome, {
+    const chave = semAcento(nome);
+    if (!mapa.has(chave)) {
+      mapa.set(chave, {
         municipio: nome,
+        variantes: new Map(),
         regiao: d.regiao || null,
         destinado: 0,
         empenhado: 0,
@@ -572,7 +610,8 @@ export function consolidarDestinacoes(destinacoes) {
         destinacoes: [],
       });
     }
-    const m = mapa.get(nome);
+    const m = mapa.get(chave);
+    m.variantes.set(nome, (m.variantes.get(nome) || 0) + 1);
     m.regiao = m.regiao || d.regiao || null;
     m.destinado += Number(d.valorDestinado) || 0;
     if (d.divergente) m.divergentes += 1;
@@ -587,7 +626,11 @@ export function consolidarDestinacoes(destinacoes) {
   }
 
   return [...mapa.values()]
-    .map((m) => ({ ...m, destinacoes: m.destinacoes.sort((a, b) => (b.valorDestinado || 0) - (a.valorDestinado || 0)) }))
+    .map(({ variantes, ...m }) => ({
+      ...m,
+      municipio: nomeCanonico(variantes),
+      destinacoes: m.destinacoes.sort((a, b) => (b.valorDestinado || 0) - (a.valorDestinado || 0)),
+    }))
     .sort((a, b) => b.destinado - a.destinado);
 }
 

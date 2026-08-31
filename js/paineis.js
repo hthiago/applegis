@@ -464,35 +464,74 @@ const ROTULO_SITUACAO = {
   perdido: 'Recurso perdido',
 };
 
-/** As destinações de uma cidade, uma a uma — o nível em que se responde. */
+const COR_SITUACAO = {
+  indicado: 'neutro',
+  empenhado: 'atencao',
+  pagoParcial: 'atencao',
+  pago: 'ok',
+  impedido: 'critico',
+  perdido: 'critico',
+};
+
+const ROTULO_AREA = {
+  saude: 'Saúde',
+  seguranca: 'Segurança',
+  infraestrutura: 'Infraestrutura',
+  turismo: 'Infra. turística',
+  educacao: 'Educação',
+  defesaCivil: 'Defesa Civil',
+  outra: 'Outra',
+};
+
+/**
+ * As destinações de uma cidade, em linhas.
+ *
+ * Eram cartões empilhados, e cartão não se compara: para saber qual destinação
+ * é a maior, ou qual está parada, os olhos tinham de percorrer parágrafos. Em
+ * linha, com as colunas alinhadas, a comparação é o próprio desenho.
+ */
 export function detalhesDaCidade(m) {
-  return el('div', { class: 'municipio-detalhe' }, m.destinacoes.map((d) => el('article', { class: 'municipio-emenda' }, [
-    el('header', {}, [
+  const linha = (d) => el('tr', { class: d.divergente ? 'sublinha sublinha--divergente' : 'sublinha' }, [
+    el('td', {}, [
       el('strong', { texto: d.beneficiario || d.instituicao || 'sem beneficiário' }),
-      el('span', { class: 'topo-sub', texto: [d.ano, d.numeroEmenda ? `emenda ${d.numeroEmenda}` : 'sem nº de emenda'].filter(Boolean).join(' · ') }),
-    ]),
-    d.objeto ? el('p', { class: 'municipio-objeto', texto: d.objeto }) : null,
-    el('p', { class: 'municipio-numeros' }, [
-      d.valorDestinado ? el('span', { texto: `Destinado ${fmtDinheiro(d.valorDestinado)}` }) : null,
-      d.valorEmpenhado ? el('span', { texto: `Empenhado ${fmtDinheiro(d.valorEmpenhado)}` }) : null,
-      d.valorPago ? el('span', { class: 'municipio-pago', texto: `Pago ${fmtDinheiro(d.valorPago)}` }) : null,
-      el('span', {}, [etiqueta(ROTULO_SITUACAO[d.situacao] || d.situacao, situacaoDaCidade({ pago: d.valorPago || 0, empenhado: d.valorEmpenhado || 0, destinado: d.valorDestinado || 0, divergentes: 0 }).cor)]),
+      d.objeto ? el('span', { class: 'topo-sub', texto: d.objeto }) : null,
+      // O histórico que o gabinete escreveu — o que a planilha tem e o painel
+      // não. Fica sob o objeto porque é leitura, não coluna.
+      d.andamento || (d.situacaoOriginal && d.situacaoOriginal.length > 24)
+        ? el('span', { class: 'topo-sub sublinha-nota', texto: d.andamento || d.situacaoOriginal })
+        : null,
+      d.responsavelNome
+        ? el('span', { class: 'topo-sub', texto: `Na cidade: ${d.responsavelNome}${d.responsavelTelefone ? ` · ${d.responsavelTelefone}` : ''}` })
+        : null,
     ].filter(Boolean)),
-    // O que só a planilha do gabinete tem: o histórico escrito por gente.
-    d.situacaoOriginal && d.situacaoOriginal !== ROTULO_SITUACAO[d.situacao]
-      ? el('p', { class: 'campo-dica', texto: d.situacaoOriginal }) : null,
-    d.andamento ? el('p', { class: 'campo-dica', texto: d.andamento }) : null,
-    d.responsavelNome
-      ? el('p', { class: 'campo-dica', texto: `Na cidade: ${d.responsavelNome}${d.responsavelCargo ? `, ${d.responsavelCargo}` : ''}${d.responsavelTelefone ? ` · ${d.responsavelTelefone}` : ''}` })
-      : null,
-    // A divergência não se resolve sozinha: ela chama alguém.
-    d.divergente
-      ? el('p', { class: 'municipio-trava', texto: `O painel do governo registra mais que o destinado nesta linha. Abra a destinação e escolha qual fonte vale.` })
-      : null,
-    d.linkInstrumento
-      ? el('p', {}, [el('a', { href: d.linkInstrumento, target: '_blank', rel: 'noopener', class: 'campo-dica', texto: `Convênio ${d.numeroInstrumento || ''} no Transferegov` })])
-      : null,
-  ].filter(Boolean))));
+    el('td', { class: 'num', 'data-rotulo': 'Ano', texto: d.ano ? String(d.ano) : '—' }),
+    el('td', { class: 'num', 'data-rotulo': 'Emenda' }, [
+      d.linkInstrumento
+        ? el('a', { href: d.linkInstrumento, target: '_blank', rel: 'noopener', texto: d.numeroEmenda || 'convênio' })
+        : el('span', { texto: d.numeroEmenda || '—' }),
+    ]),
+    el('td', { 'data-rotulo': 'Área', texto: ROTULO_AREA[d.area] || '—' }),
+    el('td', { class: 'num', 'data-rotulo': 'Destinado', texto: d.valorDestinado ? fmtDinheiro(d.valorDestinado) : '—' }),
+    el('td', { class: 'num', 'data-rotulo': 'Empenhado', texto: d.valorEmpenhado ? fmtDinheiro(d.valorEmpenhado) : '—' }),
+    el('td', { class: 'num', 'data-rotulo': 'Pago', texto: d.valorPago ? fmtDinheiro(d.valorPago) : '—' }),
+    el('td', { 'data-rotulo': 'Situação' }, [etiqueta(ROTULO_SITUACAO[d.situacao] || d.situacao || '—', COR_SITUACAO[d.situacao] || 'neutro')]),
+  ]);
+
+  return el('div', { class: 'tabela-rolagem' }, [
+    el('table', { class: 'tabela tabela--destinacoes' }, [
+      el('thead', {}, [el('tr', {}, [
+        el('th', { texto: 'Quem recebeu, para quê' }),
+        el('th', { class: 'num', texto: 'Ano' }),
+        el('th', { class: 'num', texto: 'Emenda' }),
+        el('th', { texto: 'Área' }),
+        el('th', { class: 'num', texto: 'Destinado' }),
+        el('th', { class: 'num', texto: 'Empenhado' }),
+        el('th', { class: 'num', texto: 'Pago' }),
+        el('th', { texto: 'Situação' }),
+      ])]),
+      el('tbody', {}, m.destinacoes.map(linha)),
+    ]),
+  ]);
 }
 
 /**
@@ -629,17 +668,60 @@ export async function painelDestinacoes(container) {
     'aria-label': 'Buscar',
     oninput: () => desenhar(),
   });
+
+  // O dashboard manda a cidade por aqui: clicar no mapa leva a esta tela já
+  // procurando por ela. Passa e some, para não reaparecer numa visita futura.
+  let abrir = null;
+  try {
+    const alvo = sessionStorage.getItem('municipioAlvo');
+    if (alvo) { busca.value = alvo; abrir = semAcentoLocal(alvo); sessionStorage.removeItem('municipioAlvo'); }
+  } catch { /* sem sessionStorage, entra sem filtro */ }
+
   container.appendChild(el('div', { class: 'modulo-acoes' }, [busca]));
+
+  // Ordenação por clique no cabeçalho.
+  //
+  // Uma lista de trezentas cidades tem mais de uma pergunta: "quem recebeu
+  // mais" e "onde está Xanxerê" não se respondem com a mesma ordem. Fixar uma
+  // obriga a rolar procurando; deixar escolher resolve as duas.
+  const COLUNAS = [
+    { k: 'municipio', l: 'Município', tipo: 'texto' },
+    { k: 'quantas', l: 'Destinações', tipo: 'numero', num: true },
+    { k: 'destinado', l: 'Destinado', tipo: 'numero', num: true },
+    { k: 'empenhado', l: 'Empenhado', tipo: 'numero', num: true },
+    { k: 'pago', l: 'Pago', tipo: 'numero', num: true },
+    { k: 'situacao', l: 'Situação', tipo: 'texto' },
+  ];
+  let ordem = { campo: 'destinado', desc: true };
+
+  const valorDaColuna = (m, campo) => {
+    if (campo === 'quantas') return m.destinacoes.length;
+    if (campo === 'situacao') return situacaoDaCidade(m).texto;
+    return m[campo];
+  };
+
+  const cabecalho = el('tr', {}, COLUNAS.map((c) => {
+    const th = el('th', {
+      class: c.num ? 'num ordenavel' : 'ordenavel',
+      tabindex: '0',
+      role: 'button',
+      'aria-label': `Ordenar por ${c.l}`,
+      onclick: () => {
+        // Clicar de novo na mesma coluna inverte; trocar de coluna começa pela
+        // ordem mais útil dela: maior valor primeiro, nome em ordem alfabética.
+        ordem = ordem.campo === c.k
+          ? { campo: c.k, desc: !ordem.desc }
+          : { campo: c.k, desc: c.tipo === 'numero' };
+        desenhar();
+      },
+      onkeydown: (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.currentTarget.click(); } },
+    }, [el('span', { texto: c.l }), el('span', { class: 'seta-ordem' })]);
+    return th;
+  }));
+
   container.appendChild(el('div', { class: 'tabela-rolagem' }, [
     el('table', { class: 'tabela tabela--municipios' }, [
-      el('thead', {}, [el('tr', {}, [
-        el('th', { texto: 'Município' }),
-        el('th', { texto: 'Destinações' }),
-        el('th', { class: 'num', texto: 'Destinado' }),
-        el('th', { class: 'num', texto: 'Empenhado' }),
-        el('th', { class: 'num', texto: 'Pago' }),
-        el('th', { texto: 'Situação' }),
-      ])]),
+      el('thead', {}, [cabecalho]),
       corpo,
     ]),
   ]));
@@ -655,6 +737,25 @@ export async function painelDestinacoes(container) {
       return termos.every((t) => texto.includes(t));
     });
 
+    const coluna = COLUNAS.find((c) => c.k === ordem.campo) || COLUNAS[0];
+    visiveis.sort((a, b) => {
+      const x = valorDaColuna(a, ordem.campo);
+      const y = valorDaColuna(b, ordem.campo);
+      const r = coluna.tipo === 'numero'
+        ? (Number(x) || 0) - (Number(y) || 0)
+        : String(x || '').localeCompare(String(y || ''), 'pt-BR');
+      return ordem.desc ? -r : r;
+    });
+
+    // A seta mora no cabeçalho e diz por onde a lista está ordenada. Sem ela,
+    // ordenar é um efeito que acontece e não se explica.
+    [...cabecalho.children].forEach((th, i) => {
+      const ativa = COLUNAS[i].k === ordem.campo;
+      th.classList.toggle('ordenavel--ativa', ativa);
+      th.setAttribute('aria-sort', ativa ? (ordem.desc ? 'descending' : 'ascending') : 'none');
+      th.lastChild.textContent = ativa ? (ordem.desc ? '▾' : '▴') : '';
+    });
+
     limpar(corpo);
     if (!visiveis.length) {
       corpo.appendChild(el('tr', {}, [el('td', { colspan: '6' }, [nada('Nenhum município encontrado.')])]));
@@ -666,7 +767,7 @@ export async function painelDestinacoes(container) {
       const detalhe = el('tr', { class: 'linha-detalhe', hidden: true }, [
         el('td', { colspan: '6' }, [detalhesDaCidade(m)]),
       ]);
-      const linha = el('tr', {
+      const linhaCidade = el('tr', {
         class: 'linha-municipio',
         tabindex: '0',
         role: 'button',
@@ -679,18 +780,234 @@ export async function painelDestinacoes(container) {
           el('strong', { texto: m.municipio }),
           m.regiao ? el('span', { class: 'topo-sub', texto: m.regiao }) : null,
         ].filter(Boolean)),
-        el('td', { texto: String(m.destinacoes.length) }),
-        el('td', { class: 'num', texto: m.destinado ? fmtDinheiro(m.destinado) : '—' }),
-        el('td', { class: 'num', texto: m.empenhado ? fmtDinheiro(m.empenhado) : '—' }),
-        el('td', { class: 'num', texto: m.pago ? fmtDinheiro(m.pago) : '—' }),
-        el('td', {}, [etiqueta(situacao.texto, situacao.cor)]),
+        el('td', { class: 'num', 'data-rotulo': 'Destinações', texto: String(m.destinacoes.length) }),
+        el('td', { class: 'num', 'data-rotulo': 'Destinado', texto: m.destinado ? fmtDinheiro(m.destinado) : '—' }),
+        el('td', { class: 'num', 'data-rotulo': 'Empenhado', texto: m.empenhado ? fmtDinheiro(m.empenhado) : '—' }),
+        el('td', { class: 'num', 'data-rotulo': 'Pago', texto: m.pago ? fmtDinheiro(m.pago) : '—' }),
+        el('td', { 'data-rotulo': 'Situação' }, [etiqueta(situacao.texto, situacao.cor)]),
       ]);
-      corpo.appendChild(linha);
+      corpo.appendChild(linhaCidade);
       corpo.appendChild(detalhe);
+      // A cidade que veio do mapa abre sozinha: quem clicou nela já disse o que
+      // queria ver, e obrigar um segundo clique é cobrar duas vezes pelo mesmo
+      // pedido.
+      if (abrir && semAcentoLocal(m.municipio) === abrir) {
+        detalhe.hidden = false;
+        linhaCidade.classList.add('linha-municipio--alvo');
+      }
     });
+    if (abrir) corpo.querySelector('.linha-municipio--alvo')?.scrollIntoView({ block: 'center' });
   }
 
   desenhar();
 }
 
 const semAcentoLocal = (t) => String(t ?? '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+
+// ─────────────────────────── orçamento: dashboard ───────────────────────────
+
+/**
+ * O que salta aos olhos, antes de qualquer busca.
+ *
+ * A tela por município responde "quanto foi para Erechim" para quem já sabe que
+ * é Erechim. O dashboard responde outra coisa, que se pergunta com a mesma
+ * frequência e não tem onde ser respondida: onde o mandato chegou, o que é
+ * grande, e o que está parado.
+ */
+export function destaquesDasDestinacoes(destinacoes, cidades) {
+  const somar = (lista, campo) => lista.reduce((t, d) => t + (Number(d[campo]) || 0), 0);
+  const agrupar = (campo) => {
+    const mapa = new Map();
+    for (const d of destinacoes) {
+      const k = d[campo] || 'sem';
+      if (!mapa.has(k)) mapa.set(k, { chave: k, quantas: 0, valor: 0 });
+      const g = mapa.get(k);
+      g.quantas += 1;
+      g.valor += Number(d.valorDestinado) || 0;
+    }
+    return [...mapa.values()].sort((a, b) => b.valor - a.valor);
+  };
+
+  // Impedido e perdido são o que a prefeitura vai perguntar, e o que ninguém
+  // quer descobrir na frente dela.
+  const travadas = destinacoes
+    .filter((d) => d.situacao === 'impedido' || d.situacao === 'perdido')
+    .sort((a, b) => (b.valorDestinado || 0) - (a.valorDestinado || 0));
+
+  return {
+    destinado: somar(destinacoes, 'valorDestinado'),
+    maiores: [...destinacoes].sort((a, b) => (b.valorDestinado || 0) - (a.valorDestinado || 0)).slice(0, 8),
+    cidades: cidades.slice(0, 8),
+    porArea: agrupar('area'),
+    porAno: agrupar('ano').sort((a, b) => String(b.chave).localeCompare(String(a.chave))),
+    porSituacao: agrupar('situacao'),
+    travadas: travadas.slice(0, 8),
+    valorTravado: somar(travadas, 'valorDestinado'),
+    aConciliar: destinacoes.filter((d) => d.divergente).length,
+  };
+}
+
+/** Uma barra por item, com o valor à direita. */
+function barrasDestaque(itens, total, rotulo = (x) => x) {
+  if (!itens.length) return nada('Sem dados.');
+  const maior = Math.max(...itens.map((i) => i.valor), 1);
+  return el('ul', { class: 'barras' }, itens.map((i) => el('li', { class: 'barra-linha' }, [
+    el('span', { class: 'barra-rotulo', texto: rotulo(i.chave) }),
+    el('span', { class: 'barra-trilho' }, [
+      el('span', { class: 'barra-cheia', style: `width:${Math.max(2, (i.valor / maior) * 100)}%` }),
+    ]),
+    el('span', { class: 'barra-valor num', texto: fmtDinheiroCurto(i.valor) }),
+    el('span', { class: 'barra-conta', texto: `${i.quantas}` }),
+  ])));
+}
+
+/** Leva à tela por município já procurando aquela cidade. */
+function irParaCidade(nome) {
+  try { sessionStorage.setItem('municipioAlvo', nome); } catch { /* segue sem o atalho */ }
+  location.hash = '#/orcamento/por-municipio';
+}
+
+export async function painelDashboardOrcamento(container) {
+  limpar(container).appendChild(carregando());
+  const { sessao } = await import('./sessao.js');
+  const destinacoes = await listar('destinacoes', { recarregar: true });
+  const cidades = consolidarDestinacoes(destinacoes);
+  const uf = sessao.gabinete?.uf || null;
+
+  limpar(container);
+  container.appendChild(el('header', { class: 'modulo-topo' }, [
+    el('div', { class: 'modulo-titulo' }, [
+      el('h1', { texto: 'Dashboard' }),
+      el('p', { texto: 'Onde o mandato chegou, o que é grande e o que está parado. Clique numa cidade do mapa para ver as emendas dela.' }),
+    ]),
+  ]));
+
+  if (!destinacoes.length) {
+    container.appendChild(nada('Nada importado ainda. Comece pelo Mapa de emendas, em Por município.'));
+    return;
+  }
+
+  const d = destaquesDasDestinacoes(destinacoes, cidades);
+
+  container.appendChild(el('div', { class: 'indicadores' }, [
+    indicador('Municípios', String(cidades.length), 'neutro'),
+    indicador('Destinações', String(destinacoes.length), 'neutro'),
+    indicador('Destinado', fmtDinheiroCurto(d.destinado), 'info', fmtDinheiro(d.destinado)),
+    d.travadas.length
+      ? indicador('Travado', fmtDinheiroCurto(d.valorTravado), 'critico', `${d.travadas.length} impedidas ou perdidas`)
+      : null,
+    d.aConciliar ? indicador('A conciliar', String(d.aConciliar), 'atencao', 'fontes divergem') : null,
+  ].filter(Boolean)));
+
+  // ── o mapa ──
+  const caixaMapa = el('section', { class: 'bloco bloco--mapa' }, [
+    el('header', { class: 'bloco-topo' }, [
+      el('h2', { texto: uf ? `Onde o mandato chegou em ${uf}` : 'Onde o mandato chegou' }),
+      el('span', { class: 'bloco-contagem', texto: `${cidades.length} municípios` }),
+    ]),
+    el('p', { class: 'campo-dica', texto: 'Carregando a malha municipal do IBGE…' }),
+  ]);
+  container.appendChild(caixaMapa);
+
+  // ── os destaques ──
+  const grade = el('div', { class: 'grade-paineis' });
+
+  grade.appendChild(bloco('Maiores destinações', null, [
+    el('ul', { class: 'lista' }, d.maiores.map((x) => linha(
+      `${x.beneficiario || x.instituicao || 'sem beneficiário'} · ${x.municipio}`,
+      [x.ano, x.objeto].filter(Boolean).join(' · ').slice(0, 110),
+      etiqueta(fmtDinheiroCurto(x.valorDestinado), 'info'),
+    ))),
+  ]));
+
+  grade.appendChild(bloco('Cidades mais atendidas', null, [
+    el('ul', { class: 'lista' }, d.cidades.map((c) => el('li', {
+      class: 'linha linha--clicavel',
+      tabindex: '0',
+      role: 'button',
+      onclick: () => irParaCidade(c.municipio),
+      onkeydown: (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); irParaCidade(c.municipio); } },
+    }, [
+      el('div', { class: 'linha-texto' }, [
+        el('span', { class: 'linha-principal', texto: c.municipio }),
+        el('span', { class: 'linha-secundaria', texto: `${c.destinacoes.length} destinações${c.regiao ? ` · ${c.regiao}` : ''}` }),
+      ]),
+      etiqueta(fmtDinheiroCurto(c.destinado), 'info'),
+    ]))),
+  ]));
+
+  grade.appendChild(bloco('Por área', null, [
+    barrasDestaque(d.porArea, d.destinado, (k) => ROTULO_AREA[k] || 'Sem área'),
+  ]));
+
+  grade.appendChild(bloco('Por ano', null, [
+    barrasDestaque(d.porAno, d.destinado, (k) => String(k)),
+  ]));
+
+  grade.appendChild(bloco('Em que pé está', null, [
+    barrasDestaque(d.porSituacao, d.destinado, (k) => ROTULO_SITUACAO[k] || 'Sem situação'),
+  ]));
+
+  if (d.travadas.length) {
+    // Primeiro assunto de qualquer visita: a prefeitura vai perguntar.
+    grade.appendChild(bloco('Travado — impedido ou perdido', `${d.travadas.length}`, [
+      el('ul', { class: 'lista' }, d.travadas.map((x) => linha(
+        `${x.municipio} · ${x.beneficiario || x.instituicao || ''}`.trim(),
+        (x.situacaoOriginal || x.objeto || '').slice(0, 120),
+        etiqueta(fmtDinheiroCurto(x.valorDestinado), 'critico'),
+      ))),
+    ]));
+  }
+
+  container.appendChild(grade);
+
+  // ── a malha, por último e sem bloquear ──
+  //
+  // Se o IBGE não responder, o dashboard inteiro acima já respondeu. O mapa é o
+  // que torna a leitura instantânea, não o que a torna possível.
+  let mapaMod = null;
+  try {
+    mapaMod = await import('./mapa.js');
+  } catch (erro) {
+    console.warn('mapa indisponível:', erro.message);
+  }
+
+  const valores = new Map();
+  if (mapaMod) {
+    for (const c of cidades) {
+      if (!c.municipio) continue;
+      valores.set(mapaMod.semAcento(c.municipio), c.destinado || c.empenhado || c.pago);
+    }
+  }
+
+  const malha = mapaMod && uf ? await mapaMod.malhaDoEstado(uf) : null;
+  const desenho = malha
+    ? mapaMod.desenharMalha(malha, { valores, aoClicar: irParaCidade, largura: 620 })
+    : null;
+
+  limpar(caixaMapa).appendChild(el('header', { class: 'bloco-topo' }, [
+    el('h2', { texto: uf ? `Onde o mandato chegou em ${uf}` : 'Onde o mandato chegou' }),
+    el('span', { class: 'bloco-contagem', texto: `${cidades.length} municípios atendidos` }),
+  ]));
+
+  if (desenho) {
+    caixaMapa.appendChild(el('div', { class: 'mapa-caixa mapa-caixa--medio' }, [desenho.svg]));
+    caixaMapa.appendChild(legendaDoMapa(desenho.cortes, mapaMod.TONS));
+    caixaMapa.appendChild(el('p', { class: 'campo-dica', texto: 'Clique numa cidade pintada para ver as emendas dela.' }));
+  } else {
+    caixaMapa.appendChild(el('p', { class: 'campo-dica', texto: uf
+      ? 'A malha municipal do IBGE não respondeu agora. Os destaques abaixo respondem sem ela.'
+      : 'Informe a UF do gabinete em Acessos → Dados do gabinete para desenhar o mapa.' }));
+  }
+}
+
+function legendaDoMapa(cortes, tons) {
+  return el('div', { class: 'mapa-legenda' }, [
+    el('span', { class: 'campo-dica', texto: 'menos' }),
+    ...tons.map((cor) => el('i', { class: 'mapa-tom', style: `background:${cor}` })),
+    el('span', { class: 'campo-dica', texto: 'mais' }),
+    cortes.length
+      ? el('span', { class: 'campo-dica', texto: `faixas em ${cortes.map(fmtDinheiroCurto).join(' · ')}` })
+      : null,
+  ].filter(Boolean));
+}

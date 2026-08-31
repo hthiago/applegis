@@ -678,15 +678,72 @@ console.log('\nDestinações de emenda\n');
   conferir('a tela soma por cidade sem repetir o convênio compartilhado',
     Math.round(cidades.reduce((t, c) => t + c.empenhado, 0)) === 59965628,
     `${cidades.length} cidades`);
+
+  // A planilha foi digitada por muitas mãos: "Caxias do sul", "Caxias Do Sul" e
+  // "Caxias do Sul" são o mesmo lugar, e três linhas com um terço do valor cada
+  // respondem errado a pergunta que a tela existe para responder.
+  const caxias = cidades.filter((c) => /^caxias do sul$/i.test(c.municipio));
+  conferir('a cidade escrita de três jeitos vira uma linha só',
+    caxias.length === 1 && caxias[0].destinacoes.length === 15,
+    caxias.map((c) => `${c.municipio}: ${c.destinacoes.length}`).join(' · '));
+  conferir('e fica com a grafia que se escreve, não com uma inventada',
+    caxias[0].municipio === 'Caxias do Sul', caxias[0].municipio);
+  conferir('as 298 grafias do arquivo são 292 municípios',
+    cidades.length === 292, `${cidades.length} cidades`);
+  // A escolha é entre grafias vistas: caixa automática produziria "Caxias Do
+  // Sul", que está errado em português e ninguém escreveu.
+  conferir('entre grafias, vence a que segue a norma — não a mais frequente',
+    de.nomeCanonico(new Map([['Caxias Do Sul', 9], ['Caxias do Sul', 1]])) === 'Caxias do Sul');
+  conferir('e sem nenhuma candidata boa, devolve a que mais aparece',
+    de.nomeCanonico(new Map([['SANTA MARIA', 2], ['santa maria', 5]])) === 'santa maria');
   const erechim = cidades.find((c) => /Erechim/i.test(c.municipio));
   conferir('e cada cidade traz as destinações dela para o clique',
     !!erechim && erechim.destinacoes.length > 0,
     erechim ? `${erechim.municipio}: ${erechim.destinacoes.length} destinações` : 'sem Erechim');
 }
 
+/**
+ * Malha e nomes do IBGE, de mentira.
+ *
+ * Ficam aqui, fora dos blocos, porque a malha é guardada em localStorage e o
+ * localStorage é do domínio, não da página: dois testes com fixtures diferentes
+ * fariam o segundo ler o cache do primeiro e falhar por um motivo que não é o
+ * dele. Uma fixture só, e o cache compartilhado passa a ser mais um caminho
+ * exercitado em vez de uma armadilha.
+ */
+const malhaFalsa = {
+  type: 'FeatureCollection',
+  features: [
+    { properties: { codarea: '4306957' }, geometry: { type: 'Polygon', coordinates: [[[-52, -27], [-51, -27], [-51, -28], [-52, -28], [-52, -27]]] } },
+    { properties: { codarea: '4300034' }, geometry: { type: 'Polygon', coordinates: [[[-54, -31], [-53, -31], [-53, -32], [-54, -32], [-54, -31]]] } },
+    { properties: { codarea: '4309050' }, geometry: { type: 'Polygon', coordinates: [[[-51, -29], [-50, -29], [-50, -30], [-51, -30], [-51, -29]]] } },
+  ],
+};
+const nomesFalsos = [
+  {
+    id: 4306957,
+    nome: 'Erechim',
+    microrregiao: { nome: 'Erechim', mesorregiao: { nome: 'Noroeste Rio-Grandense', UF: { sigla: 'RS' } } },
+    'regiao-imediata': { nome: 'Erechim' },
+  },
+  { id: 4300034, nome: 'Aceguá' },
+  { id: 4309050, nome: 'Gramado' },
+];
+
 // ── a tela por município, com o arquivo de verdade ──
 {
   const pagina = await abrir();
+
+  // O IBGE, de mentira: três municípios do RS bastam para o mapa existir, ter
+  // cor e receber clique. Depender da rede aqui faria um teste que falha por
+  // motivo alheio ao que ele mede.
+  await pagina.route(/servicodados\.ibge\.gov\.br\/api\/v3\/malhas/, (rota) => rota.fulfill({
+    status: 200, contentType: 'application/json', body: JSON.stringify(malhaFalsa),
+  }));
+  await pagina.route(/servicodados\.ibge\.gov\.br\/api\/v1\/localidades\/estados\/\d+\/municipios/, (rota) => rota.fulfill({
+    status: 200, contentType: 'application/json', body: JSON.stringify(nomesFalsos),
+  }));
+
   await pagina.goto(`${BASE}/#/orcamento/por-municipio`, { waitUntil: 'domcontentloaded' });
   await pagina.waitForSelector('.modulo-topo', { timeout: 15000 });
 
@@ -721,8 +778,29 @@ console.log('\nDestinações de emenda\n');
   await pagina.locator('.linha-municipio').first().click();
   await pagina.waitForTimeout(400);
   const detalhe = (await pagina.locator('.linha-detalhe:not([hidden])').first().innerText()).replace(/\s+/g, ' ');
-  conferir('clicar numa cidade mostra destinação por destinação',
-    /Destinado R\$/.test(detalhe) && detalhe.length > 60, detalhe.slice(0, 200));
+  // Cartão não se compara: para saber qual destinação é a maior, os olhos
+  // tinham de percorrer parágrafos. Em linha, a comparação é o desenho.
+  conferir('clicar numa cidade abre as destinações em linhas, não em cartões',
+    (await pagina.locator('.tabela--destinacoes').count()) >= 1
+    && /QUEM RECEBEU/i.test(detalhe) && /R\$/.test(detalhe), detalhe.slice(0, 200));
+  conferir('e cada destinação é uma linha da tabela',
+    (await pagina.locator('.tabela--destinacoes tbody tr').count()) > 0);
+
+  // Uma lista de trezentas cidades tem mais de uma pergunta: "quem recebeu
+  // mais" e "onde está Xanxerê" não se respondem com a mesma ordem.
+  const primeiraCidade = async () => (await pagina.locator('.linha-municipio td strong').first().innerText());
+  const porValor = await primeiraCidade();
+  await pagina.locator('th.ordenavel', { hasText: 'Município' }).click();
+  await pagina.waitForTimeout(300);
+  const porNome = await primeiraCidade();
+  conferir('clicar no cabeçalho reordena a lista',
+    porValor !== porNome, `por valor: ${porValor} · por nome: ${porNome}`);
+  conferir('e a coluna ordenada mostra a seta',
+    /[▾▴]/.test(await pagina.locator('th.ordenavel--ativa').innerText()));
+  await pagina.locator('th.ordenavel', { hasText: 'Município' }).click();
+  await pagina.waitForTimeout(300);
+  conferir('clicar de novo na mesma coluna inverte a ordem',
+    (await primeiraCidade()) !== porNome, await primeiraCidade());
 
   // A segunda planilha confirma valores no que já existe.
   await pagina.setInputFiles('.importador:has(button:text-is("Confirmar pelo painel")) input[type=file]', path.join(RAIZ, 'teste', 'amostras', 'painel-governo.xlsx'));
@@ -746,6 +824,56 @@ console.log('\nDestinações de emenda\n');
   // R$ 95 mi que sairiam de somar linha a linha.
   conferir('e o empenhado da tela é o contado uma vez por convênio',
     /59\.965\.627,57/.test(indicadores), indicadores.slice(0, 260));
+
+  // ── o dashboard ──
+  //
+  // A tela por município responde "quanto foi para Erechim" a quem já sabe que
+  // é Erechim. O dashboard responde a outra pergunta, que se faz com a mesma
+  // frequência e não tinha onde: onde o mandato chegou, o que é grande, e o que
+  // está parado.
+  await pagina.goto(`${BASE}/#/orcamento/dashboard`, { waitUntil: 'domcontentloaded' });
+  await pagina.waitForSelector('.indicadores', { timeout: 15000 });
+
+  const painel = (await pagina.locator('#app').innerText()).replace(/\s+/g, ' ');
+  conferir('o dashboard abre com os números do conjunto',
+    /Munic[íi]pios/i.test(painel) && /292/.test(painel) && /758/.test(painel),
+    painel.slice(0, 200));
+  conferir('e traz os destaques que a visita vai perguntar',
+    ['Maiores destinações', 'Cidades mais atendidas', 'Por área', 'Por ano', 'Em que pé está']
+      .every((t) => painel.includes(t)),
+    painel.slice(0, 300));
+  conferir('as barras dizem quanto e quantas, não só a cor',
+    (await pagina.locator('.barra-linha').count()) > 0
+    && (await pagina.locator('.barra-linha .barra-valor').first().innerText()).includes('R$'));
+
+  // O mapa é de tamanho médio de propósito: grande o bastante para acertar o
+  // clique numa cidade pequena, pequeno o bastante para caber com os destaques.
+  await pagina.waitForSelector('.mapa-caixa--medio svg', { timeout: 15000 });
+  conferir('o mapa desenha os municípios da malha',
+    (await pagina.locator('.mapa-caixa--medio .mapa-municipio').count()) === 3);
+  conferir('e só as cidades atendidas convidam ao clique',
+    (await pagina.locator('.mapa-municipio--com-emenda').count()) >= 1);
+
+  // O pedido, na letra: clicar na cidade leva às emendas dela.
+  await pagina.locator('.mapa-municipio--com-emenda').first().click();
+  await pagina.waitForSelector('.tabela--municipios', { timeout: 15000 });
+  conferir('clicar numa cidade do mapa leva às emendas dela',
+    /por-municipio/.test(pagina.url())
+    && (await pagina.locator('.linha-municipio--alvo').count()) === 1,
+    pagina.url());
+  conferir('e a cidade chega já aberta, sem cobrar um segundo clique',
+    (await pagina.locator('.linha-municipio--alvo + .linha-detalhe:not([hidden]) .tabela--destinacoes').count()) === 1);
+
+  // O mesmo caminho pela lista de cidades do dashboard, para quem não mira bem
+  // num município pequeno.
+  await pagina.goto(`${BASE}/#/orcamento/dashboard`, { waitUntil: 'domcontentloaded' });
+  await pagina.waitForSelector('.linha--clicavel', { timeout: 15000 });
+  const cidadeDestaque = await pagina.locator('.linha--clicavel .linha-principal').first().innerText();
+  await pagina.locator('.linha--clicavel').first().click();
+  await pagina.waitForSelector('.linha-municipio--alvo', { timeout: 15000 });
+  conferir('a lista de cidades mais atendidas leva ao mesmo lugar',
+    (await pagina.locator('.linha-municipio--alvo td strong').innerText()) === cidadeDestaque,
+    cidadeDestaque);
 
   await pagina.close();
 }
@@ -1336,33 +1464,6 @@ console.log('\nDestinações de emenda\n');
     && /Censo \(2022\)/.test(dados.fonteEconomia), JSON.stringify(dados));
 }
 
-/**
- * Malha e nomes do IBGE, de mentira.
- *
- * Ficam aqui, fora dos blocos, porque a malha é guardada em localStorage e o
- * localStorage é do domínio, não da página: dois testes com fixtures diferentes
- * fariam o segundo ler o cache do primeiro e falhar por um motivo que não é o
- * dele. Uma fixture só, e o cache compartilhado passa a ser mais um caminho
- * exercitado em vez de uma armadilha.
- */
-const malhaFalsa = {
-  type: 'FeatureCollection',
-  features: [
-    { properties: { codarea: '4306957' }, geometry: { type: 'Polygon', coordinates: [[[-52, -27], [-51, -27], [-51, -28], [-52, -28], [-52, -27]]] } },
-    { properties: { codarea: '4300034' }, geometry: { type: 'Polygon', coordinates: [[[-54, -31], [-53, -31], [-53, -32], [-54, -32], [-54, -31]]] } },
-    { properties: { codarea: '4309050' }, geometry: { type: 'Polygon', coordinates: [[[-51, -29], [-50, -29], [-50, -30], [-51, -30], [-51, -29]]] } },
-  ],
-};
-const nomesFalsos = [
-  {
-    id: 4306957,
-    nome: 'Erechim',
-    microrregiao: { nome: 'Erechim', mesorregiao: { nome: 'Noroeste Rio-Grandense', UF: { sigla: 'RS' } } },
-    'regiao-imediata': { nome: 'Erechim' },
-  },
-  { id: 4300034, nome: 'Aceguá' },
-  { id: 4309050, nome: 'Gramado' },
-];
 
 // As quatro abas saem da navegação sem sair do sistema: oito campos de outros
 // módulos apontam para `equipe` em "Responsável", e apagar a coleção quebraria

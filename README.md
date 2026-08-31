@@ -146,6 +146,21 @@ cidade, para este beneficiário, para este objeto*. Uma emenda se reparte entre 
 de cidades, e é cada pedaço que o assessor acompanha. O Mapa de emendas do gabinete
 sempre funcionou assim: 758 destinações para 67 emendas, de 2019 a 2026.
 
+### Duas telas, duas perguntas
+
+*Orçamento › **Por município*** responde **"quanto foi para Erechim, e já foi pago?"** —
+a pergunta de quem já sabe qual é a cidade. A lista se ordena por qualquer coluna ao
+clique (número por maior, nome em ordem alfabética; o segundo clique inverte), e clicar
+numa cidade abre as destinações dela em linhas, com Ano, Emenda, Área e os três valores
+alinhados para comparar.
+
+*Orçamento › **Dashboard*** responde à outra, que se faz com a mesma frequência e não
+tinha onde: **onde o mandato chegou, o que é grande e o que está parado.** Traz os
+números do conjunto, um mapa do estado pintado pelo destinado — **clicar numa cidade
+leva às emendas dela, já abertas** — e os destaques: maiores destinações, cidades mais
+atendidas, por área, por ano, em que pé está, e o que está **travado (impedido ou
+perdido)**, que é o primeiro assunto de qualquer visita.
+
 ### Duas planilhas, dois botões
 
 Em *Orçamento › Por município*:
@@ -179,6 +194,14 @@ Nada é conciliado automaticamente: foi isso que produziu, nas versões anterior
 **O valor do painel é do convênio, não da linha.** Cinco compras de equipamento sob a
 mesma emenda casam com um convênio só; somar por linha contaria o mesmo repasse cinco
 vezes — R$ 95 milhões onde há R$ 60. A tela conta uma vez por convênio.
+
+**A cidade escrita de três jeitos é uma cidade só.** A planilha foi digitada por muitas
+mãos ao longo de sete anos e traz "Caxias do sul", "Caxias Do Sul" e "Caxias do Sul"
+como se fossem lugares diferentes — três linhas com um terço do valor cada, e a tela
+respondendo errado justamente a pergunta que ela existe para responder. As 298 grafias
+do arquivo são **292 municípios**. A grafia que aparece na tela é escolhida entre as que
+foram escritas, nunca inventada: caixa automática produziria "Caxias Do Sul", que está
+errado em português.
 
 ### Três campos que não existem em planilha nenhuma
 

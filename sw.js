@@ -2,7 +2,7 @@
 // uma queda de rede. Os dados do gabinete nunca são cacheados — eles vêm sempre
 // do Firestore, que já tem cache próprio e controle de permissão.
 
-const VERSAO = 'gabinete-v24';
+const VERSAO = 'gabinete-v25';
 const CASCA = [
   './',
   './index.html',
@@ -24,6 +24,10 @@ const CASCA = [
   './js/temas.js',
   './js/planilha.js',
   './js/destinacoes.js',
+  // Carregados por import dinâmico: fora da casca, o dashboard sem rede
+  // desenhava indicadores e ficava sem mapa.
+  './js/mapa.js',
+  './js/ficha.js',
   './js/fontes.js',
   './js/ui.js',
 ];

@@ -1248,3 +1248,60 @@ input:focus, select:focus, textarea:focus { border-color: var(--verde); outline:
    eles importa, e a dica é onde ela se diz. */
 .modulo-acoes--importar { flex-wrap: wrap; align-items: center; gap: .5rem .6rem; }
 .modulo-acoes--importar .campo-dica { flex-basis: 100%; margin: 0; }
+
+/* ── orçamento: ordenar, detalhar, e o dashboard ─────────────────────────
+   Três pedidos do gabinete, e cada um resolve uma leitura diferente da mesma
+   base: escolher a ordem, comparar destinações lado a lado, e ver de longe
+   onde o mandato chegou. */
+
+/* Cabeçalho que ordena. A seta não é enfeite: sem ela, a lista muda de ordem
+   e não diz por quê. */
+.tabela th.ordenavel {
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+.tabela th.ordenavel:hover,
+.tabela th.ordenavel:focus-visible { color: var(--ink); background: var(--rule); outline: none; }
+.tabela th.ordenavel--ativa { color: var(--ink); }
+.seta-ordem { display: inline-block; width: .8em; margin-left: .25em; }
+
+/* As destinações da cidade, em linhas dentro da linha aberta. Fundo próprio
+   para que se leia como detalhe, e não como uma segunda tabela solta. */
+.tabela--destinacoes { font-size: 13px; background: var(--surface); }
+.tabela--destinacoes th { background: transparent; border-bottom: 1px solid var(--rule); }
+.tabela--destinacoes tbody tr { cursor: default; }
+.tabela--destinacoes tbody tr:hover { background: transparent; }
+.sublinha td:first-child { display: flex; flex-direction: column; gap: .12rem; max-width: 34rem; }
+/* Onde as duas fontes não batem: a marca fica na linha porque é ali que a
+   conciliação vai ser feita, caso a caso. */
+.sublinha--divergente > td:first-child { border-left: 3px solid #c98a00; padding-left: 11px; }
+.sublinha-nota { font-style: italic; }
+
+/* Uma barra por item: rótulo, trilho, valor e a contagem no fim. */
+.barra-linha {
+  display: flex; align-items: center; gap: .6rem;
+  font-size: 13px;
+}
+.barra-rotulo { flex: 0 0 8.5rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.barra-linha .barra-trilho { flex: 1 1 auto; min-width: 3rem; }
+.barra-cheia { display: block; height: 100%; border-radius: 4px; background: #75a7bf; }
+.barra-valor { flex: 0 0 auto; font-variant-numeric: tabular-nums; }
+.barra-conta { flex: 0 0 2.2rem; text-align: right; color: var(--ink-3); font-size: 12px; }
+
+/* Linha de lista que leva a outra tela. */
+.linha--clicavel { cursor: pointer; border-radius: 6px; }
+.linha--clicavel:hover,
+.linha--clicavel:focus-visible { background: var(--surface-2); outline: none; }
+
+/* O mapa do dashboard é médio de propósito: grande o bastante para acertar o
+   clique numa cidade pequena, pequeno o bastante para caber junto dos
+   destaques na mesma tela. */
+.mapa-caixa--medio { max-width: 620px; margin: .4rem auto 0; }
+
+@media (max-width: 760px) {
+  /* Empilhado, o rótulo fixo da barra desperdiça a largura que o trilho
+     precisa para dizer alguma coisa. */
+  .barra-rotulo { flex: 0 0 6rem; }
+  .sublinha td:first-child { max-width: none; }
+}
