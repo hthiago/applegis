@@ -1,6 +1,7 @@
 import { CONFIGURADO, AREAS, PAPEIS, podeEditar, podeEditarAgenda, podeEditarTarefas, ehAdmin } from './config.js';
 import { modulosDaArea, porId } from './modulos.js';
 import { el, limpar, aviso, carregando, vazio, fmtDinheiro, fmtDinheiroCurto, modal } from './ui.js';
+import { aplicarCorDoPartido } from './partidos.js';
 
 /**
  * Montagem da aplicação.
@@ -253,16 +254,22 @@ function areaInicial() {
   return ehAdmin(nucleo.sessaoMod.sessao.membro) ? 'acessos' : 'chefia';
 }
 
+/**
+ * O cabeçalho como quem abre um documento: quem assina, em cima, e o resto
+ * embaixo. O chip "GAB" que ficava aqui não dizia nada que o nome ao lado já não
+ * dissesse — era enfeite ocupando o lugar mais nobre da tela.
+ */
 function cabecalho() {
   const s = nucleo.sessaoMod.sessao;
+  const g = s.gabinete || {};
+  const identificacao = [g.deputado, g.partido, g.uf].filter(Boolean);
   return el('header', { class: 'topo' }, [
     el('div', { class: 'topo-marca' }, [
-      el('span', { class: 'topo-sigla', texto: 'GAB' }),
-      el('div', {}, [
-        el('strong', { texto: s.gabinete?.nome || 'Gabinete' }),
-        s.gabinete?.deputado ? el('span', { class: 'topo-sub', texto: s.gabinete.deputado }) : null,
-      ]),
-    ]),
+      el('strong', { texto: g.nome || 'Gabinete' }),
+      identificacao.length
+        ? el('span', { class: 'topo-sub', texto: identificacao.join(' · ') })
+        : null,
+    ].filter(Boolean)),
     el('div', { class: 'topo-direita' }, [
       el('div', { class: 'usuario-menu' }, [
         el('span', { class: 'usuario-nome', texto: s.membro.nome }),
@@ -279,19 +286,13 @@ function navegacao(areaAtual) {
     href: `#/${a.id}`,
     class: `nav-item${areaAtual === a.id ? ' nav-item--ativo' : ''}`,
     'aria-current': areaAtual === a.id ? 'page' : null,
-  }, [
-    el('span', { class: 'nav-sigla', texto: a.sigla }),
-    el('span', { class: 'nav-nome', texto: a.nome }),
-  ]));
+  }, [el('span', { class: 'nav-nome', texto: a.nome })]));
 
   if (ehAdmin(membro) || ['chefe', 'deputado'].includes(membro.papel)) {
     itens.push(el('a', {
       href: '#/acessos',
       class: `nav-item${areaAtual === 'acessos' ? ' nav-item--ativo' : ''}`,
-    }, [
-      el('span', { class: 'nav-sigla', texto: '••' }),
-      el('span', { class: 'nav-nome', texto: 'Acessos' }),
-    ]));
+    }, [el('span', { class: 'nav-nome', texto: 'Acessos' })]));
   }
 
   return el('nav', { class: 'nav', 'aria-label': 'Áreas' }, itens);
@@ -962,6 +963,10 @@ async function desenharApp() {
 }
 
 function desenhar() {
+  // O destaque da interface é a cor do partido do gabinete. Aplicada aqui, e
+  // não numa tela específica, porque ela vale para a tela inteira e precisa
+  // valer desde o primeiro desenho.
+  aplicarCorDoPartido(nucleo.sessaoMod.sessao.gabinete);
   switch (nucleo.sessaoMod.sessao.estado) {
     case 'carregando':
       limpar(raiz).appendChild(el('div', { class: 'tela-central' }, [carregando('Verificando seu acesso…')]));

@@ -11,7 +11,7 @@ function colecaoDe(caminho) {
 if (!globalThis.__BANCO_VAZIO_TESTE) {
   colecaoDe('sistema').set('instalado', { por: 'chefe@teste.br' });
   colecaoDe('gabinetes').set('g1', {
-    nome: 'Gabinete de Teste', deputado: 'Deputada Teste', uf: 'RS', idDeputadoCamara: 999,
+    nome: 'Gabinete de Teste', deputado: 'Deputada Teste', partido: 'NOVO', uf: 'RS', idDeputadoCamara: 999,
     whatsappParlamentar: '54999990000',
   });
   colecaoDe('autorizados').set('chefe@teste.br', {

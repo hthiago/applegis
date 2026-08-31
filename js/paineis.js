@@ -1424,7 +1424,13 @@ export async function painelFolhaMunicipio(container, cidadePedida) {
         el('strong', { texto: `Confira antes de citar · ${ROTULO_PRIORIDADE[d.prioridadeConciliacao]}` }),
         el('span', { texto: ` — ${d.beneficiario || d.instituicao || 'sem beneficiário'}, ${fmtDinheiro(d.valorDestinado || 0)} no mapa.` }),
         d.correcaoSugerida ? el('span', { class: 'topo-sub', texto: d.correcaoSugerida }) : null,
-        d.urlPublica ? el('span', { class: 'topo-sub', texto: d.urlPublica }) : null,
+        // Na tela, um link; no papel, o endereço inteiro, que a impressão
+        // acrescenta — ninguém clica numa folha impressa.
+        d.urlPublica
+          ? el('p', { class: 'topo-sub' }, [el('a', {
+            class: 'folha-fonte', href: d.urlPublica, target: '_blank', rel: 'noopener', texto: 'ver na fonte pública',
+          })])
+          : null,
       ].filter(Boolean))),
       ...travadas.map((d) => el('p', { class: 'folha-alerta' }, [
         el('strong', { texto: `${ROTULO_SITUACAO[d.situacao]} · ${fmtDinheiro(d.valorDestinado || 0)}` }),

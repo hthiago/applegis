@@ -28,10 +28,48 @@ falam direto com o Firebase pelo navegador — publicar é copiar a pasta.
 | `js/sessao.js` | Login, lista de autorizados e vínculo com o gabinete |
 | `js/admin.js` | Tela de liberação de acessos |
 | `js/camara.js` | Integração com os dados abertos da Câmara |
+| `js/partidos.js` | A cor de destaque, tirada da sigla do gabinete |
 | `firestore.rules` | **Onde as permissões realmente valem** |
 
 Para acrescentar um campo — ou uma tela inteira — mexe-se em `js/modulos.js`. A interface
 é derivada de lá.
+
+---
+
+## A linguagem visual
+
+Desenho editorial, função de documento institucional. As duas coisas juntas porque é o
+que o gabinete faz: a tela é para conferir, e a folha é para levar a uma reunião — e o
+que se leva a uma reunião não pode parecer painel de controle.
+
+**Régua no lugar de caixa.** A versão anterior desenhava tudo dentro de retângulos
+brancos com borda, canto e sombra: dezoito caixas numa tela, cada uma disputando a mesma
+atenção. Hierarquia se faz com tipografia e espaço; borda é para separar o que de fato é
+outra coisa. Os indicadores viraram uma faixa de números separados por régua, os blocos
+de painel perderam a moldura, e a tabela ficou sem caixa em volta.
+
+**A cor é sinal, não decoração.** São três camadas, e elas não se misturam:
+
+| Camada | Cor | Onde aparece |
+| --- | --- | --- |
+| Estrutura | Azul institucional | Links, barras de gráfico, o mapa. Igual para todo gabinete, porque a estrutura é do mandato e não do partido |
+| Destaque | **A cor do partido** | Onde se está e o que fazer agora: área atual, aba aberta, ação principal, foco do teclado |
+| Estado | Verde, âmbar, vermelho | Pago, empenhado, travado, a revisar — e só isso. É por isso que "travado" consegue gritar |
+
+A cor de destaque sai da **sigla do gabinete** (*Acessos → Dados do gabinete → Partido*),
+por `js/partidos.js`: uma variável CSS escrita no elemento raiz, que tudo que destaca lê.
+Trocar a sigla troca a tela inteira. Sigla fora da tabela não ganha cor inventada — cor de
+partido errada numa tela de gabinete é o tipo de detalhe que se nota antes de qualquer
+outra coisa.
+
+**Densidade equilibrada, fonte do sistema.** Linha de tabela de 38px e 24px entre blocos:
+cerca de vinte municípios sem rolar. Nenhuma fonte é baixada — o ganho vem de escala,
+peso e espaçamento. Números usam `tabular-nums` da própria fonte do sistema em vez de
+monoespaçada: alinha a coluna sem dar à tela um ar de terminal.
+
+Para ver o desenho em vez de lembrar dele: `node teste/retratos.mjs [pasta]` sobe o
+sistema com o duplo do Firebase, importa a planilha de verdade e fotografa as telas
+principais.
 
 ---
 

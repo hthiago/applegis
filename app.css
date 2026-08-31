@@ -1,87 +1,147 @@
-/* ─────────────────────────── tokens ─────────────────────────── */
+/* ══════════════════════════════════════════════════════════════════════════
+   A linguagem visual do sistema.
+
+   Desenho editorial, função de documento institucional. As duas coisas juntas
+   porque é o que o gabinete faz: a tela é para conferir e a folha é para levar
+   a uma reunião — e o que se leva a uma reunião não pode parecer painel de
+   controle.
+
+   Três decisões carregam o resto:
+
+   · Régua no lugar de caixa. A versão anterior desenhava tudo dentro de
+     retângulos brancos com borda, canto e sombra: dezoito caixas numa tela,
+     cada uma disputando a mesma atenção. Hierarquia se faz com tipografia e
+     espaço; borda é para separar o que de fato é outra coisa.
+
+   · A cor é sinal, não decoração. O azul institucional é a estrutura, igual
+     para todo gabinete, porque a estrutura é do mandato e não do partido. O
+     laranja — ou o que a sigla do gabinete mandar — é o destaque: onde se está
+     e o que fazer agora. Verde, âmbar e vermelho ficam reservados para estado,
+     e é por isso que "travado" consegue gritar.
+
+   · Nada de mono em número e rótulo. Tabular-nums na própria fonte do sistema
+     alinha as colunas sem que a tela pareça um terminal.
+   ══════════════════════════════════════════════════════════════════════════ */
+
 :root {
-  --paper: #F4F6F3;
+  /* ── papel e tinta ──
+     Neutros levemente quentes: sobre uma tela grande, cinza puro fica azulado
+     e o texto parece impresso em chumbo frio. */
+  --paper: #F7F7F4;
   --surface: #FFFFFF;
-  --surface-2: #EDF1EC;
-  --ink: #131B17;
-  --ink-2: #4C5A53;
-  --ink-3: #7C8A83;
-  --rule: #DBE1DA;
-  --rule-forte: #BAC5B9;
+  --surface-2: #F0F0EC;
+  --ink: #17191D;
+  --ink-2: #4B5058;
+  --ink-3: #838890;
+  --rule: #E4E3DE;
+  --rule-forte: #C9C8C1;
 
-  --verde: #1B5E4B;
-  --verde-2: #164E3E;
-  --verde-fraco: #E3EFEA;
-  --azul: #1F5F7A;
-  --azul-fraco: #E2EDF2;
+  /* ── azul institucional: a estrutura ── */
+  --azul: #1F4E79;
+  --azul-2: #17395A;
+  --azul-fraco: #E8EEF4;
+
+  /* ── o destaque: a cor do partido do gabinete ──
+     Sobrescrita em tempo de execução por js/partidos.js. O laranja é o padrão
+     porque é a cor deste gabinete; trocar a sigla troca a tela inteira. */
+  --destaque: #FF6A13;
+  --destaque-texto: color-mix(in oklab, var(--destaque) 76%, #101216);
+  --destaque-fraco: color-mix(in oklab, var(--destaque) 12%, var(--surface));
+  --destaque-linha: color-mix(in oklab, var(--destaque) 55%, var(--surface));
+
+  /* ── estado: verde, âmbar, vermelho, e nada mais ── */
+  --verde: #1E6B4B;
+  --verde-fraco: #E5EFE9;
   --ambar: #8A6712;
-  --ambar-fraco: #F5EEDA;
+  --ambar-fraco: #F6EFDC;
   --vermelho: #9C3520;
-  --vermelho-fraco: #F7E6E2;
+  --vermelho-fraco: #F8E7E3;
 
-  --sombra: 0 1px 2px rgba(19, 27, 23, .06);
-  --sombra-alta: 0 12px 40px rgba(19, 27, 23, .18);
+  --sombra: none;
+  --sombra-alta: 0 18px 50px rgba(23, 25, 29, .22);
 
   --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --mono: ui-monospace, SFMono-Regular, "Cascadia Mono", "Liberation Mono", Menlo, Consolas, monospace;
 
-  --raio: 6px;
-  --nav-larg: 216px;
+  /* ── escala tipográfica ──
+     Saltos grandes em cima, passos curtos embaixo: é o que dá ar editorial sem
+     custar linha de tabela. */
+  --t-pagina: 30px;
+  --t-secao: 17px;
+  --t-bloco: 14.5px;
+  --t-corpo: 14px;
+  --t-menor: 13px;
+  --t-micro: 11.5px;
+
+  /* ── ritmo ──
+     Densidade equilibrada: linha de 38px, respiro de 24px entre blocos. */
+  --linha-alta: 9px;
+  --respiro: 24px;
+  --raio: 4px;
+  --nav-larg: 168px;
+  --topo-alt: 58px;
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --paper: #0D1310;
-    --surface: #151D19;
-    --surface-2: #1C2521;
-    --ink: #E7EEE9;
-    --ink-2: #9DACA4;
-    --ink-3: #77877F;
-    --rule: #26302A;
-    --rule-forte: #3A463E;
+    --paper: #101215;
+    --surface: #16181C;
+    --surface-2: #1D2025;
+    --ink: #E9EAEC;
+    --ink-2: #A3A8B0;
+    --ink-3: #7B8189;
+    --rule: #282C32;
+    --rule-forte: #3C424A;
 
-    --verde: #59C4A0;
-    --verde-2: #7BD5B7;
-    --verde-fraco: #162C24;
-    --azul: #74B8D6;
-    --azul-fraco: #142630;
-    --ambar: #D6A93F;
-    --ambar-fraco: #2A2414;
-    --vermelho: #E2836C;
-    --vermelho-fraco: #2E1915;
+    --azul: #7FB3DA;
+    --azul-2: #A2CBE9;
+    --azul-fraco: #16242F;
 
-    --sombra: 0 1px 2px rgba(0, 0, 0, .4);
-    --sombra-alta: 0 12px 40px rgba(0, 0, 0, .6);
+    --destaque-texto: color-mix(in oklab, var(--destaque) 82%, #FFFFFF);
+    --destaque-fraco: color-mix(in oklab, var(--destaque) 16%, var(--surface));
+    --destaque-linha: color-mix(in oklab, var(--destaque) 60%, var(--surface));
+
+    --verde: #5FBF95;
+    --verde-fraco: #14251E;
+    --ambar: #D3A73E;
+    --ambar-fraco: #26200F;
+    --vermelho: #E08268;
+    --vermelho-fraco: #2A1712;
+
+    --sombra-alta: 0 18px 50px rgba(0, 0, 0, .62);
   }
 }
 
 :root[data-theme="dark"] {
-  --paper: #0D1310;
-  --surface: #151D19;
-  --surface-2: #1C2521;
-  --ink: #E7EEE9;
-  --ink-2: #9DACA4;
-  --ink-3: #77877F;
-  --rule: #26302A;
-  --rule-forte: #3A463E;
+  --paper: #101215;
+  --surface: #16181C;
+  --surface-2: #1D2025;
+  --ink: #E9EAEC;
+  --ink-2: #A3A8B0;
+  --ink-3: #7B8189;
+  --rule: #282C32;
+  --rule-forte: #3C424A;
 
-  --verde: #59C4A0;
-  --verde-2: #7BD5B7;
-  --verde-fraco: #162C24;
-  --azul: #74B8D6;
-  --azul-fraco: #142630;
-  --ambar: #D6A93F;
-  --ambar-fraco: #2A2414;
-  --vermelho: #E2836C;
-  --vermelho-fraco: #2E1915;
+  --azul: #7FB3DA;
+  --azul-2: #A2CBE9;
+  --azul-fraco: #16242F;
 
-  --sombra: 0 1px 2px rgba(0, 0, 0, .4);
-  --sombra-alta: 0 12px 40px rgba(0, 0, 0, .6);
+  --destaque-texto: color-mix(in oklab, var(--destaque) 82%, #FFFFFF);
+  --destaque-fraco: color-mix(in oklab, var(--destaque) 16%, var(--surface));
+  --destaque-linha: color-mix(in oklab, var(--destaque) 60%, var(--surface));
+
+  --verde: #5FBF95;
+  --verde-fraco: #14251E;
+  --ambar: #D3A73E;
+  --ambar-fraco: #26200F;
+  --vermelho: #E08268;
+  --vermelho-fraco: #2A1712;
+
+  --sombra-alta: 0 18px 50px rgba(0, 0, 0, .62);
 }
 
-/* ─────────────────────────── base ─────────────────────────── */
+/* ─────────────────────────────── base ─────────────────────────────── */
 * { box-sizing: border-box; }
-
 html, body { height: 100%; }
 
 body {
@@ -89,25 +149,34 @@ body {
   background: var(--paper);
   color: var(--ink);
   font-family: var(--sans);
-  font-size: 15px;
+  font-size: var(--t-corpo);
   line-height: 1.55;
   -webkit-font-smoothing: antialiased;
   -webkit-tap-highlight-color: transparent;
 }
 
-h1, h2, h3 { margin: 0; line-height: 1.25; letter-spacing: -.01em; }
+h1, h2, h3, h4 { margin: 0; line-height: 1.2; font-weight: 600; }
+h1 { letter-spacing: -.02em; }
 p { margin: 0; }
-a { color: var(--verde); }
+a { color: var(--azul); text-underline-offset: 2px; }
 
 :focus-visible {
-  outline: 2px solid var(--verde);
+  outline: 2px solid var(--destaque);
   outline-offset: 2px;
-  border-radius: 3px;
+  border-radius: 2px;
 }
 
-.num { font-variant-numeric: tabular-nums; font-family: var(--mono); font-size: .92em; }
+/* Número é para comparar, e comparar exige coluna. Tabular-nums na fonte do
+   sistema faz isso sem trocar a fonte — o mono que estava aqui dava à tela um
+   ar de terminal que não é o que este sistema é. */
+.num { font-variant-numeric: tabular-nums; }
 
-/* ─────────────────────────── telas centrais ─────────────────────────── */
+.oculto-visual {
+  position: absolute; width: 1px; height: 1px; overflow: hidden;
+  clip: rect(0 0 0 0); white-space: nowrap;
+}
+
+/* ─────────────────────────── telas de entrada ─────────────────────────── */
 .tela-central {
   min-height: 100dvh;
   display: grid;
@@ -119,206 +188,223 @@ a { color: var(--verde); }
 .cartao-central {
   background: var(--surface);
   border: 1px solid var(--rule);
-  border-radius: 10px;
-  box-shadow: var(--sombra);
-  padding: 36px 32px;
-  max-width: 460px;
+  border-top: 3px solid var(--destaque);
+  padding: 40px 36px 36px;
+  max-width: 440px;
   display: flex;
   flex-direction: column;
   gap: 14px;
-  text-align: left;
 }
 
-.cartao-central h1 { font-size: 22px; }
-.cartao-central p { color: var(--ink-2); font-size: 14.5px; }
-.cartao-central .btn { align-self: flex-start; margin-top: 8px; }
+.cartao-central h1 { font-size: 25px; }
+.cartao-central p { color: var(--ink-2); }
+.cartao-central .btn { align-self: flex-start; margin-top: 10px; }
 
 .marca {
-  font-family: var(--mono);
-  font-size: 11px;
-  letter-spacing: .14em;
+  font-size: var(--t-micro);
+  font-weight: 700;
+  letter-spacing: .16em;
   text-transform: uppercase;
-  color: var(--verde);
+  color: var(--destaque-texto);
 }
 
-/* ─────────────────────────── estrutura ─────────────────────────── */
+/* ───────────────────────────── estrutura ─────────────────────────────
+   Um cabeçalho de documento: quem assina em cima, à esquerda; quem está
+   olhando à direita. Sem chip, sem ícone, sem caixa. */
 .topo {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 12px 20px;
+  height: var(--topo-alt);
+  padding: 0 26px;
   background: var(--surface);
-  border-bottom: 1px solid var(--rule);
+  border-bottom: 1px solid var(--rule-forte);
   position: sticky;
   top: 0;
   z-index: 20;
 }
 
-.topo-marca { display: flex; align-items: center; gap: 12px; min-width: 0; }
-.topo-marca strong { display: block; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.topo-sub { font-size: 12.5px; color: var(--ink-3); }
+.topo-marca { min-width: 0; display: flex; flex-direction: column; line-height: 1.25; }
 
-.topo-sigla {
-  font-family: var(--mono);
-  font-size: 11px;
-  letter-spacing: .1em;
-  background: var(--verde-fraco);
-  color: var(--verde);
-  border: 1px solid var(--rule);
-  padding: 6px 8px;
-  border-radius: var(--raio);
-  flex-shrink: 0;
+.topo-marca strong {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.topo-direita { display: flex; align-items: center; gap: 14px; }
+/* A identificação do parlamentar — nome, partido, UF — em versalete: é
+   assinatura, e assinatura não compete com o nome. */
+.topo-marca .topo-sub {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.topo-sub { font-size: 12.5px; color: var(--ink-3); }
+
+.topo-direita { display: flex; align-items: center; gap: 16px; }
 .usuario-menu { display: flex; flex-direction: column; align-items: flex-end; line-height: 1.3; }
-.usuario-nome { font-size: 13.5px; font-weight: 600; }
-.usuario-papel { font-size: 11.5px; color: var(--ink-3); }
+.usuario-nome { font-size: var(--t-menor); font-weight: 600; }
+.usuario-papel { font-size: var(--t-micro); color: var(--ink-3); }
 
 .corpo {
   display: grid;
   grid-template-columns: var(--nav-larg) minmax(0, 1fr);
   align-items: start;
-  min-height: calc(100dvh - 57px);
+  min-height: calc(100dvh - var(--topo-alt));
 }
 
 .nav {
   position: sticky;
-  top: 57px;
+  top: var(--topo-alt);
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  padding: 16px 12px;
+  padding: 22px 0;
   border-right: 1px solid var(--rule);
-  min-height: calc(100dvh - 57px);
+  min-height: calc(100dvh - var(--topo-alt));
 }
 
+/* A área atual se marca por uma barra na borda, não por um bloco pintado: o
+   bloco pesava tanto quanto o conteúdo e disputava a leitura com ele. */
 .nav-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 9px 10px;
-  border-radius: var(--raio);
+  display: block;
+  padding: 8px 18px 8px 21px;
+  border-left: 3px solid transparent;
   text-decoration: none;
   color: var(--ink-2);
-  transition: background .14s, color .14s;
+  transition: color .12s, border-color .12s;
 }
 
-.nav-item:hover { background: var(--surface-2); color: var(--ink); }
+.nav-item:hover { color: var(--ink); }
 
 .nav-item--ativo {
-  background: var(--verde-fraco);
-  color: var(--verde);
+  border-left-color: var(--destaque);
+  color: var(--ink);
   font-weight: 600;
 }
 
-.nav-sigla {
-  font-family: var(--mono);
-  font-size: 10.5px;
-  letter-spacing: .08em;
-  color: var(--ink-3);
-  width: 26px;
-  flex-shrink: 0;
-}
+.nav-nome { font-size: var(--t-corpo); }
 
-.nav-item--ativo .nav-sigla { color: var(--verde); }
-.nav-nome { font-size: 14px; }
-
-.painel { padding: 20px 24px 64px; min-width: 0; }
+.painel { padding: 26px 32px 80px; min-width: 0; }
 
 .abas {
   display: flex;
-  gap: 4px;
+  gap: 22px;
   overflow-x: auto;
   border-bottom: 1px solid var(--rule);
-  margin-bottom: 20px;
+  margin-bottom: var(--respiro);
   scrollbar-width: thin;
 }
 
 .aba {
-  padding: 8px 12px;
-  font-size: 13.5px;
-  color: var(--ink-2);
+  padding: 0 0 10px;
+  font-size: var(--t-menor);
+  color: var(--ink-3);
   text-decoration: none;
   white-space: nowrap;
   border-bottom: 2px solid transparent;
   margin-bottom: -1px;
+  transition: color .12s;
 }
 
 .aba:hover { color: var(--ink); }
-.aba--ativa { color: var(--verde); border-bottom-color: var(--verde); font-weight: 600; }
+.aba--ativa { color: var(--ink); border-bottom-color: var(--destaque); font-weight: 600; }
 
-.conteudo { display: flex; flex-direction: column; gap: 20px; }
+.conteudo { display: flex; flex-direction: column; gap: var(--respiro); }
 
-/* ─────────────────────────── cabeçalho de módulo ─────────────────────────── */
+/* ─────────────────────── cabeçalho de página ───────────────────────
+   O título é a única coisa grande da tela. É dele que a hierarquia inteira
+   desce, e é ele que faz a página parecer documento e não formulário. */
 .modulo-topo {
   display: flex;
   flex-wrap: wrap;
   align-items: flex-end;
   justify-content: space-between;
   gap: 14px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--rule);
 }
 
-.modulo-titulo h1 { font-size: 21px; }
-.modulo-titulo p { color: var(--ink-2); font-size: 14px; margin-top: 3px; max-width: 62ch; }
+.modulo-titulo h1 { font-size: var(--t-pagina); }
+.modulo-titulo p { color: var(--ink-2); margin-top: 6px; max-width: 68ch; }
 
 .modulo-acoes { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-.modulo-corpo { display: flex; flex-direction: column; gap: 10px; }
+.modulo-corpo { display: flex; flex-direction: column; gap: 12px; }
 
 .somente-leitura {
-  font-family: var(--mono);
-  font-size: 10.5px;
+  font-size: var(--t-micro);
+  font-weight: 600;
   letter-spacing: .1em;
   text-transform: uppercase;
   color: var(--ink-3);
-  border: 1px dashed var(--rule-forte);
-  padding: 6px 10px;
-  border-radius: var(--raio);
 }
 
-.contagem { font-size: 12.5px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.contagem { font-size: var(--t-menor); color: var(--ink-3); font-variant-numeric: tabular-nums; }
 
-/* ─────────────────────────── controles ─────────────────────────── */
+/* ──────────────────────────── controles ──────────────────────────── */
 input, select, textarea {
   font: inherit;
   color: var(--ink);
   background: var(--surface);
   border: 1px solid var(--rule-forte);
   border-radius: var(--raio);
-  padding: 8px 10px;
+  padding: 8px 11px;
   width: 100%;
 }
 
-textarea { resize: vertical; min-height: 76px; }
-input[type="checkbox"] { width: auto; accent-color: var(--verde); }
+textarea { resize: vertical; min-height: 76px; line-height: 1.55; }
+input[type="checkbox"] { width: auto; accent-color: var(--destaque); }
+input::placeholder, textarea::placeholder { color: var(--ink-3); }
 
-input::placeholder { color: var(--ink-3); }
-input:focus, select:focus, textarea:focus { border-color: var(--verde); outline: none; box-shadow: 0 0 0 3px var(--verde-fraco); }
+input:focus, select:focus, textarea:focus {
+  border-color: var(--destaque);
+  outline: none;
+  box-shadow: 0 0 0 3px var(--destaque-fraco);
+}
 
-.busca { max-width: 260px; }
+.busca { max-width: 300px; }
 .filtro { max-width: 200px; }
 
+/* Um botão preenchido por tela — o que se faz agora. O resto é contorno: dois
+   botões cheios lado a lado obrigam a ler para escolher. */
 .btn {
   font: inherit;
-  font-size: 13.5px;
+  font-size: var(--t-menor);
   font-weight: 600;
   border-radius: var(--raio);
   border: 1px solid transparent;
-  padding: 8px 14px;
+  padding: 8px 15px;
   cursor: pointer;
   white-space: nowrap;
-  transition: background .14s, border-color .14s, opacity .14s;
+  transition: background .12s, border-color .12s, color .12s, opacity .12s;
 }
 
-.btn:disabled { opacity: .55; cursor: default; }
-.btn--primario { background: var(--verde); color: var(--paper); }
-.btn--primario:hover:not(:disabled) { background: var(--verde-2); }
-.btn--fantasma { background: var(--surface); color: var(--ink-2); border-color: var(--rule-forte); }
-.btn--fantasma:hover:not(:disabled) { color: var(--ink); border-color: var(--ink-3); }
-.btn--perigo { background: var(--vermelho); color: var(--paper); }
-.btn--pequeno { padding: 6px 10px; font-size: 12.5px; }
-.btn--grande { padding: 11px 20px; font-size: 15px; }
+.btn:disabled { opacity: .5; cursor: default; }
+
+/* O laranja de verdade, com texto escuro por cima. Escurecer o fundo até
+   caber texto branco transformava a cor do partido em ferrugem — e ferrugem
+   não é a cor de ninguém. */
+.btn--primario {
+  background: var(--destaque);
+  color: color-mix(in oklab, var(--destaque) 14%, #0C0D0F);
+  border-color: color-mix(in oklab, var(--destaque) 70%, #0C0D0F);
+}
+
+.btn--primario:hover:not(:disabled) { background: color-mix(in oklab, var(--destaque) 88%, #0C0D0F); color: #fff; }
+
+.btn--fantasma { background: transparent; color: var(--ink-2); border-color: var(--rule-forte); }
+.btn--fantasma:hover:not(:disabled) { color: var(--ink); border-color: var(--ink-3); background: var(--surface); }
+
+.btn--perigo { background: var(--vermelho); color: #fff; }
+.btn--pequeno { padding: 6px 11px; font-size: 12.5px; }
+.btn--mini { padding: 4px 9px; font-size: 12px; }
+.btn--grande { padding: 11px 22px; font-size: 15px; }
 
 .btn-icone {
   background: none;
@@ -332,9 +418,8 @@ input:focus, select:focus, textarea:focus { border-color: var(--verde); outline:
 }
 
 .btn-icone:hover { color: var(--vermelho); background: var(--vermelho-fraco); }
-
-/* Ações não destrutivas na linha: o vermelho é reservado para a exclusão. */
-.btn-icone--acao:hover { color: var(--verde); background: var(--surface-2); }
+/* Ação não destrutiva na linha: o vermelho é reservado para a exclusão. */
+.btn-icone--acao:hover { color: var(--destaque-texto); background: var(--surface-2); }
 .btn-icone:disabled { opacity: .4; cursor: default; }
 
 .ja-feito {
@@ -347,33 +432,37 @@ input:focus, select:focus, textarea:focus { border-color: var(--verde); outline:
   white-space: nowrap;
 }
 
-/* ─────────────────────────── tabela ─────────────────────────── */
-.tabela-rolagem {
-  overflow-x: auto;
-  background: var(--surface);
-  border: 1px solid var(--rule);
-  border-radius: var(--raio);
-  box-shadow: var(--sombra);
-}
+.importador { display: inline-flex; }
 
-.tabela { border-collapse: collapse; width: 100%; font-size: 14px; }
+/* ───────────────────────────── tabela ─────────────────────────────
+   Sem caixa em volta e sem faixa no cabeçalho: régua fina em cima, régua fina
+   entre as linhas, e o resto é o papel. Linha de 38px — cabem vinte
+   municípios sem rolar, que é a densidade que o gabinete pediu. */
+.tabela-rolagem { overflow-x: auto; }
+
+.tabela {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: var(--t-corpo);
+}
 
 .tabela th {
   text-align: left;
-  font-family: var(--mono);
   font-size: 10.5px;
-  letter-spacing: .09em;
+  letter-spacing: .1em;
   text-transform: uppercase;
-  font-weight: 500;
+  font-weight: 700;
   color: var(--ink-3);
-  background: var(--surface-2);
-  padding: 9px 14px;
+  padding: 0 14px 8px;
   white-space: nowrap;
-  border-bottom: 1px solid var(--rule);
+  border-bottom: 1px solid var(--rule-forte);
 }
 
+.tabela th:first-child, .tabela td:first-child { padding-left: 0; }
+.tabela th:last-child, .tabela td:last-child { padding-right: 0; }
+
 .tabela td {
-  padding: 10px 14px;
+  padding: var(--linha-alta) 14px;
   border-bottom: 1px solid var(--rule);
   vertical-align: top;
 }
@@ -381,7 +470,16 @@ input:focus, select:focus, textarea:focus { border-color: var(--verde); outline:
 .tabela tbody tr { cursor: pointer; }
 .tabela tbody tr:hover { background: var(--surface-2); }
 .tabela tbody tr:last-child td { border-bottom: none; }
+.tabela .num { text-align: right; }
+.tabela th.num { text-align: right; }
 .col-acoes { width: 44px; text-align: right; }
+
+/* Cabeçalho que ordena. A seta não é enfeite: sem ela, a lista muda de ordem e
+   não diz por quê. */
+.tabela th.ordenavel { cursor: pointer; user-select: none; }
+.tabela th.ordenavel:hover, .tabela th.ordenavel:focus-visible { color: var(--ink); outline: none; }
+.tabela th.ordenavel--ativa { color: var(--destaque-texto); }
+.seta-ordem { display: inline-block; width: .8em; margin-left: .25em; }
 
 /* ─────────────── edição direto na lista ─────────────── */
 .col-inline { min-width: 132px; }
@@ -389,14 +487,13 @@ input:focus, select:focus, textarea:focus { border-color: var(--verde); outline:
 .inline-select {
   font-size: 12px;
   font-weight: 600;
-  padding: 3px 6px;
-  border-radius: 20px;
+  padding: 3px 8px;
+  border-radius: 3px;
   border: 1px solid transparent;
   width: auto;
   max-width: 100%;
   cursor: pointer;
   appearance: none;
-  text-align: center;
 }
 
 .inline-select:hover { border-color: var(--rule-forte); }
@@ -408,10 +505,10 @@ input:focus, select:focus, textarea:focus { border-color: var(--verde); outline:
 
 .inline-toggle {
   font: inherit;
-  font-size: 11.5px;
+  font-size: var(--t-micro);
   font-weight: 600;
   padding: 2px 10px;
-  border-radius: 20px;
+  border-radius: 3px;
   border: 1px solid transparent;
   cursor: pointer;
 }
@@ -424,11 +521,11 @@ input:focus, select:focus, textarea:focus { border-color: var(--verde); outline:
 
 .inline-abrir {
   font: inherit;
-  font-size: 13.5px;
+  font-size: var(--t-menor);
   text-align: left;
   background: none;
   border: 1px dashed transparent;
-  border-radius: 4px;
+  border-radius: 3px;
   padding: 3px 6px;
   margin: -3px -6px;
   color: var(--ink);
@@ -439,67 +536,55 @@ input:focus, select:focus, textarea:focus { border-color: var(--verde); outline:
 
 .inline-abrir:hover { border-color: var(--rule-forte); }
 .inline-abrir--vazio { color: var(--ink-3); font-style: italic; }
-.inline-entrada { font-size: 13.5px; padding: 5px 7px; }
+.inline-entrada { font-size: var(--t-menor); padding: 5px 7px; }
 
-/* ─────────────── subabas e agrupamento ─────────────── */
+/* ─────────────── segmentos e facetas ─────────────── */
 .segmentos {
   display: inline-flex;
-  gap: 2px;
-  padding: 3px;
-  background: var(--surface-2);
-  border: 1px solid var(--rule);
-  border-radius: 8px;
+  gap: 20px;
   align-self: flex-start;
+  border-bottom: 1px solid var(--rule);
 }
 
 .segmento {
   font: inherit;
-  font-size: 13.5px;
+  font-size: var(--t-menor);
   font-weight: 600;
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  padding: 6px 14px;
+  padding: 0 0 9px;
   border: none;
-  border-radius: 6px;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
   background: none;
-  color: var(--ink-2);
+  color: var(--ink-3);
   cursor: pointer;
 }
 
 .segmento:hover { color: var(--ink); }
-
-.segmento--ativo {
-  background: var(--surface);
-  color: var(--verde);
-  box-shadow: var(--sombra);
-}
+.segmento--ativo { color: var(--ink); border-bottom-color: var(--destaque); }
 
 .segmento-conta {
-  font-family: var(--mono);
   font-size: 11px;
   font-weight: 500;
   color: var(--ink-3);
   font-variant-numeric: tabular-nums;
 }
 
-.segmento--ativo .segmento-conta { color: var(--verde); }
-
-/* ─────────────── facetas ─────────────── */
 .facetas {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px 18px;
-  padding: 10px 0 2px;
+  gap: 8px 22px;
 }
 
 .faceta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 
 .faceta-rotulo {
-  font-size: 11px;
+  font-size: 10.5px;
   font-weight: 700;
-  letter-spacing: .06em;
+  letter-spacing: .1em;
   text-transform: uppercase;
   color: var(--ink-3);
 }
@@ -509,14 +594,14 @@ input:focus, select:focus, textarea:focus { border-color: var(--verde); outline:
 .chip {
   font: inherit;
   font-size: 12.5px;
-  font-weight: 600;
+  font-weight: 500;
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 4px 10px;
-  border: 1px solid var(--rule);
-  border-radius: 999px;
-  background: var(--surface);
+  padding: 3px 10px;
+  border: 1px solid var(--rule-forte);
+  border-radius: 3px;
+  background: transparent;
   color: var(--ink-2);
   cursor: pointer;
 }
@@ -524,25 +609,20 @@ input:focus, select:focus, textarea:focus { border-color: var(--verde); outline:
 .chip:hover { border-color: var(--ink-3); color: var(--ink); }
 
 .chip--ativo {
-  background: var(--verde);
-  border-color: var(--verde);
-  color: #fff;
+  background: var(--destaque-fraco);
+  border-color: var(--destaque);
+  color: var(--destaque-texto);
+  font-weight: 600;
 }
 
-.chip-conta {
-  font-family: var(--mono);
-  font-size: 10.5px;
-  font-weight: 500;
-  opacity: .7;
-  font-variant-numeric: tabular-nums;
-}
+.chip-conta { font-size: 10.5px; opacity: .7; font-variant-numeric: tabular-nums; }
 
 .faceta-select {
   font: inherit;
-  font-size: 13px;
+  font-size: var(--t-menor);
   padding: 5px 9px;
-  border: 1px solid var(--rule);
-  border-radius: 7px;
+  border: 1px solid var(--rule-forte);
+  border-radius: var(--raio);
   background: var(--surface);
   color: var(--ink);
   max-width: 260px;
@@ -550,18 +630,17 @@ input:focus, select:focus, textarea:focus { border-color: var(--verde); outline:
 
 .contagem-acao {
   font: inherit;
-  font-size: 12.5px;
+  font-size: var(--t-menor);
   margin-left: 8px;
   padding: 0;
   border: none;
   background: none;
-  color: var(--verde);
+  color: var(--destaque-texto);
   text-decoration: underline;
   cursor: pointer;
 }
 
-.mostrar-mais { display: flex; justify-content: center; padding: 14px 0 4px; }
-
+.mostrar-mais { display: flex; justify-content: center; padding: 16px 0 4px; }
 .acoes-falha { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
 
 /* ─────────────── sanfona: o nível de baixo, na própria linha ─────────────── */
@@ -573,73 +652,51 @@ input:focus, select:focus, textarea:focus { border-color: var(--verde); outline:
   line-height: 1;
   width: 22px;
   height: 22px;
-  border: 1px solid var(--rule);
-  border-radius: 6px;
-  background: var(--surface);
+  border: 1px solid var(--rule-forte);
+  border-radius: 3px;
+  background: transparent;
   color: var(--ink-3);
   cursor: pointer;
 }
 
-.btn-sanfona:hover { color: var(--verde); border-color: var(--verde); }
+.btn-sanfona:hover { color: var(--destaque-texto); border-color: var(--destaque); }
 
 .linha-detalhe { background: var(--surface-2); cursor: default !important; }
 .linha-detalhe:hover { background: var(--surface-2) !important; }
 .linha-detalhe td { padding: 0 !important; }
 
-.sanfona-conteudo { padding: 10px 14px 14px 40px; }
+.sanfona-conteudo { padding: 12px 16px 16px 16px; }
+.sanfona-recado { font-size: var(--t-menor); color: var(--ink-3); margin: 4px 0; }
 
-.sanfona-recado { font-size: 13px; color: var(--ink-3); margin: 4px 0; }
-
-.sanfona-tabela {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 13px;
-}
+.sanfona-tabela { width: 100%; border-collapse: collapse; font-size: var(--t-menor); }
 
 .sanfona-tabela th {
   text-align: left;
   font-size: 10.5px;
-  letter-spacing: .06em;
+  letter-spacing: .08em;
   text-transform: uppercase;
   color: var(--ink-3);
   font-weight: 700;
   padding: 4px 10px 4px 0;
-  border-bottom: 1px solid var(--rule);
+  border-bottom: 1px solid var(--rule-forte);
 }
 
 .sanfona-tabela td {
-  padding: 5px 10px 5px 0;
+  padding: 6px 10px 6px 0;
   border-bottom: 1px solid var(--rule);
   vertical-align: top;
 }
 
-.sanfona-tabela .num { text-align: right; font-variant-numeric: tabular-nums; }
+.sanfona-tabela .num { text-align: right; }
 
-.modal--largo { max-width: 780px; }
-
-.sondagem-texto {
-  width: 100%;
-  font-family: var(--mono);
-  font-size: 11.5px;
-  line-height: 1.5;
-  white-space: pre;
-  overflow-x: auto;
-  border: 1px solid var(--rule);
-  border-radius: var(--raio);
-  padding: 10px;
-  background: var(--surface-2);
-  color: var(--ink);
-}
-
-/* Marcadores livres do gabinete — distintos da insígnia colorida
-   `.etiqueta`, que traduz um campo de seleção. */
+/* ─────────────── marcadores e agrupamento ─────────────── */
 .marcadores { display: flex; flex-wrap: wrap; gap: 4px; }
 
 .marcador {
-  font-size: 11.5px;
-  font-weight: 600;
-  padding: 2px 8px;
-  border-radius: 999px;
+  font-size: var(--t-micro);
+  font-weight: 500;
+  padding: 1px 8px;
+  border-radius: 3px;
   background: var(--surface-2);
   border: 1px solid var(--rule);
   color: var(--ink-2);
@@ -648,62 +705,40 @@ input:focus, select:focus, textarea:focus { border-color: var(--verde); outline:
 
 .inline-abrir .marcador { margin-right: 4px; display: inline-flex; }
 
-.linha-grupo { cursor: default !important; background: var(--surface-2); }
-.linha-grupo:hover { background: var(--surface-2) !important; }
+.linha-grupo { cursor: default !important; background: transparent; }
+.linha-grupo:hover { background: transparent !important; }
+.linha-grupo td { padding: 0; border-bottom: 1px solid var(--rule-forte); display: block; }
 
-.linha-grupo td {
-  padding: 0;
-  border-bottom: 1px solid var(--rule);
-  display: block;
-}
-
-/* O cabeçalho é o controle de ordenação, então ocupa a faixa inteira e tem
-   alvo de clique de linha cheia. Nome à esquerda, contagem e ordem à direita:
-   com trinta grupos, o olho desce pela borda e não pelo meio do texto. */
 .grupo-botao {
   font: inherit;
   width: 100%;
   display: flex;
-  align-items: center;
+  align-items: baseline;
   gap: 10px;
-  padding: 8px 14px;
+  padding: 18px 0 6px;
   border: none;
   background: none;
   text-align: left;
   cursor: pointer;
 }
 
-.grupo-botao:hover { background: var(--rule); }
-
 .grupo-nome {
-  font-size: 12px;
+  font-size: var(--t-bloco);
   font-weight: 700;
-  letter-spacing: .02em;
-  color: var(--verde);
+  letter-spacing: -.01em;
+  color: var(--ink);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.grupo-conta {
-  font-family: var(--mono);
-  font-size: 11px;
-  font-weight: 500;
-  color: var(--ink-3);
-  font-variant-numeric: tabular-nums;
-  padding: 1px 7px;
-  border-radius: 999px;
-  background: var(--surface);
-  border: 1px solid var(--rule);
-}
+.grupo-conta { font-size: 12px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
 
-/* Empurra a marca de ordenação para a borda e some até o ponteiro chegar:
-   ela responde a uma pergunta que só se faz na hora de reordenar. */
 .grupo-ordem {
   margin-left: auto;
-  font-family: var(--mono);
   font-size: 10.5px;
-  letter-spacing: .04em;
+  letter-spacing: .08em;
+  text-transform: uppercase;
   color: var(--ink-3);
   opacity: 0;
   transition: opacity .12s;
@@ -713,13 +748,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--verde); outline:
 .grupo-botao:focus-visible .grupo-ordem { opacity: 1; }
 
 .celula-dupla { display: flex; flex-direction: column; gap: 1px; }
-
-.celula-sub {
-  font-family: var(--mono);
-  font-size: 10.5px;
-  color: var(--ink-3);
-  font-variant-numeric: tabular-nums;
-}
+.celula-sub { font-size: var(--t-micro); color: var(--ink-3); font-variant-numeric: tabular-nums; }
 
 /* ─────────────── trilha de tramitação ─────────────── */
 .trilha {
@@ -739,7 +768,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--verde); outline:
   gap: 5px;
   padding: 2px 7px;
   border: 1px solid var(--rule);
-  border-radius: 4px;
+  border-radius: 3px;
   background: var(--surface-2);
   white-space: nowrap;
 }
@@ -752,41 +781,26 @@ input:focus, select:focus, textarea:focus { border-color: var(--verde); outline:
   left: 7px;
 }
 
-.trilha-passo--atual {
-  background: var(--verde-fraco);
-  border-color: var(--verde);
-}
-
-.trilha-orgao { font-size: 11.5px; font-weight: 700; letter-spacing: .01em; }
-.trilha-passo--atual .trilha-orgao { color: var(--verde); }
-
-.trilha-data {
-  font-family: var(--mono);
-  font-size: 10px;
-  color: var(--ink-3);
-  font-variant-numeric: tabular-nums;
-}
-
-.trilha-mais {
-  font-family: var(--mono);
-  font-size: 10px;
-  color: var(--ink-3);
-  padding-right: 4px;
-}
-
-.trilha-vazia { color: var(--ink-3); font-size: 13px; font-style: italic; }
+.trilha-passo--atual { background: var(--destaque-fraco); border-color: var(--destaque); }
+.trilha-orgao { font-size: var(--t-micro); font-weight: 700; }
+.trilha-passo--atual .trilha-orgao { color: var(--destaque-texto); }
+.trilha-data { font-size: 10px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.trilha-mais { font-size: 10px; color: var(--ink-3); padding-right: 4px; }
+.trilha-vazia { color: var(--ink-3); font-size: var(--t-menor); font-style: italic; }
 
 .trilha--completa { flex-direction: column; align-items: stretch; gap: 4px; }
 .trilha--completa .trilha-passo { justify-content: space-between; }
 .trilha--completa .trilha-passo::after { content: none; }
 
-/* ─────────────────────────── etiquetas ─────────────────────────── */
+/* ──────────────────────────── etiquetas ────────────────────────────
+   Estado, e só estado. Retângulo em vez de pílula: pílula colorida é a marca
+   registrada da tela genérica, e o canto reto casa com a régua da tabela. */
 .etiqueta {
   display: inline-block;
-  font-size: 11.5px;
+  font-size: var(--t-micro);
   font-weight: 600;
-  padding: 2px 8px;
-  border-radius: 20px;
+  padding: 1px 8px;
+  border-radius: 3px;
   white-space: nowrap;
   border: 1px solid transparent;
 }
@@ -797,100 +811,131 @@ input:focus, select:focus, textarea:focus { border-color: var(--verde); outline:
 .etiqueta--atencao { background: var(--ambar-fraco); color: var(--ambar); }
 .etiqueta--critico { background: var(--vermelho-fraco); color: var(--vermelho); }
 
-/* ─────────────────────────── painéis ─────────────────────────── */
+/* ───────────────────────────── indicadores ─────────────────────────────
+   Uma faixa de números, separados por régua vertical. Eram seis caixas
+   brancas em fila, cada uma com borda, canto e sombra — o desenho de painel
+   que o gabinete chamou de amador, e com razão: a caixa não acrescentava
+   nada ao número que estava dentro dela. */
 .indicadores {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  gap: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0;
+  border-top: 1px solid var(--rule-forte);
+  border-bottom: 1px solid var(--rule);
+  padding: 14px 0;
 }
 
 .indicador {
-  background: var(--surface);
-  border: 1px solid var(--rule);
-  border-radius: var(--raio);
-  padding: 13px 15px;
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  box-shadow: var(--sombra);
+  gap: 1px;
+  padding: 0 26px;
+  border-left: 1px solid var(--rule);
+  flex: 1 1 auto;
+  min-width: 130px;
 }
 
+.indicador:first-child { padding-left: 0; border-left: none; }
+
 .indicador-rotulo {
-  font-family: var(--mono);
   font-size: 10px;
-  letter-spacing: .1em;
+  font-weight: 700;
+  letter-spacing: .12em;
   text-transform: uppercase;
   color: var(--ink-3);
 }
 
-.indicador-valor { font-size: 24px; font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
-.indicador-detalhe { font-size: 12px; color: var(--ink-3); }
+.indicador-valor {
+  font-size: 26px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -.025em;
+  line-height: 1.2;
+}
+
+.indicador-detalhe { font-size: 12px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
 .indicador--critico .indicador-valor { color: var(--vermelho); }
 .indicador--atencao .indicador-valor { color: var(--ambar); }
 .indicador--ok .indicador-valor { color: var(--verde); }
-.indicador--info .indicador-valor { color: var(--azul); }
+.indicador--info .indicador-valor { color: var(--ink); }
 
+.indicadores--compactos { border: none; padding: 0; margin: .3rem 0 .9rem; }
+.indicadores--compactos .indicador-valor { font-size: 19px; }
+
+/* ─────────────────────── blocos de painel ───────────────────────
+   Régua em cima e título pequeno: o bloco existe para agrupar, não para se
+   anunciar. Sem borda em volta, a grade respira e o olho pega a coluna. */
 .grade-paineis {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-  gap: 14px;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 28px 36px;
 }
 
-.bloco {
-  background: var(--surface);
-  border: 1px solid var(--rule);
-  border-radius: var(--raio);
-  padding: 16px 18px;
-  box-shadow: var(--sombra);
+.bloco { display: flex; flex-direction: column; gap: 10px; }
+
+.bloco-topo {
   display: flex;
-  flex-direction: column;
-  gap: 12px;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--rule-forte);
 }
 
-.bloco-topo { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
-.bloco-topo h2 { font-size: 14.5px; }
-
-.bloco-contagem {
-  font-family: var(--mono);
-  font-size: 12px;
-  color: var(--ink-3);
-  font-variant-numeric: tabular-nums;
+.bloco-topo h2 {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--ink-2);
 }
 
-.bloco-vazio { color: var(--ink-3); font-size: 13.5px; }
+.bloco-contagem { font-size: 12px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.bloco-vazio { color: var(--ink-3); font-size: var(--t-menor); }
 
 .lista { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
 
 .linha {
   display: flex;
-  align-items: center;
+  align-items: baseline;
   justify-content: space-between;
-  gap: 12px;
-  padding: 9px 0;
+  gap: 14px;
+  padding: 8px 0;
   border-bottom: 1px solid var(--rule);
 }
 
-.linha:last-child { border-bottom: none; padding-bottom: 0; }
-.linha:first-child { padding-top: 0; }
+.linha:last-child { border-bottom: none; }
 .linha-texto { display: flex; flex-direction: column; min-width: 0; }
-.linha-principal { font-size: 14px; font-weight: 500; }
+.linha-principal { font-size: var(--t-corpo); font-weight: 500; }
 .linha-secundaria { font-size: 12.5px; color: var(--ink-3); }
 
-.barras { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 11px; }
-.barra-topo { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; margin-bottom: 4px; }
-.barra-trilho { height: 6px; background: var(--surface-2); border-radius: 4px; overflow: hidden; }
-.barra { height: 100%; border-radius: 4px; background: var(--ink-3); }
+.linha--clicavel { cursor: pointer; }
+.linha--clicavel:hover, .linha--clicavel:focus-visible { background: var(--surface-2); outline: none; }
+.linha--clicavel:hover .linha-principal { color: var(--destaque-texto); }
+
+/* ─────────────── barras ─────────────── */
+.barras { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.barra-topo { display: flex; justify-content: space-between; gap: 12px; font-size: var(--t-menor); margin-bottom: 4px; }
+.barra-trilho { height: 4px; background: var(--surface-2); border-radius: 2px; overflow: hidden; display: block; }
+.barra { height: 100%; border-radius: 2px; background: var(--ink-3); display: block; }
 .barra--ok { background: var(--verde); }
 .barra--info { background: var(--azul); }
 .barra--atencao { background: var(--ambar); }
 .barra--critico { background: var(--vermelho); }
 .barra--neutro { background: var(--rule-forte); }
 
-/* ─────────────────────────── modal e formulário ─────────────────────────── */
+.barra-linha { display: flex; align-items: center; gap: .7rem; font-size: var(--t-menor); }
+.barra-rotulo { flex: 0 0 8.5rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.barra-linha .barra-trilho { flex: 1 1 auto; min-width: 3rem; }
+.barra-cheia { display: block; height: 100%; border-radius: 2px; background: var(--azul); }
+.barra-valor { flex: 0 0 auto; font-variant-numeric: tabular-nums; }
+.barra-conta { flex: 0 0 2.2rem; text-align: right; color: var(--ink-3); font-size: 12px; font-variant-numeric: tabular-nums; }
+
+/* ─────────────────────── modal e formulário ─────────────────────── */
 .modal-fundo {
   position: fixed;
   inset: 0;
-  background: rgba(10, 16, 13, .55);
+  background: rgba(17, 19, 23, .5);
   display: grid;
   place-items: center;
   padding: 20px;
@@ -900,29 +945,30 @@ input:focus, select:focus, textarea:focus { border-color: var(--verde); outline:
 
 .modal {
   background: var(--surface);
-  border: 1px solid var(--rule);
-  border-radius: 10px;
+  border: 1px solid var(--rule-forte);
+  border-top: 3px solid var(--destaque);
   box-shadow: var(--sombra-alta);
-  padding: 24px;
+  padding: 28px;
   width: min(620px, 100%);
   max-height: calc(100dvh - 40px);
   overflow-y: auto;
 }
 
 .modal--estreito { width: min(420px, 100%); }
-.modal-titulo { font-size: 18px; margin-bottom: 16px; }
-.modal-texto { color: var(--ink-2); font-size: 14px; margin-bottom: 18px; }
+.modal--largo { width: min(820px, 100%); }
+.modal-titulo { font-size: 21px; margin-bottom: 18px; }
+.modal-texto { color: var(--ink-2); margin-bottom: 18px; }
 
 .modal-acoes {
   display: flex;
   justify-content: flex-end;
   gap: 8px;
-  margin-top: 20px;
+  margin-top: 22px;
   padding-top: 16px;
   border-top: 1px solid var(--rule);
 }
 
-.form { display: flex; flex-direction: column; gap: 13px; }
+.form { display: flex; flex-direction: column; gap: 14px; }
 .campo { display: flex; flex-direction: column; gap: 5px; }
 
 .campo > label {
@@ -931,28 +977,35 @@ input:focus, select:focus, textarea:focus { border-color: var(--verde); outline:
   color: var(--ink-2);
 }
 
+.campo-rotulo {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
 .campo-dica { font-size: 12px; color: var(--ink-3); }
 .campo--area { grid-column: 1 / -1; }
+.campo--linha { display: flex; align-items: center; gap: .5rem; }
 .linha-campos { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 12px; }
 
-.caixa { display: flex; align-items: center; gap: 8px; font-size: 13.5px; font-weight: 400; cursor: pointer; }
+.caixa { display: flex; align-items: center; gap: 8px; font-size: var(--t-menor); font-weight: 400; cursor: pointer; }
 .caixas { display: flex; flex-wrap: wrap; gap: 10px 18px; }
 
-.resultados { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; }
+.resultados { display: flex; flex-direction: column; gap: 0; margin-top: 4px; }
 
 .resultado {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 14px;
-  border: 1px solid var(--rule);
-  border-radius: var(--raio);
-  padding: 12px 14px;
+  border-bottom: 1px solid var(--rule);
+  padding: 12px 0;
 }
 
-.resultado p { font-size: 13px; color: var(--ink-2); margin-top: 3px; }
+.resultado p { font-size: var(--t-menor); color: var(--ink-2); margin-top: 3px; }
 
-/* ─────────────── geração de minuta ─────────────── */
 .minuta-prompt {
   font-family: var(--mono);
   font-size: 12px;
@@ -962,29 +1015,43 @@ input:focus, select:focus, textarea:focus { border-color: var(--verde); outline:
   max-height: 320px;
 }
 
-.minuta-resultado { font-size: 14px; line-height: 1.6; min-height: 180px; }
+.minuta-resultado { font-size: var(--t-corpo); line-height: 1.65; min-height: 180px; }
 
-/* ─────────────────────────── avisos ─────────────────────────── */
+.sondagem-texto {
+  width: 100%;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  line-height: 1.5;
+  white-space: pre;
+  overflow-x: auto;
+  border: 1px solid var(--rule);
+  border-radius: var(--raio);
+  padding: 10px;
+  background: var(--surface-2);
+  color: var(--ink);
+}
+
+/* ───────────────────────────── avisos ───────────────────────────── */
 .avisos {
   position: fixed;
-  bottom: 18px;
-  right: 18px;
+  bottom: 20px;
+  right: 20px;
   display: flex;
   flex-direction: column;
   gap: 8px;
   z-index: 80;
-  max-width: min(360px, calc(100vw - 36px));
+  max-width: min(380px, calc(100vw - 40px));
 }
 
 .aviso {
   background: var(--surface);
   border: 1px solid var(--rule-forte);
   border-left: 3px solid var(--verde);
-  border-radius: var(--raio);
   box-shadow: var(--sombra-alta);
-  padding: 11px 14px;
-  font-size: 13.5px;
-  animation: entrarAviso .22s ease-out;
+  padding: 12px 15px;
+  font-size: var(--t-menor);
+  line-height: 1.5;
+  animation: entrarAviso .2s ease-out;
 }
 
 .aviso--erro { border-left-color: var(--vermelho); }
@@ -997,20 +1064,229 @@ input:focus, select:focus, textarea:focus { border-color: var(--verde); outline:
 
 .carregando, .vazio {
   color: var(--ink-3);
-  font-size: 14px;
-  padding: 28px 0;
+  padding: 40px 0;
   text-align: center;
 }
 
 .vazio { display: flex; flex-direction: column; align-items: center; gap: 14px; }
 
-/* ─────────────────────────── responsivo ─────────────────────────── */
+/* ═══════════════════════ orçamento: destinações ═══════════════════════ */
+.linha-municipio { cursor: pointer; }
+.linha-municipio:hover td, .linha-municipio:focus-visible td { background: var(--surface-2); }
+/* Bloco, e não flex: célula de tabela em display:flex deixa de desenhar a
+   régua da linha, e a tabela ficava com a borda partida na primeira coluna. */
+.linha-municipio td:first-child > * { display: block; }
+
+/* A linha que o clique no mapa foi buscar: sem a marca, o município aberto se
+   perde no meio da tabela e o clique parece não ter feito nada. */
+.linha-municipio--alvo > td { background: var(--destaque-fraco); }
+
+.detalhe-acoes { margin: 0 0 .7rem; }
+
+/* As destinações da cidade, dentro da linha aberta. */
+.tabela--destinacoes { font-size: var(--t-menor); }
+.tabela--destinacoes th { border-bottom-color: var(--rule-forte); }
+.tabela--destinacoes tbody tr { cursor: default; }
+.tabela--destinacoes tbody tr:hover { background: transparent; }
+.tabela--destinacoes td.col-acoes { width: 5rem; text-align: right; white-space: nowrap; }
+.sublinha td:first-child { max-width: 34rem; }
+.sublinha td:first-child > * { display: block; }
+.sublinha-nota { font-style: italic; }
+.topo-sub { display: block; }
+
+/* Três marcas na borda, três coisas diferentes. Na divergência o número está
+   certo e as fontes é que contam diferente; na conciliada alguém já decidiu; na
+   revisão o próprio número pode estar errado. */
+.sublinha--divergente > td:first-child { border-left: 3px solid var(--ambar); padding-left: 11px; }
+.sublinha--conciliada > td:first-child { border-left: 3px solid var(--verde); padding-left: 11px; }
+.sublinha--revisar > td:first-child { border-left: 3px solid var(--vermelho); padding-left: 11px; }
+.sublinha-auditoria { display: block; margin-top: .25rem; }
+.sublinha-auditoria .etiqueta { margin-right: .35rem; }
+
+/* ─────────────── anotar sem abrir o registro ─────────────── */
+.linha-anotar > td { background: var(--surface-2); padding: 14px 16px !important; }
+.form--anotar { gap: 10px; font-size: var(--t-menor); }
+.form--anotar .campo { gap: 3px; }
+.anotar-responsavel { display: flex; gap: .6rem; flex-wrap: wrap; }
+.anotar-responsavel .campo { flex: 1 1 9rem; }
+
+.anotar-divergencia {
+  border-left: 3px solid var(--ambar);
+  padding-left: .8rem;
+  display: flex; flex-direction: column; gap: 7px;
+}
+
+.anotar-correcao { border-left: 3px solid var(--rule-forte); padding-left: .8rem; }
+
+.anotar-correcao > summary {
+  cursor: pointer;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.anotar-correcao[open] > summary { margin-bottom: 8px; }
+.anotar-correcao > * + * { margin-top: 8px; }
+.anotar-acoes { display: flex; align-items: center; gap: .8rem; flex-wrap: wrap; }
+.anotar-acoes .campo-dica { margin: 0; }
+
+/* Dois importadores lado a lado, com a dica embaixo dos dois. */
+.modulo-acoes--importar { flex-wrap: wrap; align-items: center; gap: .5rem .6rem; }
+.modulo-acoes--importar .campo-dica { flex-basis: 100%; margin: 0; }
+
+/* ─────────────── emendas por município, na ficha ─────────────── */
+.municipio-objeto { margin: .2rem 0 0; }
+.municipio-objeto--vazio { opacity: .55; font-style: italic; }
+.municipio-numeros { display: flex; gap: 1rem; flex-wrap: wrap; font-variant-numeric: tabular-nums; margin: .3rem 0 0; }
+.municipio-pago { font-weight: 600; }
+/* O impedimento é o que trava o repasse: é sobre ele que a prefeitura liga. */
+.municipio-trava { color: var(--vermelho); margin: .3rem 0 0; font-size: .92em; }
+.municipio-emenda { padding: .6rem 0; border-top: 1px solid var(--rule); }
+
+/* ─────────────── mapa municipal ───────────────
+   Sem biblioteca de mapas e sem tiles de terceiros: a malha do IBGE desenhada
+   em SVG basta para apontar e clicar, que é o que a pergunta pede. */
+.mapa-caixa { overflow-x: auto; }
+.mapa-caixa--medio { max-width: 620px; margin: .4rem auto 0; }
+.mapa { width: 100%; height: auto; display: block; }
+.mapa-municipio { stroke: var(--surface); stroke-width: .6; transition: fill .12s ease; }
+.mapa-municipio--com-emenda { cursor: pointer; }
+
+.mapa-municipio--com-emenda:hover,
+.mapa-municipio--com-emenda:focus-visible {
+  fill: var(--destaque);
+  stroke: var(--destaque-texto);
+  stroke-width: 1.2;
+  outline: none;
+}
+
+.mapa-legenda { display: flex; align-items: center; gap: .35rem; margin-top: .6rem; flex-wrap: wrap; }
+.mapa-tom { width: 1.6rem; height: .7rem; display: inline-block; border-radius: 2px; }
+.bloco--detalhe-mapa { margin-top: 1rem; }
+.bloco--mapa { margin-bottom: var(--respiro); }
+
+/* ═══════════════════════ cota: doze colunas e o teto ═══════════════════════
+   A soma anual esconde o mês em que quase estourou; as colunas mostram. */
+.colunas-mes { display: flex; gap: .4rem; align-items: flex-end; height: 9rem; }
+.coluna-mes { flex: 1; display: flex; flex-direction: column; gap: .25rem; height: 100%; }
+.coluna-trilho { position: relative; flex: 1; background: var(--surface-2); display: flex; align-items: flex-end; }
+.coluna-barra { width: 100%; background: var(--azul); display: block; }
+.coluna-barra--estourou { background: var(--vermelho); }
+
+/* O teto atravessado: é dele que a leitura "passou perto" depende. */
+.coluna-teto { position: absolute; left: 0; right: 0; height: 0; border-top: 2px dashed var(--ink-3); }
+.coluna-rotulo { text-align: center; font-size: 11px; color: var(--ink-3); }
+
+/* ═══════════════════ confirmação do bilhete lido ═══════════════════
+   Um passo a mais de propósito: o ganho está em não redigitar, não em confiar
+   cegamente numa leitura de imagem. */
+.bilhete-trecho {
+  border: 1px solid var(--rule);
+  border-radius: var(--raio);
+  padding: .6rem .8rem;
+  background: var(--surface-2);
+}
+
+.bilhete-falta { border-color: var(--ambar); background: var(--ambar-fraco); }
+
+/* ═══════════════════ ficha de apresentação e folha ═══════════════════
+   Feitas para serem levadas em papel a uma reunião: uma coluna, seções curtas,
+   e nada que só funcione na tela. */
+.ficha { max-width: 58rem; }
+.ficha-topo { display: flex; align-items: baseline; gap: .6rem; flex-wrap: wrap; margin: 1.2rem 0 .5rem; }
+.ficha-topo h2 { margin: 0; font-size: 28px; letter-spacing: -.02em; }
+.ficha-secao { border-top: 1px solid var(--rule); padding: 1.1rem 0; }
+
+/* Título de seção de documento, não rótulo de painel: numa folha levada a uma
+   reunião, "O que vão perguntar primeiro" é uma frase que se lê, e versalete
+   de 10px a rebaixaria a legenda de gráfico. */
+.ficha-secao h3 {
+  margin: 0 0 .6rem;
+  font-size: var(--t-corpo);
+  font-weight: 700;
+  letter-spacing: -.005em;
+  color: var(--ink);
+}
+
+.ficha-secao--alerta { border-left: 3px solid var(--vermelho); padding-left: 1rem; }
+.ficha-secao--alerta li { margin: .2rem 0; }
+.ficha-dados { display: grid; grid-template-columns: auto 1fr; gap: .3rem 1.2rem; margin: 0; }
+.ficha-dados dt { font-weight: 600; color: var(--ink-2); }
+.ficha-dados dd { margin: 0; }
+.ficha-contatos { list-style: none; padding: 0; margin: 0; }
+.ficha-contatos li { padding: .35rem 0; display: flex; gap: .5rem; flex-wrap: wrap; align-items: baseline; border-bottom: 1px solid var(--rule); }
+.ficha-contatos li:last-child { border-bottom: none; }
+.ficha-rodape { font-size: 12px; color: var(--ink-3); margin-top: 1.4rem; }
+
+/* O cabeçalho da folha: identificação à esquerda, minimapa à direita. */
+.ficha-cabecalho {
+  display: flex; gap: 1.4rem; align-items: flex-start; justify-content: space-between;
+  flex-wrap: wrap; margin-bottom: .5rem;
+}
+
+.ficha-identificacao { flex: 1 1 20rem; }
+.ficha-origem { margin: 0; font-size: 12px; color: var(--ink-3); }
+.ficha-vereadores { margin-top: .8rem; }
+.ficha-vereadores h4 { margin: 0 0 .3rem; font-size: var(--t-menor); font-weight: 600; }
+.ficha-resumo { margin: 0; padding-left: 1.1rem; }
+.ficha-resumo li { margin: .15rem 0; }
+.ficha-resumo-texto { margin: .5rem 0 0; }
+/* De onde veio o número. Numa folha levada a uma reunião, o dado sem fonte é
+   um dado que não se pode defender. */
+.ficha-fonte { font-size: 11.5px; color: var(--ink-3); margin-top: .4rem; }
+.ficha-mensagem { width: 100%; font-size: var(--t-menor); line-height: 1.55; min-height: 9rem; }
+.ficha-minimapa { flex: 0 0 auto; text-align: center; }
+.ficha-minimapa-legenda { font-size: 11.5px; color: var(--ink-3); text-align: center; }
+.minimapa { max-width: 190px; height: auto; }
+.etiquetas { display: flex; flex-wrap: wrap; gap: 4px; }
+.minimapa-estado { fill: var(--surface-2); stroke: var(--rule-forte); }
+.minimapa-cidade { fill: var(--destaque); stroke: var(--destaque-texto); }
+
+/* ─────────────── a folha da cidade ───────────────
+   A tela é para conferir; a folha é para levar. Numa reunião de prefeitura
+   ninguém rola uma tabela: abre-se uma folha, e o que está nela é o que se
+   responde. */
+.folha { max-width: 52rem; }
+.folha-topo { justify-content: space-between; align-items: flex-start; }
+.folha-destinacao { border-top: 1px solid var(--rule); padding: .7rem 0; }
+.folha-destinacao:first-of-type { border-top: none; }
+.folha-destinacao p { margin: .15rem 0; }
+.folha-destinacao-titulo { display: flex; align-items: baseline; gap: .5rem; flex-wrap: wrap; }
+.folha-objeto { font-size: .95em; }
+.folha-numeros { font-variant-numeric: tabular-nums; font-weight: 500; }
+.folha-contato { font-size: .92em; }
+
+/* O andamento vem com quebras de linha: uma entrada por linha, a mais recente
+   em cima. Achatá-lo num parágrafo só apagaria a cronologia. */
+.folha-andamento {
+  white-space: pre-line;
+  font-size: .92em;
+  border-left: 2px solid var(--rule-forte);
+  padding-left: .7rem;
+}
+
+.folha-alerta { margin: .5rem 0; }
+.folha-alerta .topo-sub { display: block; }
+/* O endereço da fonte pública é longo e quebra em três linhas. Na tela ele não
+   precisa aparecer inteiro — clica-se nele. No papel, sim: ninguém clica numa
+   folha impressa. */
+.folha-fonte { word-break: break-all; font-size: .85em; }
+
+/* Linhas em branco de verdade: o que se combina na reunião é anotado à mão, na
+   hora, e sem onde escrever a anotação vai para o verso de outro papel. */
+.folha-anotacoes { margin-top: 1.4rem; }
+.folha-pauta { border-bottom: 1px solid var(--rule-forte); height: 1.6rem; }
+
+/* ═════════════════════════════ responsivo ═════════════════════════════ */
 @media (max-width: 900px) {
+  :root { --topo-alt: 54px; }
   .corpo { grid-template-columns: minmax(0, 1fr); }
 
   .nav {
     position: sticky;
-    top: 57px;
+    top: var(--topo-alt);
     z-index: 15;
     flex-direction: row;
     overflow-x: auto;
@@ -1018,30 +1294,33 @@ input:focus, select:focus, textarea:focus { border-color: var(--verde); outline:
     border-right: none;
     border-bottom: 1px solid var(--rule);
     background: var(--paper);
-    padding: 8px 12px;
-    gap: 4px;
+    padding: 0 16px;
   }
 
-  .nav-item { flex-shrink: 0; padding: 7px 12px; }
-  .nav-sigla { display: none; }
-  .painel { padding: 16px 14px 64px; }
+  .nav-item {
+    flex-shrink: 0;
+    padding: 10px 0;
+    margin-right: 18px;
+    border-left: none;
+    border-bottom: 2px solid transparent;
+  }
+
+  .nav-item--ativo { border-bottom-color: var(--destaque); }
+  .painel { padding: 20px 16px 64px; }
+  .modulo-titulo h1 { font-size: 24px; }
   .usuario-papel { display: none; }
   .busca, .filtro { max-width: none; flex: 1 1 140px; }
   .modulo-acoes { width: 100%; }
+  .indicador { padding: 0 16px; }
 }
 
 @media (max-width: 760px) {
-  .tabela-rolagem { border: none; background: none; box-shadow: none; overflow-x: visible; }
   .tabela thead { display: none; }
   .tabela, .tabela tbody, .tabela tr, .tabela td { display: block; width: 100%; }
 
   .tabela tr {
-    background: var(--surface);
-    border: 1px solid var(--rule);
-    border-radius: var(--raio);
-    box-shadow: var(--sombra);
-    margin-bottom: 8px;
-    padding: 10px 14px;
+    border-bottom: 1px solid var(--rule-forte);
+    padding: 12px 0;
     position: relative;
   }
 
@@ -1057,347 +1336,64 @@ input:focus, select:focus, textarea:focus { border-color: var(--verde); outline:
 
   .tabela td::before {
     content: attr(data-rotulo);
-    font-family: var(--mono);
     font-size: 10px;
-    letter-spacing: .08em;
+    font-weight: 700;
+    letter-spacing: .1em;
     text-transform: uppercase;
     color: var(--ink-3);
     text-align: left;
     flex-shrink: 0;
   }
 
-  .tabela td.col-acoes { position: absolute; top: 6px; right: 6px; width: auto; padding: 0; }
+  .tabela td.col-acoes { position: absolute; top: 8px; right: 0; width: auto; padding: 0; }
   .tabela td.col-acoes::before { content: none; }
-  .modal { padding: 18px; }
+  .modal { padding: 20px; }
   .avisos { left: 12px; right: 12px; bottom: 12px; max-width: none; }
+
+  /* Empilhado, o rótulo fixo da barra desperdiça a largura que o trilho
+     precisa para dizer alguma coisa. */
+  .barra-rotulo { flex: 0 0 6rem; }
+  .sublinha td:first-child { max-width: none; }
+  .indicadores { padding: 12px 0; }
+  .indicador { flex: 1 1 40%; padding: 8px 14px; }
+  .indicador:first-child { padding-left: 14px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; }
 }
 
-/* ── emendas por município ───────────────────────────────────────────────
-   A leitura é de cima para baixo: o lugar, quanto, em que pé. O detalhe abre
-   embaixo sem tirar o município da lista, porque comparar cidades é metade da
-   pergunta de quem atende o telefone no gabinete. */
-.linha-municipio { cursor: pointer; }
-.linha-municipio:hover td,
-.linha-municipio:focus-visible td { background: rgba(0, 0, 0, .035); }
-.linha-municipio td:first-child { display: flex; flex-direction: column; gap: .1rem; }
-
-.municipio-detalhe {
-  display: grid;
-  gap: .9rem;
-  grid-template-columns: repeat(auto-fill, minmax(24rem, 1fr));
-  padding: .6rem 0;
-}
-.municipio-emenda {
-  border-left: 3px solid rgba(0, 0, 0, .12);
-  padding: .35rem 0 .35rem .8rem;
-}
-.municipio-emenda header { display: flex; gap: .5rem; align-items: baseline; flex-wrap: wrap; }
-.municipio-objeto { margin: .3rem 0; }
-.municipio-objeto--vazio { opacity: .55; font-style: italic; }
-.municipio-numeros {
-  display: flex; gap: 1rem; flex-wrap: wrap;
-  font-variant-numeric: tabular-nums; margin: .3rem 0 0;
-}
-.municipio-pago { font-weight: 600; }
-/* O impedimento é o que trava o repasse: é sobre ele que a prefeitura liga. */
-.municipio-trava { color: #a4262c; margin: .3rem 0 0; font-size: .92em; }
-
-/* ── mapa municipal ──────────────────────────────────────────────────────
-   Sem biblioteca de mapas e sem tiles de terceiros: a malha do IBGE desenhada
-   em SVG basta para apontar e clicar, que é o que a pergunta pede. */
-.mapa-caixa { overflow-x: auto; }
-.mapa { width: 100%; height: auto; display: block; }
-.mapa-municipio {
-  stroke: rgba(255, 255, 255, .7);
-  stroke-width: .6;
-  transition: fill .12s ease;
-}
-.mapa-municipio--com-emenda { cursor: pointer; }
-.mapa-municipio--com-emenda:hover,
-.mapa-municipio--com-emenda:focus-visible {
-  fill: #1f5f7e;
-  stroke: #12384a;
-  stroke-width: 1.2;
-  outline: none;
-}
-.mapa-legenda { display: flex; align-items: center; gap: .35rem; margin-top: .6rem; flex-wrap: wrap; }
-.mapa-tom { width: 1.6rem; height: .7rem; display: inline-block; border-radius: 2px; }
-.bloco--detalhe-mapa { margin-top: 1rem; }
-.bloco--mapa { margin-bottom: 1rem; }
-/* A linha que o clique no mapa foi buscar: sem a marca, o município aberto se
-   perde no meio da tabela e o clique parece não ter feito nada. */
-.linha-municipio--alvo > td { background: rgba(117, 167, 191, .16); }
-
-/* ── ficha de apresentação ───────────────────────────────────────────────
-   Feita para ser levada em papel a uma reunião: uma coluna, seções curtas, e
-   nada que só funcione na tela. */
-.ficha { max-width: 60rem; }
-.ficha-topo { display: flex; align-items: baseline; gap: .6rem; flex-wrap: wrap; margin: 1rem 0 .5rem; }
-.ficha-topo h2 { margin: 0; }
-.ficha-secao { border-top: 1px solid rgba(0, 0, 0, .1); padding: .9rem 0; }
-.ficha-secao h3 { margin: 0 0 .5rem; font-size: 1rem; }
-.ficha-secao--alerta { border-left: 3px solid #a4262c; padding-left: .8rem; }
-.ficha-secao--alerta li { margin: .2rem 0; }
-.ficha-dados { display: grid; grid-template-columns: auto 1fr; gap: .25rem 1rem; margin: 0; }
-.ficha-dados dt { font-weight: 600; }
-.ficha-dados dd { margin: 0; }
-.ficha-contatos { list-style: none; padding: 0; margin: 0; }
-.ficha-contatos li { padding: .3rem 0; display: flex; gap: .5rem; flex-wrap: wrap; align-items: baseline; }
-.indicadores--compactos { margin: .3rem 0 .8rem; }
-.ficha-rodape { font-size: .85em; opacity: .65; margin-top: 1rem; }
-
-/* O cabeçalho da folha: identificação à esquerda, minimapa à direita. */
-.ficha-cabecalho {
-  display: flex; gap: 1rem; align-items: flex-start; justify-content: space-between;
-  flex-wrap: wrap; margin-bottom: .5rem;
-}
-.ficha-identificacao { flex: 1 1 20rem; }
-.ficha-origem { margin: 0; font-size: .85em; opacity: .65; }
-.ficha-vereadores { margin-top: .7rem; }
-.ficha-vereadores h4 { margin: 0 0 .3rem; font-size: .9rem; font-weight: 600; }
-.ficha-resumo { margin: 0; padding-left: 1.1rem; }
-.ficha-resumo li { margin: .15rem 0; }
-.ficha-resumo-texto { margin: .5rem 0 0; }
-/* De onde veio o número. Numa folha levada a uma reunião, o dado sem fonte é
-   o dado que alguém contesta e ninguém consegue defender. */
-.ficha-fonte { margin: .4rem 0 0; font-size: .78em; opacity: .6; }
-.ficha-mensagem { width: 100%; font-family: inherit; font-size: .9rem; }
-
-/* ── minimapa: onde a cidade fica no estado ──────────────────────────────
-   Um ícone, não uma ferramenta: sem rótulo, sem clique, sem zoom. O que ele
-   responde é "é fronteira ou é metrópole?", e isso se responde de relance. */
-.ficha-minimapa {
-  flex: 0 0 auto; display: flex; flex-direction: column; align-items: center; gap: .2rem;
-  min-height: 1px;
-}
-.minimapa { max-width: 190px; height: auto; }
-.minimapa-estado { fill: rgba(0, 0, 0, .08); stroke: rgba(0, 0, 0, .25); stroke-width: .4; }
-.minimapa-cidade { fill: #a4262c; stroke: #a4262c; stroke-width: .8; }
-.ficha-minimapa-legenda { font-size: .75rem; opacity: .7; text-align: center; }
-
+/* ═════════════════════════════ impressão ═════════════════════════════ */
 @media print {
-  /* Sobra a ficha. Barra, abas e botões não vão para o papel. */
-  .barra-topo, .barra-areas, .barra-abas, .modulo-acoes, .modulo-topo p,
-  .aviso, .modal-fundo { display: none !important; }
+  /* Sobra a folha. Barra, abas e botões não vão para o papel. */
+  .topo, .nav, .abas, .modulo-acoes, .modulo-topo p, .aviso, .avisos, .modal-fundo,
+  .detalhe-acoes { display: none !important; }
 
   /* A folha física: A4 com margem de relatório, preto no branco, sem sombra
      nem fundo — o que economiza tinta e sobrevive a uma fotocópia. */
   @page { size: A4 portrait; margin: 1.4cm 1.6cm; }
-  html, body { background: #fff !important; color: #000 !important; font-size: 11pt; }
-  .conteudo, main, .area { padding: 0 !important; margin: 0 !important; box-shadow: none !important; }
-  .ficha { max-width: none; }
+  html, body { background: #fff !important; color: #000 !important; font-size: 10.5pt; }
+  .corpo { display: block !important; }
+  .conteudo, .painel, .area { padding: 0 !important; margin: 0 !important; }
+  .ficha, .folha { max-width: none; }
+
   /* Nenhuma seção parte no meio: uma pendência dividida entre duas páginas é
      lida pela metade, e é justamente a parte que não pode ser lida pela metade. */
-  .ficha-secao, .ficha-cabecalho, .municipio-emenda, .indicadores { break-inside: avoid; }
+  .ficha-secao, .ficha-cabecalho, .municipio-emenda, .indicadores,
+  .folha-destinacao, .folha-alerta { break-inside: avoid; }
   .ficha-secao { border-top: 1pt solid #999; }
-  .ficha-secao h3 { font-size: 11pt; text-transform: uppercase; letter-spacing: .03em; }
+  .ficha-secao h3 { color: #000; }
   .ficha-topo h2 { font-size: 16pt; }
   .ficha-secao--alerta { border-left: 3pt solid #000; }
+  .folha-pauta { border-bottom: 1pt solid #999; height: 1.1cm; }
+  .folha-andamento { border-left: 1pt solid #999; }
   .minimapa-estado { fill: #eee; stroke: #666; }
   .minimapa-cidade { fill: #000; stroke: #000; }
   .etiqueta { border: 1pt solid #666; color: #000 !important; background: none !important; }
+  /* Numa folha impressa não se clica em link: o endereço tem de estar escrito. */
+  .folha-alerta a[href]::after { content: " (" attr(href) ")"; font-size: .85em; word-break: break-all; }
+  .indicadores { border-color: #999; }
+  .indicador { border-left-color: #ccc; }
   .indicador-valor { font-weight: 700; }
   a[href]::after { content: none !important; }
 }
-
-/* ── cota: doze colunas e a linha do teto ────────────────────────────────
-   A soma anual esconde o mês em que quase estourou; as colunas mostram. */
-.colunas-mes { display: flex; gap: .4rem; align-items: flex-end; height: 9rem; }
-.coluna-mes { flex: 1; display: flex; flex-direction: column; gap: .25rem; height: 100%; }
-.coluna-trilho {
-  position: relative; flex: 1;
-  background: rgba(0, 0, 0, .05); border-radius: 2px;
-  display: flex; align-items: flex-end;
-}
-.coluna-barra { width: 100%; background: #75a7bf; border-radius: 2px 2px 0 0; display: block; }
-.coluna-barra--estourou { background: #a4262c; }
-/* O teto atravessado: é dele que a leitura "passou perto" depende. */
-.coluna-teto {
-  position: absolute; left: 0; right: 0; height: 0;
-  border-top: 2px dashed rgba(0, 0, 0, .45);
-}
-.coluna-rotulo { text-align: center; font-size: .75rem; opacity: .7; }
-
-/* ── confirmação do bilhete lido ─────────────────────────────────────────
-   Um passo a mais de propósito: o ganho está em não redigitar, não em confiar
-   cegamente numa leitura de imagem. */
-.bilhete-trecho {
-  border: 1px solid rgba(0, 0, 0, .12);
-  border-radius: 6px;
-  padding: .6rem .8rem 1rem;
-  margin: .6rem 0;
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
-  gap: .5rem .8rem;
-}
-.bilhete-trecho legend { grid-column: 1 / -1; font-weight: 600; padding: 0 .3rem; }
-/* Campo que a leitura não conseguiu preencher: vazio pede atenção, palpite
-   passa por conferido. */
-.bilhete-falta { border-color: #c98a00; background: rgba(201, 138, 0, .07); }
-.campo--linha { display: flex; align-items: center; gap: .5rem; }
-.oculto-visual {
-  position: absolute; width: 1px; height: 1px; overflow: hidden;
-  clip: rect(0 0 0 0); white-space: nowrap;
-}
-
-/* Dois importadores lado a lado, com a dica embaixo dos dois: a ordem entre
-   eles importa, e a dica é onde ela se diz. */
-.modulo-acoes--importar { flex-wrap: wrap; align-items: center; gap: .5rem .6rem; }
-.modulo-acoes--importar .campo-dica { flex-basis: 100%; margin: 0; }
-
-/* ── orçamento: ordenar, detalhar, e o dashboard ─────────────────────────
-   Três pedidos do gabinete, e cada um resolve uma leitura diferente da mesma
-   base: escolher a ordem, comparar destinações lado a lado, e ver de longe
-   onde o mandato chegou. */
-
-/* Cabeçalho que ordena. A seta não é enfeite: sem ela, a lista muda de ordem
-   e não diz por quê. */
-.tabela th.ordenavel {
-  cursor: pointer;
-  user-select: none;
-  white-space: nowrap;
-}
-.tabela th.ordenavel:hover,
-.tabela th.ordenavel:focus-visible { color: var(--ink); background: var(--rule); outline: none; }
-.tabela th.ordenavel--ativa { color: var(--ink); }
-.seta-ordem { display: inline-block; width: .8em; margin-left: .25em; }
-
-/* As destinações da cidade, em linhas dentro da linha aberta. Fundo próprio
-   para que se leia como detalhe, e não como uma segunda tabela solta. */
-.tabela--destinacoes { font-size: 13px; background: var(--surface); }
-.tabela--destinacoes th { background: transparent; border-bottom: 1px solid var(--rule); }
-.tabela--destinacoes tbody tr { cursor: default; }
-.tabela--destinacoes tbody tr:hover { background: transparent; }
-.sublinha td:first-child { display: flex; flex-direction: column; gap: .12rem; max-width: 34rem; }
-/* Onde as duas fontes não batem: a marca fica na linha porque é ali que a
-   conciliação vai ser feita, caso a caso. */
-.sublinha--divergente > td:first-child { border-left: 3px solid #c98a00; padding-left: 11px; }
-.sublinha-nota { font-style: italic; }
-
-/* Uma barra por item: rótulo, trilho, valor e a contagem no fim. */
-.barra-linha {
-  display: flex; align-items: center; gap: .6rem;
-  font-size: 13px;
-}
-.barra-rotulo { flex: 0 0 8.5rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.barra-linha .barra-trilho { flex: 1 1 auto; min-width: 3rem; }
-.barra-cheia { display: block; height: 100%; border-radius: 4px; background: #75a7bf; }
-.barra-valor { flex: 0 0 auto; font-variant-numeric: tabular-nums; }
-.barra-conta { flex: 0 0 2.2rem; text-align: right; color: var(--ink-3); font-size: 12px; }
-
-/* Linha de lista que leva a outra tela. */
-.linha--clicavel { cursor: pointer; border-radius: 6px; }
-.linha--clicavel:hover,
-.linha--clicavel:focus-visible { background: var(--surface-2); outline: none; }
-
-/* O mapa do dashboard é médio de propósito: grande o bastante para acertar o
-   clique numa cidade pequena, pequeno o bastante para caber junto dos
-   destaques na mesma tela. */
-.mapa-caixa--medio { max-width: 620px; margin: .4rem auto 0; }
-
-@media (max-width: 760px) {
-  /* Empilhado, o rótulo fixo da barra desperdiça a largura que o trilho
-     precisa para dizer alguma coisa. */
-  .barra-rotulo { flex: 0 0 6rem; }
-  .sublinha td:first-child { max-width: none; }
-}
-
-/* ── anotar sem abrir o registro ─────────────────────────────────────────
-   Abrir a destinação inteira para escrever uma frase é pedir que alguém
-   atravesse 36 campos para mexer em um. O que muda depois da importação é
-   sempre o mesmo punhado de coisas, e é ele que cabe aqui. */
-.btn--mini { padding: 4px 9px; font-size: 12px; }
-.tabela--destinacoes td.col-acoes { width: 5rem; text-align: right; white-space: nowrap; }
-
-.linha-anotar > td { background: var(--surface-2); padding: 12px 14px; }
-.form--anotar { gap: 9px; font-size: 13px; }
-.form--anotar .campo { gap: 3px; }
-.campo-rotulo {
-  font-family: var(--mono);
-  font-size: 10.5px;
-  letter-spacing: .08em;
-  text-transform: uppercase;
-  color: var(--ink-3);
-}
-.anotar-responsavel { display: flex; gap: .6rem; flex-wrap: wrap; }
-.anotar-responsavel .campo { flex: 1 1 9rem; }
-
-/* A escolha da fonte só aparece onde há briga, e aparece cercada: é a única
-   coisa nesta tela que ninguém pode desfazer sem deixar rastro. */
-.anotar-divergencia {
-  border-left: 3px solid #c98a00;
-  padding-left: .8rem;
-  display: flex; flex-direction: column; gap: 7px;
-}
-.anotar-acoes { display: flex; align-items: center; gap: .7rem; flex-wrap: wrap; }
-.anotar-acoes .campo-dica { margin: 0; }
-
-/* Decidida, a linha para de pedir atenção — mas continua dizendo o que foi
-   decidido, para ninguém conferir de novo o que já foi conferido. */
-.sublinha--conciliada > td:first-child { border-left: 3px solid var(--verde); padding-left: 11px; }
-
-/* ── a folha da cidade ───────────────────────────────────────────────────
-   A tela é para conferir; a folha é para levar. Numa reunião de prefeitura
-   ninguém rola uma tabela: abre-se uma folha, e o que está nela é o que se
-   responde. */
-.detalhe-acoes { margin: 0 0 .6rem; }
-.folha { max-width: 52rem; }
-.folha-topo { justify-content: space-between; align-items: flex-start; }
-
-.folha-destinacao {
-  border-top: 1px solid var(--rule);
-  padding: .6rem 0;
-}
-.folha-destinacao:first-of-type { border-top: none; }
-.folha-destinacao p { margin: .15rem 0; }
-.folha-destinacao-titulo {
-  display: flex; align-items: baseline; gap: .5rem; flex-wrap: wrap;
-}
-.folha-objeto { font-size: .95em; }
-.folha-numeros { font-variant-numeric: tabular-nums; font-weight: 500; }
-.folha-contato { font-size: .92em; }
-/* O andamento vem com quebras de linha: uma entrada por linha, a mais recente
-   em cima. Achatá-lo num parágrafo só apagaria a cronologia. */
-.folha-andamento {
-  white-space: pre-line;
-  font-size: .92em;
-  border-left: 2px solid var(--rule-forte);
-  padding-left: .6rem;
-}
-.folha-alerta { margin: .35rem 0; }
-.folha-alerta .topo-sub { display: block; }
-
-/* Linhas em branco de verdade: o que se combina na reunião é anotado à mão, na
-   hora, e sem onde escrever a anotação vai para o verso de outro papel. */
-.folha-pauta { border-bottom: 1px solid var(--rule); height: 1.5rem; }
-
-@media print {
-  /* Nenhuma destinação parte em duas páginas: metade de um valor com metade de
-     um objeto é pior que nada. */
-  .folha-destinacao, .folha-alerta { break-inside: avoid; }
-  .folha-pauta { border-bottom: 1pt solid #999; height: 1.1cm; }
-  .folha-andamento { border-left: 1pt solid #999; }
-  .folha { max-width: none; }
-}
-
-/* A auditoria contra as fontes públicas. Marca própria porque diz outra coisa:
-   na divergência o número está certo e as fontes é que contam diferente; aqui
-   o próprio número pode estar errado. */
-.sublinha--revisar > td:first-child { border-left: 3px solid #a4262c; padding-left: 11px; }
-.sublinha-auditoria { display: block; margin-top: .2rem; }
-.sublinha-auditoria .etiqueta { margin-right: .35rem; }
-
-/* Corrigir o número que a planilha traz errado. Fechado por padrão: é a coisa
-   mais séria que se faz nesta tela, e não é a mais frequente. Abre sozinho
-   onde a auditoria pediu revisão, que é onde ele vai ser usado. */
-.anotar-correcao { border-left: 3px solid var(--rule-forte); padding-left: .8rem; }
-.anotar-correcao > summary {
-  cursor: pointer; font-family: var(--mono); font-size: 10.5px;
-  letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3);
-}
-.anotar-correcao[open] > summary { margin-bottom: 7px; }
-.anotar-correcao > * + * { margin-top: 7px; }

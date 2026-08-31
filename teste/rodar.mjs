@@ -736,6 +736,46 @@ console.log('\nDestinações de emenda\n');
     erechim ? `${erechim.municipio}: ${erechim.destinacoes.length} destinações` : 'sem Erechim');
 }
 
+// ── a cor do partido ──
+//
+// A estrutura da interface é azul institucional, igual para todo gabinete,
+// porque a estrutura é do mandato e não do partido. O que muda é o destaque —
+// onde se está e o que fazer agora —, e ele sai da sigla.
+{
+  const pt = await import('../js/partidos.js');
+  conferir('a sigla vira cor, com ou sem acento e pontuação',
+    pt.corDoPartido('NOVO') === '#FF6A13'
+    && pt.corDoPartido('novo') === '#FF6A13'
+    && pt.corDoPartido('União') === pt.corDoPartido('UNIAO'),
+    `${pt.corDoPartido('NOVO')} · ${pt.corDoPartido('União')}`);
+  // Cor de partido errada numa tela do gabinete é o tipo de detalhe que alguém
+  // nota antes de qualquer outra coisa. Melhor não ter cor do que ter a errada.
+  conferir('sigla desconhecida não ganha cor inventada',
+    pt.corDoPartido('XPTO') === null && pt.corDoPartido('') === null
+    && pt.corDoPartido(null) === null);
+  conferir('e as siglas que estão na tabela são todas cor hexadecimal válida',
+    Object.values(pt.COR_DO_PARTIDO).every((c) => /^#[0-9A-F]{6}$/i.test(c)),
+    `${Object.keys(pt.COR_DO_PARTIDO).length} siglas`);
+}
+
+{
+  const pagina = await abrir();
+  await pagina.goto(`${BASE}/#/chefia/painel`, { waitUntil: 'domcontentloaded' });
+  await pagina.waitForSelector('.nav-item--ativo', { timeout: 15000 });
+  const cor = await pagina.evaluate(() => document.documentElement.style.getPropertyValue('--destaque'));
+  conferir('o gabinete pinta o destaque da tela com a cor do próprio partido',
+    cor.trim() === '#FF6A13', cor);
+  conferir('e a marca do partido fica no elemento raiz, para o estilo alcançar',
+    (await pagina.evaluate(() => document.documentElement.dataset.partido)) === 'NOVO');
+  // O chip de três letras que ficava aqui não dizia nada que o nome ao lado já
+  // não dissesse — era enfeite ocupando o lugar mais nobre da tela.
+  conferir('o cabeçalho identifica o mandato sem sigla decorativa',
+    /Deputada Teste · NOVO · RS/i.test(await pagina.locator('.topo-marca').innerText())
+    && (await pagina.locator('.topo-sigla, .nav-sigla').count()) === 0,
+    (await pagina.locator('.topo-marca').innerText()).replace(/\s+/g, ' '));
+  await pagina.close();
+}
+
 // ── a planilha de conciliação do gabinete, com o arquivo de verdade ──
 //
 // O gabinete auditou o Mapa contra SIGA-Brasil, Transferegov e o painel de
@@ -1123,9 +1163,11 @@ const nomesFalsos = [
   conferir('o dashboard abre com os números do conjunto',
     /Munic[íi]pios/i.test(painel) && /292/.test(painel) && /758/.test(painel),
     painel.slice(0, 200));
+  // Sem olhar a caixa: o rótulo do bloco é versalete por estilo, e o teste
+  // mede o que está escrito, não como está desenhado.
   conferir('e traz os destaques que a visita vai perguntar',
     ['Maiores destinações', 'Cidades mais atendidas', 'Por área', 'Por ano', 'Em que pé está']
-      .every((t) => painel.includes(t)),
+      .every((t) => painel.toLocaleLowerCase('pt-BR').includes(t.toLocaleLowerCase('pt-BR'))),
     painel.slice(0, 300));
   conferir('as barras dizem quanto e quantas, não só a cor',
     (await pagina.locator('.barra-linha').count()) > 0
