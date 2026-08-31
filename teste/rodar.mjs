@@ -693,12 +693,17 @@ console.log('\nDestinações de emenda\n');
   // Um botão só: o formato é reconhecido pelo cabeçalho. Obrigar quem usa a
   // saber em qual botão o arquivo dele cabe é transferir para a pessoa um
   // problema que é do sistema.
-  conferir('a tela tem um botão de importar, e um só',
-    (await pagina.getByRole('button', { name: /Importar planilha/ }).count()) === 1);
+  // Um botão só, com detecção automática, obrigava quem usa a adivinhar o que
+  // ia acontecer — e, quando o arquivo era o outro, o recado falava do primeiro.
+  conferir('cada planilha tem seu botão, com o papel dito no rótulo',
+    (await pagina.getByRole('button', { name: /Importar Mapa de emendas/ }).count()) === 1
+    && (await pagina.getByRole('button', { name: /Confirmar pelo painel/ }).count()) === 1);
+  conferir('e a tela diz por qual começar',
+    /Comece pelo Mapa de emendas/.test(await pagina.locator('.modulo-acoes--importar .campo-dica').innerText()));
   conferir('e diz que sem nada importado não há o que mostrar',
     /Nada importado ainda/.test(await pagina.locator('.bloco-vazio').innerText()));
 
-  await pagina.setInputFiles('.modulo-acoes input[type=file]', path.join(RAIZ, 'teste', 'amostras', 'mapa-gabinete.xlsx'));
+  await pagina.setInputFiles('.importador:has(button:text-is("Importar Mapa de emendas")) input[type=file]', path.join(RAIZ, 'teste', 'amostras', 'mapa-gabinete.xlsx'));
   await pagina.waitForTimeout(4000);
 
   const recado = (await pagina.locator('.aviso').first().innerText().catch(() => '')).replace(/\s+/g, ' ');
@@ -720,7 +725,7 @@ console.log('\nDestinações de emenda\n');
     /Destinado R\$/.test(detalhe) && detalhe.length > 60, detalhe.slice(0, 200));
 
   // A segunda planilha confirma valores no que já existe.
-  await pagina.setInputFiles('.modulo-acoes input[type=file]', path.join(RAIZ, 'teste', 'amostras', 'painel-governo.xlsx'));
+  await pagina.setInputFiles('.importador:has(button:text-is("Confirmar pelo painel")) input[type=file]', path.join(RAIZ, 'teste', 'amostras', 'painel-governo.xlsx'));
   // Esperar a condição, e não o relógio: são 153 gravações mais o redesenho da
   // tela inteira, e um tempo fixo mede a máquina em vez do sistema.
   await pagina.waitForFunction(

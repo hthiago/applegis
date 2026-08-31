@@ -496,62 +496,86 @@ export function detalhesDaCidade(m) {
 }
 
 /**
- * O botão que traz as duas planilhas.
+ * Dois botões, porque são dois arquivos com papéis diferentes.
  *
- * Um só, e o formato é reconhecido pelo cabeçalho: obrigar quem usa a saber de
- * antemão em qual botão o arquivo dele cabe é transferir para a pessoa um
- * problema que é do sistema.
+ * Um botão só, com detecção automática, obrigava quem usa a adivinhar o que ia
+ * acontecer — e, quando o arquivo era o outro, o recado falava do primeiro. O
+ * gabinete disse isso com todas as letras, e tinha razão: a economia de um
+ * clique não paga a confusão de não saber o que se está fazendo.
  */
-function importadorDeDestinacoes(recarregar) {
-  const escolher = el('input', { type: 'file', accept: '.xlsx,.xls,.csv,.txt', class: 'oculto-visual' });
-  const btn = el('button', {
-    class: 'btn btn--primario',
-    type: 'button',
-    texto: 'Importar planilha',
-    title: 'O Mapa de emendas do gabinete, ou a exportação do painel de transferências',
-    onclick: () => escolher.click(),
-  });
+function importadoresDeDestinacoes(recarregar, jaTemDestinacoes) {
+  const criar = ({ rotulo, titulo, principal, executar }) => {
+    const escolher = el('input', { type: 'file', accept: '.xlsx,.xls,.csv,.txt', class: 'oculto-visual' });
+    const btn = el('button', {
+      class: `btn ${principal ? 'btn--primario' : 'btn--fantasma'}`,
+      type: 'button',
+      texto: rotulo,
+      title: titulo,
+      onclick: () => escolher.click(),
+    });
 
-  escolher.addEventListener('change', async () => {
-    const arquivo = escolher.files?.[0];
-    if (!arquivo) return;
-    btn.disabled = true;
-    btn.textContent = 'Lendo…';
-    try {
-      const { importarPlanilha } = await import('./destinacoes.js');
-      const r = await importarPlanilha(arquivo);
-      if (r.origem === 'gabinete') {
-        aviso([
-          `${r.destinacoes} destinações (${r.novas} novas, ${r.atualizadas} atualizadas)`,
-          `${r.municipios} municípios · ${r.emendas} emendas`,
-          `destinado ${fmtDinheiroCurto(r.destinado)}`,
-          r.semEmenda ? `${r.semEmenda} ainda sem nº de emenda` : null,
-        ].filter(Boolean).join(' · '), 'ok');
-      } else {
-        aviso([
-          `${r.casaram} destinações confirmadas pelo painel, em ${r.encontrosUsados} convênios`,
-          `empenhado ${fmtDinheiroCurto(r.empenhado)}, pago ${fmtDinheiroCurto(r.pago)}`,
-          r.divergentes ? `${r.divergentes} divergem do que está na planilha do gabinete` : null,
-          r.semParNoGabinete ? `${r.semParNoGabinete} convênios do painel sem par no gabinete` : null,
-        ].filter(Boolean).join(' · '), r.casaram ? 'ok' : 'erro');
+    escolher.addEventListener('change', async () => {
+      const arquivo = escolher.files?.[0];
+      if (!arquivo) return;
+      btn.disabled = true;
+      btn.textContent = 'Lendo…';
+      try {
+        await executar(arquivo);
+        recarregar();
+      } catch (erro) {
+        console.error(erro);
+        aviso(erro.message || 'Não foi possível importar.', 'erro');
+      } finally {
+        escolher.value = '';
+        btn.disabled = false;
+        btn.textContent = rotulo;
       }
-      recarregar();
-    } catch (erro) {
-      console.error(erro);
-      aviso(erro.message || 'Não foi possível importar.', 'erro');
-    } finally {
-      escolher.value = '';
-      btn.disabled = false;
-      btn.textContent = 'Importar planilha';
-    }
+    });
+    return el('span', { class: 'importador' }, [btn, escolher]);
+  };
+
+  const mapa = criar({
+    rotulo: 'Importar Mapa de emendas',
+    titulo: 'A planilha do gabinete, aba "Mapa de emendas" — é ela que diz o que existe',
+    principal: true,
+    executar: async (arquivo) => {
+      const { importarMapaDoGabinete } = await import('./destinacoes.js');
+      const r = await importarMapaDoGabinete(arquivo);
+      aviso([
+        `${r.destinacoes} destinações (${r.novas} novas, ${r.atualizadas} atualizadas)`,
+        `${r.municipios} municípios · ${r.emendas} emendas`,
+        `destinado ${fmtDinheiroCurto(r.destinado)}`,
+        r.semEmenda ? `${r.semEmenda} ainda sem nº de emenda` : null,
+      ].filter(Boolean).join(' · '), 'ok');
+    },
   });
 
-  return el('div', { class: 'modulo-acoes' }, [
-    btn,
-    escolher,
+  const painel = criar({
+    rotulo: 'Confirmar pelo painel',
+    titulo: 'A exportação do painel de transferências: confirma empenhado e pago no que já está aqui',
+    principal: false,
+    executar: async (arquivo) => {
+      const { importarDoPainel } = await import('./destinacoes.js');
+      const r = await importarDoPainel(arquivo);
+      aviso([
+        `${r.casaram} destinações confirmadas, em ${r.encontrosUsados} convênios`,
+        `empenhado ${fmtDinheiroCurto(r.empenhado)}, pago ${fmtDinheiroCurto(r.pago)}`,
+        r.divergentes ? `${r.divergentes} divergem da planilha do gabinete` : null,
+        r.semParNoGabinete ? `${r.semParNoGabinete} convênios do painel sem par aqui` : null,
+      ].filter(Boolean).join(' · '), r.casaram ? 'ok' : 'erro');
+    },
+  });
+
+  return el('div', { class: 'modulo-acoes modulo-acoes--importar' }, [
+    mapa,
+    painel,
     el('p', {
       class: 'campo-dica',
-      texto: 'Duas planilhas, um botão. O Mapa de emendas do gabinete é a fonte: ele diz o que existe. A exportação do painel confirma empenhado e pago no que já está aqui — importe o Mapa primeiro.',
+      // A ordem importa e não é adivinhável: dizê-la aqui evita a única
+      // sequência que não funciona.
+      texto: jaTemDestinacoes
+        ? 'O Mapa de emendas é a fonte; o painel confirma empenhado e pago no que já está aqui.'
+        : 'Comece pelo Mapa de emendas — ele diz o que existe. O painel só confirma valores do que já foi importado.',
     }),
   ]);
 }
@@ -578,7 +602,7 @@ export async function painelDestinacoes(container) {
     ]),
   ]));
 
-  container.appendChild(importadorDeDestinacoes(() => painelDestinacoes(container)));
+  container.appendChild(importadoresDeDestinacoes(() => painelDestinacoes(container), destinacoes.length > 0));
 
   if (!destinacoes.length) {
     container.appendChild(nada('Nada importado ainda. Comece pelo Mapa de emendas do gabinete — ele é a fonte do que existe.'));

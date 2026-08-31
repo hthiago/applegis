@@ -1243,3 +1243,8 @@ input:focus, select:focus, textarea:focus { border-color: var(--verde); outline:
   position: absolute; width: 1px; height: 1px; overflow: hidden;
   clip: rect(0 0 0 0); white-space: nowrap;
 }
+
+/* Dois importadores lado a lado, com a dica embaixo dos dois: a ordem entre
+   eles importa, e a dica é onde ela se diz. */
+.modulo-acoes--importar { flex-wrap: wrap; align-items: center; gap: .5rem .6rem; }
+.modulo-acoes--importar .campo-dica { flex-basis: 100%; margin: 0; }

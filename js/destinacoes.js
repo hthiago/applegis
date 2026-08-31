@@ -394,19 +394,50 @@ export function conciliar(destinacao, doGoverno, doGrupo = null) {
 // ─────────────────────────────── importação ───────────────────────────────
 
 /**
- * Lê qualquer uma das duas planilhas — o formato é reconhecido pelo cabeçalho.
+ * O Mapa de emendas do gabinete — a fonte do que existe.
  *
- * Um botão só. Obrigar quem usa a saber de antemão em qual botão o arquivo dele
- * cabe é transferir para a pessoa um problema que é do sistema.
+ * Botão próprio, e não detecção automática: um botão que aceita dois arquivos
+ * diferentes obriga quem usa a adivinhar o que vai acontecer, e quando dá
+ * errado o recado fala do outro arquivo. Dois botões dizem o que cada um faz
+ * antes de o arquivo ser escolhido.
  */
-export async function importarPlanilha(arquivo) {
-  const { cabecalho, linhas } = await lerPlanilha(arquivo);
-  if (!cabecalho.length) throw new Error('O arquivo está vazio ou não é uma planilha reconhecível.');
+export async function importarMapaDoGabinete(arquivo) {
+  const { cabecalho, linhas, aba, abas } = await lerPlanilha(arquivo, { dica: 'mapa de emendas' });
+  const onde = aba ? ` (aba "${aba}")` : '';
 
-  if (ehDoGabinete(cabecalho)) return importarMapa(cabecalho, linhas);
-  if (ehDoGoverno(cabecalho)) return importarGoverno(cabecalho, linhas);
+  if (!cabecalho.length) {
+    throw new Error(`A planilha${onde} está vazia.${abas?.length > 1 ? ` As abas do arquivo são: ${abas.join(', ')}.` : ''}`);
+  }
+  if (ehDoGoverno(cabecalho)) {
+    throw new Error('Este é o arquivo exportado do painel do governo, não o Mapa de emendas. Use o outro botão — "Confirmar pelo painel".');
+  }
+  if (!ehDoGabinete(cabecalho)) {
+    // Dizer qual aba foi lida e quais existem: num arquivo de dezesseis abas,
+    // "não reconheci" sem isso não deixa ninguém sair do lugar.
+    throw new Error(`Não reconheci o Mapa de emendas${onde}. Esperava as colunas Ano, município, Região e Beneficiário; achei "${cabecalho.slice(0, 6).filter(Boolean).join(', ')}".${abas?.length > 1 ? ` Abas do arquivo: ${abas.join(', ')}.` : ''}`);
+  }
+  return importarMapa(cabecalho, linhas);
+}
 
-  throw new Error(`Não reconheci esta planilha em "${cabecalho.slice(0, 6).filter(Boolean).join(', ')}…". Esperava o Mapa de emendas do gabinete (Ano, município, Região, Beneficiário…) ou a exportação do painel (Nº Emenda, Nº Instrumento, Município, Nome Proponente).`);
+/**
+ * A exportação do painel — confirma valor no que já existe.
+ *
+ * Ela não cria destinação: sozinha, não sabe de região, objeto nem beneficiário.
+ * Por isso exige que o Mapa tenha entrado antes, e diz isso antes de ler o
+ * arquivo inteiro.
+ */
+export async function importarDoPainel(arquivo) {
+  const { cabecalho, linhas, aba, abas } = await lerPlanilha(arquivo);
+  const onde = aba ? ` (aba "${aba}")` : '';
+
+  if (!cabecalho.length) throw new Error(`A planilha${onde} está vazia.`);
+  if (ehDoGabinete(cabecalho)) {
+    throw new Error('Este é o Mapa de emendas do gabinete, não a exportação do painel. Use o outro botão — "Importar Mapa de emendas".');
+  }
+  if (!ehDoGoverno(cabecalho)) {
+    throw new Error(`Não reconheci a exportação do painel${onde}. Esperava Nº Emenda, Nº Instrumento, Município e Valor Empenhado; achei "${cabecalho.slice(0, 6).filter(Boolean).join(', ')}".${abas?.length > 1 ? ` Abas do arquivo: ${abas.join(', ')}.` : ''}`);
+  }
+  return importarGoverno(cabecalho, linhas);
 }
 
 async function importarMapa(cabecalho, linhas) {

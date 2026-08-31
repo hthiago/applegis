@@ -305,7 +305,7 @@ export function indiceDaColuna(referencia) {
   return n - 1;
 }
 
-export async function lerXlsx(buffer) {
+export async function lerXlsx(buffer, { dica = null } = {}) {
   const zip = lerZip(buffer);
 
   // Os textos ficam numa tabela à parte, e a célula guarda só o índice dela.
@@ -319,9 +319,17 @@ export async function lerXlsx(buffer) {
     }
   }
 
-  const primeira = zip.entradas.find((e) => /^xl\/worksheets\/sheet\d+\.xml$/.test(e.nome));
-  if (!primeira) throw new Error('O .xlsx não tem nenhuma planilha dentro.');
-  const folha = await extrair(zip, primeira.nome);
+  const abas = await abasDoLivro(zip);
+  if (!abas.length) throw new Error('O .xlsx não tem nenhuma planilha dentro.');
+
+  // Qual aba ler, num arquivo de dezesseis. A primeira versão pegava o primeiro
+  // `sheetN.xml` que aparecesse no índice do ZIP — que é ordem de gravação, não
+  // ordem de aba. Num arquivo com uma aba só, dá certo por sorte; no Mapa de
+  // emendas do gabinete, que tem dezesseis, podia cair em "backup" ou "Regiões"
+  // e o arquivo "não era reconhecido" sem que nada explicasse por quê.
+  const escolhida = (dica && abas.find((a) => chaveDoRotulo(a.nome).includes(chaveDoRotulo(dica))))
+    || abas[0];
+  const folha = await extrair(zip, escolhida.arquivo);
 
   const linhas = [];
   for (const bruto of folha.split(/<row[\s>]/).slice(1)) {
@@ -352,8 +360,46 @@ export async function lerXlsx(buffer) {
   }
 
   const uteis = linhas.filter((l) => l.some((v) => String(v).trim() !== ''));
-  if (!uteis.length) return { cabecalho: [], linhas: [] };
-  return { cabecalho: uteis[0].map((v) => String(v).trim()), linhas: uteis.slice(1) };
+  const abasDisponiveis = abas.map((a) => a.nome);
+  if (!uteis.length) return { cabecalho: [], linhas: [], aba: escolhida.nome, abas: abasDisponiveis };
+  return {
+    cabecalho: uteis[0].map((v) => String(v).trim()),
+    linhas: uteis.slice(1),
+    // Quem chamou precisa poder dizer qual aba leu e quais existiam: num arquivo
+    // de dezesseis abas, "não reconheci esta planilha" sem isso é um beco.
+    aba: escolhida.nome,
+    abas: abasDisponiveis,
+  };
+}
+
+/**
+ * As abas do arquivo, na ordem em que aparecem para quem abre a planilha.
+ *
+ * A ordem verdadeira está em `xl/workbook.xml`, e o nome do arquivo de cada uma
+ * vem por um mapa de relacionamentos à parte. Deduzir pelo número no nome
+ * (`sheet3.xml`) erra: esse número é de criação, e mover uma aba no Excel não o
+ * altera.
+ */
+async function abasDoLivro(zip) {
+  const livro = await extrair(zip, 'xl/workbook.xml');
+  const rels = await extrair(zip, 'xl/_rels/workbook.xml.rels');
+  if (!livro || !rels) return [];
+
+  const alvos = new Map();
+  for (const m of rels.matchAll(/<Relationship\b([^>]*)\/>/g)) {
+    const id = /Id="([^"]+)"/.exec(m[1])?.[1];
+    const alvo = /Target="([^"]+)"/.exec(m[1])?.[1];
+    if (id && alvo) alvos.set(id, alvo.replace(/^\/?xl\//, '').replace(/^\//, ''));
+  }
+
+  const abas = [];
+  for (const m of livro.matchAll(/<sheet\b([^>]*)\/>/g)) {
+    const nome = semEntidades(/name="([^"]*)"/.exec(m[1])?.[1] || '');
+    const rid = /r:id="([^"]+)"/.exec(m[1])?.[1];
+    const alvo = rid && alvos.get(rid);
+    if (alvo) abas.push({ nome, arquivo: `xl/${alvo}` });
+  }
+  return abas;
 }
 
 /** É um .xlsx? Os dois primeiros bytes de todo ZIP são "PK". */
@@ -367,9 +413,9 @@ export function pareceXlsx(arquivo, buffer) {
 }
 
 /** Lê a planilha seja ela texto ou .xlsx — quem exporta de painel recebe .xlsx. */
-export async function lerPlanilha(arquivo) {
+export async function lerPlanilha(arquivo, { dica = null } = {}) {
   const buffer = await arquivo.arrayBuffer();
-  if (pareceXlsx(arquivo, buffer)) return lerXlsx(buffer);
+  if (pareceXlsx(arquivo, buffer)) return lerXlsx(buffer, { dica });
   return lerCsv(decodificar(buffer));
 }
 

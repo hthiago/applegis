@@ -146,10 +146,17 @@ cidade, para este beneficiário, para este objeto*. Uma emenda se reparte entre 
 de cidades, e é cada pedaço que o assessor acompanha. O Mapa de emendas do gabinete
 sempre funcionou assim: 758 destinações para 67 emendas, de 2019 a 2026.
 
-### Duas planilhas, um botão
+### Duas planilhas, dois botões
 
-Em *Orçamento › Por município*, **Importar planilha**. O formato é reconhecido pelo
-cabeçalho — não há botão separado para cada uma.
+Em *Orçamento › Por município*:
+
+- **Importar Mapa de emendas** — a planilha do gabinete. **Comece por ela.**
+- **Confirmar pelo painel** — a exportação do SERPRO, que confirma valores no que já
+  está aqui.
+
+Cada botão diz o que faz antes de o arquivo ser escolhido, e recusa o arquivo do outro
+com o nome do botão certo. Se o arquivo tiver várias abas, o erro lista todas e diz qual
+foi lida.
 
 | Planilha | Papel | O que ela traz |
 |---|---|---|
