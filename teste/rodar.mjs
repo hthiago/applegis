@@ -933,6 +933,65 @@ const nomesFalsos = [
   conferir('e o contador "A conciliar" desce junto',
     aConciliarDepois === aConciliarAntes - 1, `${aConciliarAntes} → ${aConciliarDepois}`);
 
+  // ── a folha da cidade ──
+  //
+  // Numa reunião de prefeitura ninguém rola uma tabela: abre-se uma folha, e o
+  // que está nela é o que se responde.
+  conferir('a cidade aberta oferece a folha para levar à visita',
+    (await aberta.getByRole('link', { name: /Folha desta cidade/ }).count()) === 1);
+  await aberta.getByRole('link', { name: /Folha desta cidade/ }).click();
+  await pagina.waitForSelector('.folha', { timeout: 15000 });
+  conferir('a folha mora num endereço que se pode guardar e mandar',
+    /#\/orcamento\/folha\/Caxias%20do%20Sul$/.test(pagina.url()), pagina.url());
+  // Aba que só faz sentido com uma cidade escolhida não vai à barra: aberta
+  // sozinha, não teria o que mostrar.
+  conferir('e não vira mais uma aba na barra',
+    !(await pagina.locator('.abas .aba').allInnerTexts()).some((t) => /folha/i.test(t)),
+    (await pagina.locator('.abas .aba').allInnerTexts()).join(' · '));
+
+  const papel = (await pagina.locator('.folha').innerText()).replace(/\s+/g, ' ');
+  conferir('a folha se identifica pela cidade e pelo gabinete',
+    /Emendas em Caxias do Sul/.test(papel) && /Deputada Teste/.test(papel), papel.slice(0, 160));
+  conferir('e traz os três números que se dizem em voz alta',
+    /destinado/i.test(papel) && /empenhado/i.test(papel) && /pago/i.test(papel));
+  // A prefeitura nunca pergunta "quanto foi ao todo": pergunta "e aquela que
+  // travou?". Vir por último seria descobrir isso na frente de quem perguntou.
+  conferir('o que vão perguntar primeiro vem primeiro',
+    (await pagina.locator('.ficha-secao--alerta h3').innerText()) === 'O que vão perguntar primeiro');
+  conferir('e o que está travado aparece lá, com o valor',
+    /Recurso perdido|Impedido/.test(await pagina.locator('.ficha-secao--alerta').innerText()),
+    (await pagina.locator('.ficha-secao--alerta').innerText()).replace(/\s+/g, ' ').slice(0, 180));
+  conferir('cada destinação vem inteira, agrupada por ano',
+    (await pagina.locator('.folha-destinacao').count()) === 15
+    && (await pagina.locator('.ficha-secao h3').first().innerText()).length > 0);
+  // O andamento inteiro, e não o último recado: a pergunta na reunião é
+  // "desde quando?", e a resposta é o histórico.
+  conferir('o andamento escrito pelo gabinete vai junto',
+    (await pagina.locator('.folha-andamento').count()) >= 1);
+  conferir('e a decisão sobre qual fonte vale também',
+    /Vale o painel do governo: convênio celebrado por valor maior/.test(papel));
+  // O que se combina na reunião é anotado à mão, na hora.
+  conferir('a folha termina em linhas em branco para escrever à mão',
+    (await pagina.locator('.folha-pauta').count()) === 6);
+
+  // O erro que se comete uma vez só: citar de cabeça, numa reunião, um número
+  // que as duas fontes ainda contam de jeitos diferentes.
+  const cidadeQueDiverge = await pagina.evaluate(async () => {
+    const { listar } = await import('/js/dados.js');
+    return (await listar('destinacoes')).find((d) => d.divergente)?.municipio || null;
+  });
+  await pagina.goto(`${BASE}/#/orcamento/folha/${encodeURIComponent(cidadeQueDiverge)}`, { waitUntil: 'domcontentloaded' });
+  await pagina.waitForSelector('.ficha-secao--alerta', { timeout: 15000 });
+  conferir('onde as fontes ainda divergem, a folha manda não citar o valor',
+    /Não cite valor sem conferir/.test(await pagina.locator('.ficha-secao--alerta').innerText()),
+    cidadeQueDiverge);
+
+  await pagina.goto(`${BASE}/#/orcamento/folha/Cidade%20Que%20Nao%20Existe`, { waitUntil: 'domcontentloaded' });
+  await pagina.waitForSelector('.bloco-vazio', { timeout: 10000 });
+  conferir('cidade sem destinação diz isso, em vez de imprimir uma folha vazia',
+    /Nenhuma destinação registrada para "Cidade Que Nao Existe"/
+      .test(await pagina.locator('.bloco-vazio').innerText()));
+
   // ── o dashboard ──
   //
   // A tela por município responde "quanto foi para Erechim" a quem já sabe que

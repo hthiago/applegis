@@ -545,9 +545,18 @@ export async function painelFicha(container) {
             el('span', { texto: ` — ${d.objeto || 'objeto não informado'}` }),
             el('span', { class: 'topo-sub', texto: [d.ano, d.valorDestinado ? fmtDinheiro(d.valorDestinado) : null, ROTULOS_SITUACAO[d.situacao]].filter(Boolean).join(' · ') }),
           ]))),
-          cidade.destinacoes.length > 12
-            ? el('p', { class: 'campo-dica', texto: `e mais ${cidade.destinacoes.length - 12} destinações — a lista inteira está em Orçamento › Por município.` })
-            : null,
+          // A ficha é o retrato da cidade; a folha é o papel das emendas dela.
+          // Quem está preparando a visita quer as duas, e uma manda para a
+          // outra em vez de repetir o que a outra faz melhor.
+          el('p', { class: 'campo-dica' }, [
+            cidade.destinacoes.length > 12
+              ? el('span', { texto: `e mais ${cidade.destinacoes.length - 12} destinações. ` })
+              : null,
+            el('a', {
+              href: `#/orcamento/folha/${encodeURIComponent(cidade.municipio)}`,
+              texto: 'Folha das emendas desta cidade, inteira, para levar à visita',
+            }),
+          ].filter(Boolean)),
           cidade.divergentes
             ? el('p', { class: 'campo-dica', texto: `${cidade.divergentes} destinação(ões) com divergência entre a planilha do gabinete e o painel do governo. Confira antes de citar o número numa reunião.` })
             : null,

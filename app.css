@@ -1339,3 +1339,47 @@ input:focus, select:focus, textarea:focus { border-color: var(--verde); outline:
 /* Decidida, a linha para de pedir atenção — mas continua dizendo o que foi
    decidido, para ninguém conferir de novo o que já foi conferido. */
 .sublinha--conciliada > td:first-child { border-left: 3px solid var(--verde); padding-left: 11px; }
+
+/* ── a folha da cidade ───────────────────────────────────────────────────
+   A tela é para conferir; a folha é para levar. Numa reunião de prefeitura
+   ninguém rola uma tabela: abre-se uma folha, e o que está nela é o que se
+   responde. */
+.detalhe-acoes { margin: 0 0 .6rem; }
+.folha { max-width: 52rem; }
+.folha-topo { justify-content: space-between; align-items: flex-start; }
+
+.folha-destinacao {
+  border-top: 1px solid var(--rule);
+  padding: .6rem 0;
+}
+.folha-destinacao:first-of-type { border-top: none; }
+.folha-destinacao p { margin: .15rem 0; }
+.folha-destinacao-titulo {
+  display: flex; align-items: baseline; gap: .5rem; flex-wrap: wrap;
+}
+.folha-objeto { font-size: .95em; }
+.folha-numeros { font-variant-numeric: tabular-nums; font-weight: 500; }
+.folha-contato { font-size: .92em; }
+/* O andamento vem com quebras de linha: uma entrada por linha, a mais recente
+   em cima. Achatá-lo num parágrafo só apagaria a cronologia. */
+.folha-andamento {
+  white-space: pre-line;
+  font-size: .92em;
+  border-left: 2px solid var(--rule-forte);
+  padding-left: .6rem;
+}
+.folha-alerta { margin: .35rem 0; }
+.folha-alerta .topo-sub { display: block; }
+
+/* Linhas em branco de verdade: o que se combina na reunião é anotado à mão, na
+   hora, e sem onde escrever a anotação vai para o verso de outro papel. */
+.folha-pauta { border-bottom: 1px solid var(--rule); height: 1.5rem; }
+
+@media print {
+  /* Nenhuma destinação parte em duas páginas: metade de um valor com metade de
+     um objeto é pior que nada. */
+  .folha-destinacao, .folha-alerta { break-inside: avoid; }
+  .folha-pauta { border-bottom: 1pt solid #999; height: 1.1cm; }
+  .folha-andamento { border-left: 1pt solid #999; }
+  .folha { max-width: none; }
+}

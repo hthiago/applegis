@@ -228,8 +228,23 @@ importar — e não descobre que não pode pelo erro de gravação.
   preenchida em 11% das linhas.
 - **Conciliação** — qual fonte vale, por quê, quem decidiu e quando.
 
-A **Ficha de apresentação** puxa daqui as destinações da cidade, e continua sendo o papel
-que vai para a visita.
+### A folha da cidade, para levar à visita
+
+A tela é para conferir; a folha é para levar. Numa reunião de prefeitura ninguém rola uma
+tabela — abre-se uma folha, e o que está nela é o que se responde. Abra a cidade em
+*Por município* e clique em **Folha desta cidade**, ou vá direto a
+`#/orcamento/folha/<cidade>` — o endereço pode ser guardado e mandado a quem vai.
+
+A folha não é a tabela impressa. Ela começa por **o que vão perguntar primeiro** — o que
+está impedido ou perdido, e o que ainda não bate entre as duas fontes, com a instrução de
+**não citar o valor sem conferir**. Depois vêm as destinações **por ano**, cada uma
+inteira: beneficiário, objeto, os três valores, emenda e modalidade, **o andamento
+completo** escrito pelo gabinete (a pergunta na reunião é "desde quando?"), quem se
+procura na cidade, e a decisão de conciliação quando houve. Termina em **linhas em
+branco**: o que se combina na reunião é anotado à mão, na hora.
+
+A **Ficha de apresentação** continua sendo o retrato da cidade — população, quem governa,
+votação, economia — e agora manda para a folha em vez de repetir o que ela faz melhor.
 
 ---
 

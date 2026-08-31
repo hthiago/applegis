@@ -199,15 +199,19 @@ function paineisDisponiveis() {
     { id: 'ficha', area: 'administrativo', nome: 'Ficha de apresentação', render: nucleo.ficha.painelFicha },
     { id: 'dashboard', area: 'orcamento', nome: 'Dashboard', render: nucleo.paineis.painelDashboardOrcamento },
     { id: 'por-municipio', area: 'orcamento', nome: 'Por município', render: nucleo.paineis.painelDestinacoes },
+    // Não vai à barra: é o papel de uma cidade, aberto a partir dela. Três abas
+    // que parecem fazer a mesma coisa foi reclamação do gabinete, e uma folha
+    // sem cidade escolhida não teria o que mostrar.
+    { id: 'folha', area: 'orcamento', nome: 'Folha da cidade', oculto: true, render: nucleo.paineis.painelFolhaMunicipio },
   ];
 }
 
 /** Endereços que mudaram de nome mas não podem deixar de responder. */
 const APELIDOS = {};
 
-function abasDaArea(areaId) {
+function abasDaArea(areaId, { todas = false } = {}) {
   return [
-    ...paineisDisponiveis().filter((p) => p.area === areaId),
+    ...paineisDisponiveis().filter((p) => p.area === areaId && (todas || !p.oculto)),
     ...modulosDaArea(areaId).map((m) => ({ id: m.id, nome: m.nome, modulo: m })),
   ];
 }
@@ -225,7 +229,7 @@ function abaPorId(areaId, abaId) {
   // a aba mudou de nome. Fundir duas telas é melhoria; quebrar o link de quem
   // já tinha a resposta salva, não.
   const alvo = APELIDOS[abaId] || abaId;
-  const naBarra = abasDaArea(areaId).find((a) => a.id === alvo);
+  const naBarra = abasDaArea(areaId, { todas: true }).find((a) => a.id === alvo);
   if (naBarra) return naBarra;
   const escondido = porId[alvo];
   return escondido && escondido.area === areaId
@@ -235,7 +239,14 @@ function abaPorId(areaId, abaId) {
 
 function rota() {
   const partes = (location.hash || '').replace(/^#\/?/, '').split('/').filter(Boolean);
-  return { area: partes[0] || null, aba: partes[1] || null };
+  // O terceiro pedaço é o argumento da aba — hoje, a cidade da folha. Fica no
+  // endereço e não na memória da sessão para que o link possa ser guardado,
+  // mandado a quem vai à visita, e reaberto depois.
+  return {
+    area: partes[0] || null,
+    aba: partes[1] || null,
+    argumento: partes.slice(2).map(decodeURIComponent).join('/') || null,
+  };
 }
 
 function areaInicial() {
@@ -862,7 +873,7 @@ function acoesDaMinuta() {
   ];
 }
 
-async function desenharConteudo(alvo, areaId, abaId) {
+async function desenharConteudo(alvo, areaId, abaId, argumento = null) {
   if (areaId === 'acessos') {
     await nucleo.admin.renderAdmin(alvo);
     return;
@@ -876,7 +887,7 @@ async function desenharConteudo(alvo, areaId, abaId) {
   }
 
   if (aba.render) {
-    await aba.render(alvo);
+    await aba.render(alvo, argumento);
     return;
   }
 
@@ -918,7 +929,7 @@ async function desenharConteudo(alvo, areaId, abaId) {
 }
 
 async function desenharApp() {
-  const { area, aba } = rota();
+  const { area, aba, argumento } = rota();
 
   if (!location.hash) {
     location.hash = `#/${areaInicial()}`;
@@ -943,7 +954,7 @@ async function desenharApp() {
   raiz.appendChild(el('div', { class: 'corpo' }, [navegacao(areaId), painel]));
 
   try {
-    await desenharConteudo(conteudo, areaId, aba);
+    await desenharConteudo(conteudo, areaId, aba, argumento);
   } catch (erro) {
     console.error(erro);
     limpar(conteudo).appendChild(vazio('Algo deu errado ao montar esta tela. Recarregue a página.'));

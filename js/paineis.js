@@ -501,20 +501,31 @@ export function detalhesDaCidade(m, ctx = {}) {
   const corpo = el('tbody');
   m.destinacoes.forEach((d) => linhasDaDestinacao(d, ctx, colunas).forEach((n) => corpo.appendChild(n)));
 
-  return el('div', { class: 'tabela-rolagem' }, [
-    el('table', { class: 'tabela tabela--destinacoes' }, [
-      el('thead', {}, [el('tr', {}, [
-        el('th', { texto: 'Quem recebeu, para quê' }),
-        el('th', { class: 'num', texto: 'Ano' }),
-        el('th', { class: 'num', texto: 'Emenda' }),
-        el('th', { texto: 'Área' }),
-        el('th', { class: 'num', texto: 'Destinado' }),
-        el('th', { class: 'num', texto: 'Empenhado' }),
-        el('th', { class: 'num', texto: 'Pago' }),
-        el('th', { texto: 'Situação' }),
-        ctx.editavel ? el('th', { class: 'col-acoes', texto: 'Anotar' }) : null,
-      ].filter(Boolean))]),
-      corpo,
+  return el('div', {}, [
+    // A tela é para conferir; o papel é para levar. Quem está preparando a
+    // visita já está aqui, olhando esta cidade — é daqui que a folha sai.
+    el('p', { class: 'detalhe-acoes' }, [
+      el('a', {
+        class: 'btn btn--fantasma btn--mini',
+        href: `#/orcamento/folha/${encodeURIComponent(m.municipio)}`,
+        texto: 'Folha desta cidade, para levar à visita',
+      }),
+    ]),
+    el('div', { class: 'tabela-rolagem' }, [
+      el('table', { class: 'tabela tabela--destinacoes' }, [
+        el('thead', {}, [el('tr', {}, [
+          el('th', { texto: 'Quem recebeu, para quê' }),
+          el('th', { class: 'num', texto: 'Ano' }),
+          el('th', { class: 'num', texto: 'Emenda' }),
+          el('th', { texto: 'Área' }),
+          el('th', { class: 'num', texto: 'Destinado' }),
+          el('th', { class: 'num', texto: 'Empenhado' }),
+          el('th', { class: 'num', texto: 'Pago' }),
+          el('th', { texto: 'Situação' }),
+          ctx.editavel ? el('th', { class: 'col-acoes', texto: 'Anotar' }) : null,
+        ].filter(Boolean))]),
+        corpo,
+      ]),
     ]),
   ]);
 }
@@ -1183,5 +1194,168 @@ function legendaDoMapa(cortes, tons) {
     cortes.length
       ? el('span', { class: 'campo-dica', texto: `faixas em ${cortes.map(fmtDinheiroCurto).join(' · ')}` })
       : null,
+  ].filter(Boolean));
+}
+
+// ─────────────────────── orçamento: a folha da cidade ───────────────────────
+
+const ROTULO_MODALIDADE = {
+  investimento: 'Investimento',
+  custeio: 'Custeio',
+  especial: 'Transferência Especial',
+  papCusteio: 'PAP Custeio',
+  papInvestimento: 'PAP Investimento',
+  macCusteio: 'MAC Custeio',
+  macInvestimento: 'MAC Investimento',
+  misto: 'Misto',
+};
+
+/**
+ * O papel que vai junto na visita.
+ *
+ * A tela é para conferir; a folha é para levar. Numa reunião de prefeitura
+ * ninguém rola uma tabela — abre-se uma folha, e o que está nela é o que se
+ * responde. Por isso ela não é a tabela impressa: começa pelo que a prefeitura
+ * vai perguntar primeiro (o que está travado, e o que ainda não bate entre as
+ * duas fontes), traz cada destinação inteira — com o andamento escrito pelo
+ * gabinete e com quem se fala lá — e termina em linhas em branco, porque o que
+ * se combina na reunião é anotado à mão, na hora.
+ */
+export async function painelFolhaMunicipio(container, cidadePedida) {
+  limpar(container).appendChild(carregando());
+  const { sessao } = await import('./sessao.js');
+  const destinacoes = await listar('destinacoes', { recarregar: true });
+  const cidades = consolidarDestinacoes(destinacoes);
+  const alvo = semAcentoLocal(cidadePedida || '');
+  const m = cidades.find((c) => semAcentoLocal(c.municipio) === alvo);
+
+  limpar(container);
+  container.appendChild(el('div', { class: 'modulo-acoes' }, [
+    el('a', { class: 'btn btn--fantasma', href: '#/orcamento/por-municipio', texto: '← Por município' }),
+    m ? el('button', {
+      class: 'btn btn--primario',
+      type: 'button',
+      texto: 'Imprimir',
+      onclick: () => window.print(),
+    }) : null,
+  ].filter(Boolean)));
+
+  if (!m) {
+    container.appendChild(nada(cidadePedida
+      ? `Nenhuma destinação registrada para "${cidadePedida}".`
+      : 'Abra uma cidade em Por município e peça a folha dela.'));
+    return;
+  }
+
+  const folha = el('article', { class: 'ficha folha' });
+  container.appendChild(folha);
+
+  const g = sessao.gabinete || {};
+  folha.appendChild(el('header', { class: 'ficha-topo folha-topo' }, [
+    el('div', {}, [
+      el('h2', { texto: `Emendas em ${m.municipio}` }),
+      el('p', { class: 'ficha-origem', texto: [
+        m.regiao,
+        `${m.destinacoes.length} destinaç${m.destinacoes.length === 1 ? 'ão' : 'ões'}`,
+        `folha gerada em ${new Date().toLocaleDateString('pt-BR')}`,
+      ].filter(Boolean).join(' · ') }),
+    ]),
+    el('p', { class: 'ficha-origem', texto: [g.deputado, g.nome].filter(Boolean).join(' · ') }),
+  ]));
+
+  folha.appendChild(el('div', { class: 'indicadores indicadores--compactos' }, [
+    el('div', { class: 'indicador' }, [
+      el('span', { class: 'indicador-rotulo', texto: 'Destinado' }),
+      el('strong', { class: 'indicador-valor', texto: fmtDinheiro(m.destinado) }),
+    ]),
+    el('div', { class: 'indicador' }, [
+      el('span', { class: 'indicador-rotulo', texto: 'Empenhado' }),
+      el('strong', { class: 'indicador-valor', texto: m.empenhado ? fmtDinheiro(m.empenhado) : '—' }),
+    ]),
+    el('div', { class: 'indicador' }, [
+      el('span', { class: 'indicador-rotulo', texto: 'Pago' }),
+      el('strong', { class: 'indicador-valor', texto: m.pago ? fmtDinheiro(m.pago) : '—' }),
+    ]),
+  ]));
+
+  // ── o que a prefeitura pergunta primeiro ──
+  //
+  // Nunca é "quanto foi ao todo": é "e aquela que travou?". Vir por último numa
+  // lista por ano é descobrir isso na frente de quem perguntou.
+  const travadas = m.destinacoes.filter((d) => d.situacao === 'impedido' || d.situacao === 'perdido');
+  const aConciliar = m.destinacoes.filter((d) => d.divergente);
+  if (travadas.length || aConciliar.length) {
+    folha.appendChild(el('section', { class: 'ficha-secao ficha-secao--alerta' }, [
+      el('h3', { texto: 'O que vão perguntar primeiro' }),
+      ...travadas.map((d) => el('p', { class: 'folha-alerta' }, [
+        el('strong', { texto: `${ROTULO_SITUACAO[d.situacao]} · ${fmtDinheiro(d.valorDestinado || 0)}` }),
+        el('span', { texto: ` — ${d.beneficiario || d.instituicao || 'sem beneficiário'}: ${d.objeto || 'objeto não informado'}` }),
+        d.situacaoOriginal ? el('span', { class: 'topo-sub', texto: d.situacaoOriginal }) : null,
+      ].filter(Boolean))),
+      // Dito no papel para que ninguém cite de cabeça um número que ainda não
+      // foi decidido — é o erro que se comete uma vez só.
+      ...aConciliar.map((d) => el('p', { class: 'folha-alerta' }, [
+        el('strong', { texto: 'Número ainda não conferido' }),
+        el('span', { texto: ` — ${d.beneficiario || d.instituicao || 'sem beneficiário'}: a planilha do gabinete diz ${fmtDinheiro(d.valorDestinado || 0)}, o painel do governo diz ${fmtDinheiro(Math.max(d.valorEmpenhado || 0, d.valorPago || 0))}. Não cite valor sem conferir.` }),
+      ])),
+    ]));
+  }
+
+  // ── as destinações, por ano, da mais recente para a mais antiga ──
+  const anos = [...new Set(m.destinacoes.map((d) => d.ano || 0))].sort((a, b) => b - a);
+  for (const ano of anos) {
+    const doAno = m.destinacoes.filter((d) => (d.ano || 0) === ano);
+    const soma = doAno.reduce((t, d) => t + (Number(d.valorDestinado) || 0), 0);
+    folha.appendChild(el('section', { class: 'ficha-secao' }, [
+      el('h3', { texto: `${ano || 'Sem ano'} — ${fmtDinheiro(soma)} em ${doAno.length} destinaç${doAno.length === 1 ? 'ão' : 'ões'}` }),
+      ...doAno.map(paragrafoDaDestinacao),
+    ]));
+  }
+
+  // ── o espaço de escrever ──
+  //
+  // O que se combina na reunião é anotado à mão, na hora, e sem linha em branco
+  // a anotação vai para o verso de outro papel e se perde.
+  folha.appendChild(el('section', { class: 'ficha-secao folha-anotacoes' }, [
+    el('h3', { texto: 'Anotações da visita' }),
+    ...Array.from({ length: 6 }, () => el('div', { class: 'folha-pauta' })),
+  ]));
+
+  folha.appendChild(el('p', { class: 'ficha-rodape', texto: 'Valores destinados são do Mapa de emendas do gabinete; empenhado e pago vêm do painel do governo. Onde as duas fontes divergem, a folha diz — nada aqui é conciliado sozinho.' }));
+}
+
+/** Uma destinação inteira, do jeito que se lê em voz alta. */
+function paragrafoDaDestinacao(d) {
+  const dinheiro = [
+    `destinado ${fmtDinheiro(d.valorDestinado || 0)}`,
+    d.valorEmpenhado ? `empenhado ${fmtDinheiro(d.valorEmpenhado)}` : null,
+    d.valorPago ? `pago ${fmtDinheiro(d.valorPago)}` : null,
+  ].filter(Boolean).join(' · ');
+
+  const ficha = [
+    d.numeroEmenda ? `Emenda ${d.numeroEmenda}` : 'Sem nº de emenda',
+    ROTULO_AREA[d.area],
+    ROTULO_MODALIDADE[d.modalidade],
+    d.numeroInstrumento ? `Instrumento ${d.numeroInstrumento}` : null,
+  ].filter(Boolean).join(' · ');
+
+  return el('div', { class: 'folha-destinacao' }, [
+    el('p', { class: 'folha-destinacao-titulo' }, [
+      el('strong', { texto: d.beneficiario || d.instituicao || 'sem beneficiário' }),
+      etiqueta(ROTULO_SITUACAO[d.situacao] || d.situacao || '—', COR_SITUACAO[d.situacao] || 'neutro'),
+    ]),
+    d.objeto ? el('p', { class: 'folha-objeto', texto: d.objeto }) : null,
+    el('p', { class: 'folha-numeros', texto: dinheiro }),
+    el('p', { class: 'topo-sub', texto: ficha }),
+    // Quem se procura lá. É a linha pela qual se liga antes de viajar, e a que
+    // some quando o assessor que sabia sai do gabinete.
+    d.responsavelNome
+      ? el('p', { class: 'folha-contato', texto: `Na cidade: ${d.responsavelNome}${d.responsavelCargo ? ` (${d.responsavelCargo})` : ''}${d.responsavelTelefone ? ` · ${d.responsavelTelefone}` : ''}` })
+      : null,
+    // O andamento inteiro, e não o último recado: numa reunião a pergunta é
+    // "desde quando?", e a resposta é o histórico.
+    d.andamento ? el('p', { class: 'folha-andamento', texto: d.andamento }) : null,
+    leituraDaConciliacao(d) ? el('p', { class: 'topo-sub', texto: leituraDaConciliacao(d) }) : null,
+    d.endereco ? el('p', { class: 'topo-sub', texto: d.endereco }) : null,
   ].filter(Boolean));
 }
